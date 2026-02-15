@@ -244,6 +244,30 @@ def admin_user_leads_list(request: HttpRequest, user_id: int) -> HttpResponse:
     )
 
 
+@login_required
+def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
+    """Единая страница «Новые отчёты»: все лиды на проверке и на доработке от всех пользователей."""
+    if not _require_support(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    qs = (
+        Lead.objects.filter(status__in=(Lead.Status.PENDING, Lead.Status.REWORK))
+        .select_related("user", "lead_type", "base_type")
+        .order_by("-created_at")
+    )
+    paginator = Paginator(qs, 50)
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+    lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
+    return render(
+        request,
+        "core/admin_leads_all_new.html",
+        {
+            "page_obj": page_obj,
+            "lead_approve_reward": lead_approve_reward,
+        },
+    )
+
+
 LEAD_APPROVE_REWARD = getattr(settings, "LEAD_APPROVE_REWARD", 40)
 
 
@@ -270,6 +294,11 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         lead.user.balance = (getattr(lead.user, "balance", 0) or 0) + LEAD_APPROVE_REWARD
         lead.user.save(update_fields=["balance"])
     messages.success(request, f"Лид #{lead_id} одобрен. Пользователю начислено {LEAD_APPROVE_REWARD} руб.")
+    next_url = request.GET.get("next") or request.POST.get("next")
+    if next_url:
+        from django.utils.http import url_has_allowed_host_and_scheme
+        if url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+            return redirect(next_url)
     return redirect("admin_user_leads_list", user_id=user_id)
 
 
@@ -289,13 +318,17 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
             lead.reviewed_by = request.user
             lead.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
             messages.success(request, f"Лид #{lead_id} отклонён.")
+            from django.utils.http import url_has_allowed_host_and_scheme
+            next_url = request.GET.get("next") or request.POST.get("next")
+            if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+                return redirect(next_url)
             return redirect("admin_user_leads_list", user_id=user_id)
     else:
         form = LeadRejectForm()
     return render(
         request,
         "core/admin_lead_reject.html",
-        {"lead": lead, "target_user": lead.user, "form": form},
+        {"lead": lead, "target_user": lead.user, "form": form, "next_url": request.GET.get("next")},
     )
 
 
@@ -315,13 +348,17 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
             lead.reviewed_by = request.user
             lead.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by"])
             messages.success(request, f"Лид #{lead_id} отправлен на доработку.")
+            from django.utils.http import url_has_allowed_host_and_scheme
+            next_url = request.GET.get("next") or request.POST.get("next")
+            if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+                return redirect(next_url)
             return redirect("admin_user_leads_list", user_id=user_id)
     else:
         form = LeadReworkForm()
     return render(
         request,
         "core/admin_lead_rework.html",
-        {"lead": lead, "target_user": lead.user, "form": form},
+        {"lead": lead, "target_user": lead.user, "form": form, "next_url": request.GET.get("next")},
     )
 
 

@@ -88,6 +88,9 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         ).count()
         contact_requests_pending_count = ContactRequest.objects.filter(status="pending").count()
         withdrawal_requests_pending_count = WithdrawalRequest.objects.filter(status="pending").count()
+        pending_leads_count = Lead.objects.filter(
+            status__in=(Lead.Status.PENDING, Lead.Status.REWORK)
+        ).count()
         return render(
             request,
             "core/dashboard_admin.html",
@@ -97,6 +100,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 "unread_threads_count": unread_threads_count,
                 "contact_requests_pending_count": contact_requests_pending_count,
                 "withdrawal_requests_pending_count": withdrawal_requests_pending_count,
+                "pending_leads_count": pending_leads_count,
             },
         )
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
@@ -145,6 +149,9 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
             "pending_requests_count": User.objects.filter(status=User.Status.PENDING).count(),
             "contact_requests_pending_count": ContactRequest.objects.filter(status="pending").count(),
             "withdrawal_requests_pending_count": WithdrawalRequest.objects.filter(status="pending").count(),
+            "pending_leads_count": Lead.objects.filter(
+                status__in=(Lead.Status.PENDING, Lead.Status.REWORK)
+            ).count(),
             "threads_updated_at": threads_agg["m"].isoformat() if threads_agg.get("m") else None,
         }
     else:

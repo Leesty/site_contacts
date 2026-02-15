@@ -28,6 +28,21 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
+          <div class="card-icon report mb-2">📝</div>
+          <h2 class="h5 mb-2">Новые отчёты</h2>
+          <p class="text-muted small mb-3">
+            Все отчёты на проверке и на доработке от всех пользователей. Одобрить, отклонить или на доработку — в одной таблице.
+          </p>
+          <div class="d-flex align-items-center gap-2">
+            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}">Перейти</a>
+            <span id="admin-pending-leads" class="btn btn-danger btn-sm" title="Отчётов на проверке" style="{% if not pending_leads_count %}display:none;{% endif %}">{{ pending_leads_count|default:0 }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
           <div class="card-icon contacts mb-2">📋</div>
           <h2 class="h5 mb-2">Заявки пользователей</h2>
           <p class="text-muted small mb-3">

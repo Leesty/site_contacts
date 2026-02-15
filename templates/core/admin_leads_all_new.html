@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% load support_extras %}
+
+{% block title %}Новые отчёты — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">Новые отчёты (лиды)</h1>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_all_users' %}">Все пользователи</a>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Все отчёты на проверке и на доработке от всех пользователей. Одобрить, отклонить или отправить на доработку можно прямо из таблицы.
+  </p>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Пользователь</th>
+              <th>Создан</th>
+              <th>Тип лида</th>
+              <th>Статус</th>
+              <th>Вложение</th>
+              <th>Контакт</th>
+              <th>Комментарий</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for lead in page_obj %}
+              <tr>
+                <td>{{ lead.id }}</td>
+                <td>
+                  <a href="{% url 'admin_user_leads_list' lead.user_id %}">@{{ lead.user.username }}</a>
+                </td>
+                <td>{{ lead.created_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ lead.lead_type.name|default:"—" }}</td>
+                <td>
+                  {% if lead.status == 'rework' %}
+                    <span class="badge bg-warning text-dark">На доработке</span>
+                  {% else %}
+                    <span class="badge bg-secondary">На проверке</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if lead.attachment %}
+                    {% if lead.attachment|lead_attachment_is_video %}
+                      <a href="{% url 'admin_lead_attachment' lead.user_id lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Видео</a>
+                    {% else %}
+                      <a href="{% url 'admin_lead_attachment' lead.user_id lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Открыть</a>
+                    {% endif %}
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td>{{ lead.raw_contact|default:"—"|truncatechars:30 }}</td>
+                <td>{{ lead.comment|default:"—"|truncatechars:40 }}</td>
+                <td>
+                  <div class="d-flex flex-wrap gap-1">
+                    <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-success btn-sm" title="+{{ lead_approve_reward }} руб. пользователю">Одобрить</button>
+                    </form>
+                    <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}">Отклонить</a>
+                    <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}">На доработку</a>
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="9" class="text-muted py-4 text-center">Нет отчётов на проверке или на доработке.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer bg-transparent border-secondary d-flex justify-content-center">
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}
+              <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a></li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}
+              <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a></li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

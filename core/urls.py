@@ -55,6 +55,11 @@ urlpatterns = [
         name="admin_user_lead_stats",
     ),
     path(
+        "staff/leads/new/",
+        views_support_admin.admin_leads_all_new,
+        name="admin_leads_all_new",
+    ),
+    path(
         "staff/users/<int:user_id>/leads/",
         views_support_admin.admin_user_leads_list,
         name="admin_user_leads_list",

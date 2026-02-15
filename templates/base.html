@@ -137,6 +137,11 @@
                     el.textContent = a.withdrawal_requests_pending_count || 0;
                     el.style.display = (a.withdrawal_requests_pending_count && a.withdrawal_requests_pending_count > 0) ? '' : 'none';
                   }
+                  el = document.getElementById('admin-pending-leads');
+                  if (el) {
+                    el.textContent = a.pending_leads_count || 0;
+                    el.style.display = (a.pending_leads_count && a.pending_leads_count > 0) ? '' : 'none';
+                  }
                 }
               })
               .catch(function() {});
