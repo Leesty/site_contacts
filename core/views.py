@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import F, Max, Q
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
@@ -170,16 +171,20 @@ def logout_view(request: HttpRequest) -> HttpResponse:
 
 
 def _ensure_user_approved(request: HttpRequest) -> bool:
-    """Проверяет, одобрен ли пользователь. Если нет — показывает сообщение и возвращает False."""
+    """Проверяет, одобрен ли пользователь. Если нет — показывает сообщение (раз за сессию) и возвращает False."""
     user = request.user
-    if getattr(user, "status", None) != "approved":
+    if getattr(user, "status", None) == "approved":
+        request.session.pop("approval_warning_shown", None)
+        return True
+    # Показываем предупреждение только один раз за сессию, чтобы не дублировать при каждом клике
+    if not request.session.get("approval_warning_shown"):
+        request.session["approval_warning_shown"] = True
         messages.warning(
             request,
             "Ваш аккаунт ещё не одобрен. Дождитесь одобрения от администратора, "
             "после чего функции кабинета станут доступны.",
         )
-        return False
-    return True
+    return False
 
 
 @login_required
@@ -453,22 +458,29 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def leads_my_list(request: HttpRequest) -> HttpResponse:
-    """Страница «Мои лиды»: список всех лидов пользователя со статусами и доработкой."""
+    """Страница «Мои лиды»: список лидов пользователя со статусами и доработкой (с пагинацией)."""
     user = request.user
     if not _ensure_user_approved(request):
         return redirect("dashboard")
-    leads = (
+    leads_qs = (
         Lead.objects.filter(user=user)
         .select_related("lead_type")
         .order_by("-created_at")
     )
+    paginator = Paginator(leads_qs, 30)
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
     lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
     agg = Lead.objects.filter(user=user).aggregate(m=Max("updated_at"))
     leads_updated_at = agg["m"].isoformat() if agg.get("m") else ""
     return render(
         request,
         "core/leads_my_list.html",
-        {"leads": leads, "lead_approve_reward": lead_approve_reward, "leads_updated_at": leads_updated_at},
+        {
+            "page_obj": page_obj,
+            "lead_approve_reward": lead_approve_reward,
+            "leads_updated_at": leads_updated_at,
+        },
     )
 
 

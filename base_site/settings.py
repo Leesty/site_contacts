@@ -72,16 +72,22 @@ WSGI_APPLICATION = "base_site.wsgi.application"
 
 
 # Database: PostgreSQL (настраивается через переменные окружения)
+_db_host = os.getenv("DB_HOST", "127.0.0.1")
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("DB_NAME", "basebot"),
         "USER": os.getenv("DB_USER", "basebot_user"),
         "PASSWORD": os.getenv("DB_PASSWORD", ""),
-        "HOST": os.getenv("DB_HOST", "127.0.0.1"),
+        "HOST": _db_host,
         "PORT": os.getenv("DB_PORT", "5432"),
+        # Повторное использование соединения (секунды). Сильно ускоряет при удалённой БД.
+        "CONN_MAX_AGE": 300,
     }
 }
+# SSL для подключения к БД по публичному хосту (например Timeweb *.twc1.net)
+if ".twc1.net" in _db_host or _db_host not in ("127.0.0.1", "localhost"):
+    DATABASES["default"]["OPTIONS"] = {"sslmode": "require"}
 
 
 AUTH_PASSWORD_VALIDATORS: list[dict] = []
