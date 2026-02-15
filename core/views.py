@@ -14,7 +14,7 @@ from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 
 from .forms import BaseRequestForm, LeadReportForm, LeadReworkUserForm, UserRegistrationForm
-from .lead_utils import compress_lead_attachment, determine_base_type_for_contact
+from .lead_utils import compress_lead_attachment, determine_base_type_for_contact, normalize_lead_contact
 from django.conf import settings
 
 from .models import BaseType, Contact, ContactRequest, Lead, SupportMessage, SupportThread, User, UserBaseLimit, WithdrawalRequest
@@ -431,6 +431,17 @@ def request_contact_create(request: HttpRequest) -> HttpResponse:
     return redirect("contacts")
 
 
+def _lead_exists_globally(raw_contact: str, exclude_lead_id: int | None = None) -> bool:
+    """Проверяет, есть ли в базе уже лид с таким контактом (любой пользователь). Комплексная нормализация: @user=user, ссылки и т.д."""
+    normalized = normalize_lead_contact(raw_contact)
+    if not normalized:
+        return False
+    qs = Lead.objects.filter(normalized_contact=normalized)
+    if exclude_lead_id is not None:
+        qs = qs.exclude(pk=exclude_lead_id)
+    return qs.exists()
+
+
 @login_required
 def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
     """Страница отправки отчёта по лидам. После отправки остаёмся на странице — можно добавить ещё лид."""
@@ -441,18 +452,26 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         form = LeadReportForm(request.POST, request.FILES)
         if form.is_valid():
-            lead: Lead = form.save(commit=False)
-            lead.user = user
-            lead.source = lead.raw_contact.strip() or ""
-            lead.base_type = determine_base_type_for_contact(lead.raw_contact.strip(), user)
-            contact_qs = Contact.objects.filter(value=lead.raw_contact.strip())
-            if lead.base_type:
-                contact_qs = contact_qs.filter(base_type=lead.base_type)
-            lead.contact = contact_qs.first()
-            lead.save()
-            compress_lead_attachment(lead)
-            messages.success(request, "Лид сохранён. Можете добавить ещё один.")
-            form = LeadReportForm()
+            raw = form.cleaned_data.get("raw_contact") or ""
+            if _lead_exists_globally(raw):
+                messages.error(
+                    request,
+                    "Такой контакт уже есть в базе отчётов (у вас или другого пользователя). Дубликаты не принимаются — один контакт можно отправить только один раз.",
+                )
+            else:
+                lead: Lead = form.save(commit=False)
+                lead.user = user
+                lead.source = lead.raw_contact.strip() or ""
+                lead.normalized_contact = normalize_lead_contact(lead.raw_contact)
+                lead.base_type = determine_base_type_for_contact(lead.raw_contact.strip(), user)
+                contact_qs = Contact.objects.filter(value=lead.raw_contact.strip())
+                if lead.base_type:
+                    contact_qs = contact_qs.filter(base_type=lead.base_type)
+                lead.contact = contact_qs.first()
+                lead.save()
+                compress_lead_attachment(lead)
+                messages.success(request, "Лид сохранён. Можете добавить ещё один.")
+                form = LeadReportForm()
     else:
         form = LeadReportForm()
 
@@ -500,19 +519,27 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
     if request.method == "POST":
         form = LeadReworkUserForm(request.POST, request.FILES)
         if form.is_valid():
-            lead.raw_contact = form.cleaned_data["raw_contact"].strip()
-            lead.source = lead.raw_contact or ""
-            lead.comment = form.cleaned_data.get("comment") or ""
-            update_fields = ["raw_contact", "source", "comment", "status", "rework_comment", "updated_at"]
-            if form.cleaned_data.get("attachment"):
-                lead.attachment = form.cleaned_data["attachment"]
-                update_fields.append("attachment")
-            lead.status = Lead.Status.PENDING
-            lead.rework_comment = ""
-            lead.save(update_fields=update_fields)
-            compress_lead_attachment(lead)
-            messages.success(request, "Лид отправлен на повторную проверку.")
-            return redirect("leads_my_list")
+            new_contact = form.cleaned_data["raw_contact"].strip()
+            if _lead_exists_globally(new_contact, exclude_lead_id=lead.id):
+                messages.error(
+                    request,
+                    "Такой контакт уже есть в базе отчётов. Укажите другой контакт или оставьте прежний.",
+                )
+            else:
+                lead.raw_contact = new_contact
+                lead.source = lead.raw_contact or ""
+                lead.normalized_contact = normalize_lead_contact(lead.raw_contact)
+                lead.comment = form.cleaned_data.get("comment") or ""
+                update_fields = ["raw_contact", "source", "normalized_contact", "comment", "status", "rework_comment", "updated_at"]
+                if form.cleaned_data.get("attachment"):
+                    lead.attachment = form.cleaned_data["attachment"]
+                    update_fields.append("attachment")
+                lead.status = Lead.Status.PENDING
+                lead.rework_comment = ""
+                lead.save(update_fields=update_fields)
+                compress_lead_attachment(lead)
+                messages.success(request, "Лид отправлен на повторную проверку.")
+                return redirect("leads_my_list")
     else:
         form = LeadReworkUserForm(
             initial={

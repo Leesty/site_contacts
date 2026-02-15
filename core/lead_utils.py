@@ -1,7 +1,8 @@
-"""Вспомогательные функции для лидов: автоопределение типа базы, сжатие скриншотов."""
+"""Вспомогательные функции для лидов: автоопределение типа базы, сжатие скриншотов, нормализация контактов."""
 from __future__ import annotations
 
 import io
+import re
 from typing import TYPE_CHECKING
 
 from django.db.models import Q
@@ -10,6 +11,67 @@ if TYPE_CHECKING:
     from .models import User
 
 from .models import BaseType, Contact
+
+
+def normalize_lead_contact(contact: str) -> str:
+    """Комплексная нормализация контакта для проверки дубликатов по всей базе.
+
+    @lestily = t.me/lestily = telegram:lestily; vk.com/id1 = vk.ru/id1 = vk:id1;
+    ссылки без протокола и www, номера 8... -> 7...
+    """
+    if not contact or not contact.strip():
+        return ""
+    c = contact.strip().lower()
+    c = c.replace("https://", "").replace("http://", "").replace("www.", "").strip()
+    # Спец. домены (Юла и т.д.)
+    if "mail.ru" in c or "youla.ru" in c:
+        return c
+    # Telegram: @user, t.me/user, telegram.me/user -> telegram:user
+    for prefix in ("t.me/", "telegram.me/", "telegram.dog/"):
+        if prefix in c:
+            idx = c.find(prefix)
+            rest = c[idx + len(prefix) :].split("?")[0].strip().rstrip("/")
+            if rest:
+                return "telegram:" + rest
+    if c.startswith("@"):
+        rest = c[1:].split("?")[0].strip().rstrip("/")
+        if rest:
+            return "telegram:" + rest
+    # VK: vk.com/xxx и vk.ru/xxx -> vk:xxx
+    for domain in ("vk.com/", "vk.ru/"):
+        if domain in c:
+            idx = c.find(domain)
+            rest = c[idx + len(domain) :].split("?")[0].strip().rstrip("/")
+            if rest:
+                return "vk:" + rest
+    # Instagram
+    if "instagram.com/" in c:
+        idx = c.find("instagram.com/")
+        rest = c[idx + 14 :].split("?")[0].strip().rstrip("/")
+        if rest:
+            return "ig:" + rest
+    # OK
+    if "ok.ru/" in c:
+        idx = c.find("ok.ru/")
+        rest = c[idx + 6 :].split("?")[0].strip().rstrip("/")
+        if rest:
+            return "ok:" + rest
+    # Avito
+    if "avito.ru/" in c:
+        idx = c.find("avito.ru/")
+        rest = c[idx + 9 :].split("?")[0].strip().rstrip("/")
+        if rest:
+            return "avito:" + rest
+    # Номера: только цифры, 8XXXXXXXXXX -> 7XXXXXXXXXX
+    c_digits = re.sub(r"[\s\-\(\)\+]", "", c)
+    if c_digits.isdigit():
+        if c_digits.startswith("8") and len(c_digits) == 11:
+            c_digits = "7" + c_digits[1:]
+        return "phone:" + c_digits
+    # Один «словесный» логин без ссылки (lestily, user_name) — считаем Telegram
+    if re.match(r"^[a-z0-9_]{2,}$", c):
+        return "telegram:" + c
+    return c
 
 
 def determine_base_type_for_contact(raw_contact: str, user: User) -> BaseType | None:

@@ -214,6 +214,12 @@ class Lead(TimeStampedModel):
         blank=True,
         help_text="Текстовое значение контакта (если нет связи с моделью Contact).",
     )
+    normalized_contact = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        help_text="Нормализованный контакт для проверки дубликатов по всей базе (@user→user, ссылки без протокола).",
+    )
     lead_type = models.ForeignKey(
         LeadType,
         on_delete=models.PROTECT,
