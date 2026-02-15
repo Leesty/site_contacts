@@ -79,6 +79,14 @@ class SupportMessageAdmin(admin.ModelAdmin):
     search_fields = ("thread__user__username", "text")
 
 
+@admin.register(models.BasesImportJob)
+class BasesImportJobAdmin(admin.ModelAdmin):
+    list_display = ("id", "status", "started_by", "created_at")
+    list_filter = ("status",)
+    readonly_fields = ("status", "message", "started_by", "created_at", "updated_at")
+    ordering = ("-created_at",)
+
+
 @admin.register(models.WithdrawalRequest)
 class WithdrawalRequestAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "amount", "payout_details", "status", "created_at", "processed_at", "processed_by")

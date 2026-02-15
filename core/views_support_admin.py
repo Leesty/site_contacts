@@ -1,3 +1,6 @@
+import os
+import threading
+import uuid
 from datetime import date, datetime, time, timedelta, timezone as dt_utc
 from io import BytesIO
 from zoneinfo import ZoneInfo
@@ -15,7 +18,19 @@ from django.views.decorators.http import require_http_methods
 from openpyxl import Workbook, load_workbook
 
 from .forms import BaseCategoryUploadForm, BaseExcelUploadForm, LeadRejectForm, LeadReworkForm, LeadsExcelUploadForm
-from .models import BaseType, Contact, ContactRequest, Lead, LeadType, SupportMessage, SupportThread, User, UserBaseLimit, WithdrawalRequest
+from .models import (
+    BaseType,
+    BasesImportJob,
+    Contact,
+    ContactRequest,
+    Lead,
+    LeadType,
+    SupportMessage,
+    SupportThread,
+    User,
+    UserBaseLimit,
+    WithdrawalRequest,
+)
 
 
 def _require_support(request: HttpRequest) -> bool:
@@ -650,7 +665,8 @@ def _excel_row_is_assigned(row: tuple) -> bool:
 
 
 BULK_CREATE_BATCH_SIZE = 1000
-
+# Лимит строк на одну загрузку, чтобы не превышать таймаут воркера (gunicorn)
+MAX_UPLOAD_ROWS = 40_000
 
 EXCEL_SHEET_MAP = {
     # Короткие названия
@@ -691,6 +707,27 @@ EXCEL_SHEET_MAP = {
 }
 
 
+def _run_bases_import_background(file_path: str, job_id: int) -> None:
+    """Выполняет импорт всех листов в фоне. Обновляет BasesImportJob по завершении. Удаляет файл."""
+    try:
+        wb = load_workbook(file_path, read_only=True)
+        created, skipped, details = _process_excel_all_sheets(wb, max_rows=None)
+        wb.close()
+        msg = f"Добавлено контактов: {created}, пропущено (дубликаты): {skipped}.\n\n" + "\n".join(details)
+        BasesImportJob.objects.filter(pk=job_id).update(status=BasesImportJob.Status.SUCCESS, message=msg)
+    except Exception as e:
+        BasesImportJob.objects.filter(pk=job_id).update(
+            status=BasesImportJob.Status.ERROR,
+            message=f"Ошибка: {e}",
+        )
+    finally:
+        try:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        except OSError:
+            pass
+
+
 @login_required
 def upload_bases_excel(request: HttpRequest) -> HttpResponse:
     """Редирект на единую страницу загрузки/выгрузки баз."""
@@ -699,13 +736,18 @@ def upload_bases_excel(request: HttpRequest) -> HttpResponse:
     return redirect("bases_excel")
 
 
-def _process_excel_all_sheets(wb) -> tuple[int, int, list]:
-    """Обработка книги Excel: все листы по EXCEL_SHEET_MAP. Загружаются только свободные контакты (без ID/User/Date).
-    Пакетная вставка, чтобы не зависать на больших файлах."""
+def _process_excel_all_sheets(wb, max_rows: int | None = MAX_UPLOAD_ROWS) -> tuple[int, int, list]:
+    """Обработка книги Excel: все листы по EXCEL_SHEET_MAP. Свободные контакты (без ID/User/Date).
+    max_rows: лимит строк (защита от таймаута при синхронной загрузке); None — без лимита (фоновый импорт)."""
     total_created = 0
     total_skipped = 0
     details = []
+    total_rows_processed = 0
+    limit_reached = False
     for sheet in wb.worksheets:
+        if limit_reached:
+            details.append(f"Лист «{sheet.title}» — пропущен (достигнут лимит {max_rows} строк)")
+            continue
         base_slug = EXCEL_SHEET_MAP.get(sheet.title)
         if not base_slug:
             details.append(f"Лист «{sheet.title}» — неизвестный тип, пропущен")
@@ -715,7 +757,6 @@ def _process_excel_all_sheets(wb) -> tuple[int, int, list]:
         except BaseType.DoesNotExist:
             details.append(f"Лист «{sheet.title}» — база не найдена")
             continue
-        # Только свободные: в колонках ID/Username/Date (справа от Value) пусто
         free_values = []
         for row in sheet.iter_rows(min_row=2, max_col=4, values_only=True):
             value = _excel_contact_value(row[0] if row else None)
@@ -724,22 +765,42 @@ def _process_excel_all_sheets(wb) -> tuple[int, int, list]:
             if _excel_row_is_assigned(row):
                 continue
             free_values.append(value)
+        if max_rows is not None:
+            remaining = max_rows - total_rows_processed
+            if remaining <= 0:
+                limit_reached = True
+                details.append(f"Лист «{sheet.title}» — пропущен (достигнут лимит {max_rows} строк)")
+                continue
+            to_process = free_values[:remaining]
+            skipped_by_limit = len(free_values) - len(to_process)
+        else:
+            to_process = free_values
+            skipped_by_limit = 0
         count_before = Contact.objects.filter(base_type=base_type).count()
-        # Пакетная вставка (дубликаты игнорируются)
-        for i in range(0, len(free_values), BULK_CREATE_BATCH_SIZE):
-            chunk = free_values[i : i + BULK_CREATE_BATCH_SIZE]
+        for i in range(0, len(to_process), BULK_CREATE_BATCH_SIZE):
+            chunk = to_process[i : i + BULK_CREATE_BATCH_SIZE]
             Contact.objects.bulk_create(
                 [Contact(base_type=base_type, value=v) for v in chunk],
                 ignore_conflicts=True,
             )
         count_after = Contact.objects.filter(base_type=base_type).count()
         sheet_created = count_after - count_before
-        sheet_skipped = len(free_values) - sheet_created
+        sheet_skipped = len(to_process) - sheet_created
         total_created += sheet_created
         total_skipped += sheet_skipped
-        details.append(
-            f"«{base_type.name}» — свободных строк {len(free_values)}, добавлено {sheet_created}, дубликатов {sheet_skipped}"
-        )
+        total_rows_processed += len(to_process)
+        if max_rows is not None and skipped_by_limit > 0:
+            limit_reached = True
+            details.append(
+                f"«{base_type.name}» — обработано {len(to_process)} из {len(free_values)} (лимит {max_rows}), "
+                f"добавлено {sheet_created}, дубликатов {sheet_skipped}. Остальные листы не загружены."
+            )
+        else:
+            details.append(
+                f"«{base_type.name}» — свободных строк {len(free_values)}, добавлено {sheet_created}, дубликатов {sheet_skipped}"
+            )
+        if skipped_by_limit > 0:
+            break
     return total_created, total_skipped, details
 
 
@@ -754,6 +815,11 @@ def _process_excel_single_sheet(wb, base_type: BaseType) -> tuple[int, int]:
         if _excel_row_is_assigned(row):
             continue
         free_values.append(value)
+    if len(free_values) > MAX_UPLOAD_ROWS:
+        raise ValueError(
+            f"В файле слишком много строк: {len(free_values)}. "
+            f"Максимум за одну загрузку: {MAX_UPLOAD_ROWS}. Разбейте файл на части или загрузите «все листы»."
+        )
     count_before = Contact.objects.filter(base_type=base_type).count()
     for i in range(0, len(free_values), BULK_CREATE_BATCH_SIZE):
         chunk = free_values[i : i + BULK_CREATE_BATCH_SIZE]
@@ -783,19 +849,30 @@ def bases_excel(request: HttpRequest) -> HttpResponse:
                 if not (file and file.name and file.name.lower().endswith(".xlsx")):
                     messages.error(request, "Нужен файл в формате .xlsx")
                 else:
-                    try:
-                        wb = load_workbook(file, read_only=True)
-                        created, skipped, details = _process_excel_all_sheets(wb)
-                        wb.close()
-                        messages.success(
-                            request,
-                            "Импорт завершён. Добавлено {} контактов, пропущено (дубликаты) {}.\n\n{}".format(
-                                created, skipped, "\n".join(details)
-                            ),
-                        )
-                        return redirect("bases_excel")
-                    except Exception as e:
-                        messages.error(request, f"Ошибка при обработке файла: {e}")
+                    # Фоновый импорт без лимита строк: сохраняем файл и запускаем поток
+                    import_dir = settings.MEDIA_ROOT / "imports"
+                    import_dir.mkdir(parents=True, exist_ok=True)
+                    safe_name = f"{uuid.uuid4().hex}.xlsx"
+                    file_path = import_dir / safe_name
+                    with open(file_path, "wb") as f:
+                        for chunk in file.chunks():
+                            f.write(chunk)
+                    job = BasesImportJob.objects.create(
+                        status=BasesImportJob.Status.RUNNING,
+                        started_by=request.user,
+                    )
+                    thread = threading.Thread(
+                        target=_run_bases_import_background,
+                        args=(str(file_path), job.pk),
+                        daemon=True,
+                    )
+                    thread.start()
+                    messages.success(
+                        request,
+                        "Импорт запущен в фоне. Файл будет обработан полностью (без лимита строк). "
+                        "Обновите страницу через несколько минут, чтобы увидеть результат.",
+                    )
+                    return redirect("bases_excel")
         elif "upload_category" in request.POST:
             form_category = BaseCategoryUploadForm(request.POST, request.FILES)
             if form_category.is_valid():
@@ -816,8 +893,8 @@ def bases_excel(request: HttpRequest) -> HttpResponse:
                     except Exception as e:
                         messages.error(request, f"Ошибка при обработке файла: {e}")
 
-    # Названия листов для подсказки (как в боте)
     sheet_names_hint = "Тг, Вотсап, Макс, Вайбер, Инст, ВК, Ок, Почта (или Telegram, WhatsApp и т.д.)"
+    latest_import_job = BasesImportJob.objects.order_by("-created_at").first()
     return render(
         request,
         "core/bases_excel.html",
@@ -826,6 +903,7 @@ def bases_excel(request: HttpRequest) -> HttpResponse:
             "form_category": form_category,
             "base_types": base_types,
             "sheet_names_hint": sheet_names_hint,
+            "latest_import_job": latest_import_job,
         },
     )
 

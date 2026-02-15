@@ -8,6 +8,25 @@
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
   </div>
 
+  {% if latest_import_job %}
+    <div class="alert {% if latest_import_job.status == 'running' %}alert-info{% elif latest_import_job.status == 'success' %}alert-success{% else %}alert-danger{% endif %} mb-4" role="alert">
+      <strong>
+        {% if latest_import_job.status == 'running' %}
+          Импорт в процессе…
+        {% elif latest_import_job.status == 'success' %}
+          Последний импорт завершён
+        {% else %}
+          Ошибка импорта
+        {% endif %}
+      </strong>
+      {% if latest_import_job.status == 'running' %}
+        <p class="mb-0 mt-1">Файл обрабатывается в фоне. Обновите страницу через несколько минут.</p>
+      {% elif latest_import_job.message %}
+        <pre class="mb-0 mt-2 small" style="white-space: pre-wrap;">{{ latest_import_job.message }}</pre>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <div class="row">
     <div class="col-lg-6 mb-4">
       <div class="card h-100">

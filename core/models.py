@@ -411,3 +411,34 @@ class WithdrawalRequest(TimeStampedModel):
     def __str__(self) -> str:
         return f"Вывод {self.amount} от {self.user} ({self.get_status_display()})"
 
+
+class BasesImportJob(TimeStampedModel):
+    """Статус фонового импорта баз из Excel (все листы). Один запуск — одна запись."""
+
+    class Status(models.TextChoices):
+        RUNNING = "running", "В процессе"
+        SUCCESS = "success", "Завершён"
+        ERROR = "error", "Ошибка"
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.RUNNING,
+    )
+    message = models.TextField(blank=True, help_text="Результат или текст ошибки.")
+    started_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bases_import_jobs",
+    )
+
+    class Meta:
+        verbose_name = "Импорт баз"
+        verbose_name_plural = "Импорты баз"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Импорт {self.get_status_display()} ({self.created_at})"
+
