@@ -34,6 +34,7 @@
               <th>Контакт</th>
               <th>Источник</th>
               <th>Комментарий</th>
+              <th>Проверил</th>
             </tr>
           </thead>
           <tbody>
@@ -80,13 +81,14 @@
                     <span class="text-muted">—</span>
                   {% endif %}
                 </td>
-                <td>{{ lead.raw_contact|default:"—" }}</td>
+                <td>{{ lead.raw_contact|default:"—"|contact_link }}</td>
                 <td>{{ lead.source|truncatechars:40|default:"—" }}</td>
                 <td>{{ lead.comment|truncatechars:60|default:"—" }}</td>
+                <td>{% if lead.reviewed_by %}@{{ lead.reviewed_by.username }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
               </tr>
             {% empty %}
               <tr>
-                <td colspan="8" class="text-muted py-4 text-center">Лидов пока нет.</td>
+                <td colspan="9" class="text-muted py-4 text-center">Лидов пока нет.</td>
               </tr>
             {% endfor %}
           </tbody>

@@ -273,11 +273,19 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
     )
 
 
-@login_required
 def download_my_contacts_txt(request: HttpRequest) -> HttpResponse:
     """Скачать выданные пользователю контакты в виде .txt (один контакт на строку).
-    Группировка по дням выдачи. GET: base_type — только эта база; date — YYYY-MM-DD за один день."""
+    Группировка по дням выдачи. GET: base_type — только эта база; date — YYYY-MM-DD за один день.
+    При неавторизованном доступе возвращаем 401 с текстом, а не редирект на логин — иначе при
+    сохранении ссылки как файла пользователь получает HTML страницы входа вместо данных."""
     from collections import OrderedDict
+
+    if not request.user.is_authenticated:
+        return HttpResponse(
+            "Требуется вход в аккаунт. Откройте сайт, войдите и снова нажмите «Скачать .txt» на странице контактов.",
+            status=401,
+            content_type="text/plain; charset=utf-8",
+        )
 
     user = request.user
     if not _ensure_user_approved(request):

@@ -60,7 +60,7 @@
                     <span class="text-muted">—</span>
                   {% endif %}
                 </td>
-                <td>{{ lead.raw_contact|default:"—"|truncatechars:30 }}</td>
+                <td>{{ lead.raw_contact|default:"—"|contact_link }}</td>
                 <td>{{ lead.comment|default:"—"|truncatechars:40 }}</td>
                 <td>
                   <div class="d-flex flex-wrap gap-1">

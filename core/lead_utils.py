@@ -74,6 +74,40 @@ def normalize_lead_contact(contact: str) -> str:
     return c
 
 
+def raw_contact_to_url(contact: str) -> str | None:
+    """По значению контакта возвращает URL для перехода (Telegram, VK, WhatsApp, Instagram и т.д.) или None."""
+    if not contact or not contact.strip():
+        return None
+    normalized = normalize_lead_contact(contact)
+    if not normalized:
+        return None
+    if normalized.startswith("telegram:"):
+        username = normalized[9:].strip()
+        if username:
+            return f"https://t.me/{username}"
+    if normalized.startswith("vk:"):
+        path = normalized[3:].strip()
+        if path:
+            return f"https://vk.com/{path}"
+    if normalized.startswith("ig:"):
+        username = normalized[3:].strip()
+        if username:
+            return f"https://instagram.com/{username}"
+    if normalized.startswith("ok:"):
+        path = normalized[3:].strip()
+        if path:
+            return f"https://ok.ru/{path}"
+    if normalized.startswith("avito:"):
+        path = normalized[6:].strip()
+        if path:
+            return f"https://avito.ru/{path}"
+    if normalized.startswith("phone:"):
+        digits = normalized[6:].strip().replace(" ", "")
+        if digits and digits.isdigit():
+            return f"https://wa.me/{digits}"
+    return None
+
+
 def determine_base_type_for_contact(raw_contact: str, user: User) -> BaseType | None:
     """Определяет тип базы по контакту: по URL или по наличию в выданных/общих базах (как в боте)."""
     if not raw_contact or not raw_contact.strip():

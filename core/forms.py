@@ -76,7 +76,7 @@ class LeadReportForm(forms.ModelForm):
         }
         help_texts = {
             "comment": "",
-            "attachment": "Скриншот или запись экрана (видео), подтверждающие лид",
+            "attachment": "Скриншот или запись экрана (видео), подтверждающие лид (обязательно)",
         }
         widgets = {
             "lead_type": forms.Select(
@@ -109,10 +109,14 @@ class LeadReportForm(forms.ModelForm):
             ),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["attachment"].required = True
+
     def clean_attachment(self):
         data = self.cleaned_data.get("attachment")
         if not data:
-            return data
+            raise forms.ValidationError("Обязательно приложите скриншот или видео, подтверждающие лид.")
         name = getattr(data, "name", None) or ""
         ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
         if ext not in LEAD_ATTACHMENT_ALLOWED_EXTENSIONS:

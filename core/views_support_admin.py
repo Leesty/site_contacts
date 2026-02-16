@@ -228,7 +228,7 @@ def admin_user_leads_list(request: HttpRequest, user_id: int) -> HttpResponse:
     target_user = get_object_or_404(User, pk=user_id)
     leads_qs = (
         Lead.objects.filter(user=target_user)
-        .select_related("lead_type", "base_type")
+        .select_related("lead_type", "base_type", "reviewed_by")
         .order_by("-created_at")
     )
     paginator = Paginator(leads_qs, 50)
@@ -587,6 +587,28 @@ def admin_stats(request: HttpRequest) -> HttpResponse:
                 "all": leads_all.get(name, 0),
             })
 
+    # Кто проверял лиды: сводка по админам (одобрено / отклонено / на доработку)
+    reviewed_qs = (
+        Lead.objects.filter(reviewed_by__isnull=False)
+        .values("reviewed_by__username", "reviewed_by__id")
+        .annotate(
+            approved=Count("id", filter=Q(status=Lead.Status.APPROVED)),
+            rejected=Count("id", filter=Q(status=Lead.Status.REJECTED)),
+            rework=Count("id", filter=Q(status=Lead.Status.REWORK)),
+        )
+    )
+    reviewed_by_stats = [
+        {
+            "username": x["reviewed_by__username"] or "—",
+            "user_id": x["reviewed_by__id"],
+            "approved": x["approved"],
+            "rejected": x["rejected"],
+            "rework": x["rework"],
+            "total": x["approved"] + x["rejected"] + x["rework"],
+        }
+        for x in reviewed_qs.order_by("-approved", "-rejected")
+    ]
+
     return render(
         request,
         "core/admin_stats.html",
@@ -596,6 +618,7 @@ def admin_stats(request: HttpRequest) -> HttpResponse:
             "total_leads_week": total_leads_week,
             "total_leads_month": total_leads_month,
             "total_leads_all": total_leads_all,
+            "reviewed_by_stats": reviewed_by_stats,
         },
     )
 
