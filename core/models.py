@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -229,6 +230,10 @@ class Lead(TimeStampedModel):
         max_length=255,
         blank=True,
         help_text="Источник лида или доп. описание (например, ссылка на объявление).",
+    )
+    lead_date = models.DateField(
+        default=timezone.now,
+        help_text="Дата лида (когда пользователь относит отчёт). По умолчанию — сегодня.",
     )
     comment = models.TextField(
         blank=True,

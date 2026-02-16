@@ -70,14 +70,16 @@ class LeadReportForm(forms.ModelForm):
 
     class Meta:
         model = Lead
-        fields = ("lead_type", "raw_contact", "attachment", "comment")
+        fields = ("lead_type", "lead_date", "raw_contact", "attachment", "comment")
         labels = {
             "lead_type": "Категория лида",
+            "lead_date": "Дата лида",
             "comment": "Комментарий (необязательно)",
             "attachment": "Файл / скриншот или видео",
         }
         help_texts = {
             "comment": "",
+            "lead_date": "К какой дате относите отчёт. По умолчанию — сегодня. Обязательно.",
             "attachment": "Скриншот или запись экрана (видео), подтверждающие лид (обязательно)",
         }
         widgets = {
@@ -85,6 +87,13 @@ class LeadReportForm(forms.ModelForm):
                 attrs={
                     "class": "form-select",
                     "style": "background-color: rgba(15, 23, 42, 0.95); border-color: rgba(55, 65, 81, 0.9); color: #e5e7eb;",
+                }
+            ),
+            "lead_date": forms.DateInput(
+                attrs={
+                    "type": "date",
+                    "class": "form-control",
+                    "style": "background-color: rgba(15, 23, 42, 0.95); border: 1px solid rgba(55, 65, 81, 0.9); color: #e5e7eb;",
                 }
             ),
             "raw_contact": forms.TextInput(
@@ -114,6 +123,10 @@ class LeadReportForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["attachment"].required = True
+        self.fields["lead_date"].required = True
+        if not self.instance or not self.instance.pk:
+            from django.utils import timezone
+            self.fields["lead_date"].initial = timezone.now().date()
 
     def clean_attachment(self):
         data = self.cleaned_data.get("attachment")

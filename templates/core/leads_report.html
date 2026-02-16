@@ -64,6 +64,17 @@
       {% endif %}
     </div>
 
+    <div class="mb-3">
+      <label class="form-label" for="{{ form.lead_date.id_for_label }}">{{ form.lead_date.label }}</label>
+      {{ form.lead_date }}
+      {% if form.lead_date.help_text %}
+        <div class="form-text">{{ form.lead_date.help_text }}</div>
+      {% endif %}
+      {% if form.lead_date.errors %}
+        <div class="text-danger small">{% for error in form.lead_date.errors %}{{ error }}{% endfor %}</div>
+      {% endif %}
+    </div>
+
     <div class="mb-3 field-contact-link">
       <label class="form-label" for="{{ form.raw_contact.id_for_label }}">{{ form.raw_contact.label }}</label>
       <div class="form-control-wrap">
@@ -115,6 +126,7 @@
     var ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'mp4', 'mov', 'webm', 'm4v', '3gp'];
     var form = document.querySelector('.leads-report-form');
     var input = document.getElementById('id_attachment');
+    var dateInput = document.getElementById('id_lead_date');
     var statusEl = document.getElementById('lead-attachment-status');
     var submitBtn = document.getElementById('lead-report-submit');
 
@@ -128,7 +140,17 @@
       statusEl.className = 'small mt-1 ' + (isError ? 'text-danger' : 'text-success');
     }
 
+    function hasValidDate() {
+      if (!dateInput || !dateInput.value || !dateInput.value.trim()) return false;
+      return true;
+    }
+
     function checkFile() {
+      if (!hasValidDate()) {
+        submitBtn.disabled = true;
+        if (statusEl) setStatus('Выберите дату лида и приложите скриншот или видео.', false);
+        return;
+      }
       var files = input && input.files;
       if (!files || !files.length) {
         submitBtn.disabled = true;
@@ -153,9 +175,14 @@
 
     if (input) {
       input.addEventListener('change', checkFile);
-      checkFile();
-    } else {
-      submitBtn.disabled = false;
+    }
+    if (dateInput) {
+      dateInput.addEventListener('change', checkFile);
+      dateInput.addEventListener('input', checkFile);
+    }
+    checkFile();
+    if (!input) {
+      submitBtn.disabled = !hasValidDate();
     }
 
     if (form) {

@@ -58,7 +58,7 @@
                       {% if lead.status == 'pending' or lead.status == 'rework' %}
                         <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}" class="d-inline">
                           {% csrf_token %}
-                          <button type="submit" class="btn btn-success btn-sm">Одобрить</button>
+                          <button type="submit" class="btn btn-success btn-sm" title="{% if lead.status == 'rework' %}Одобрить без доработки{% endif %}">{% if lead.status == 'rework' %}Одобрить без доработки{% else %}Одобрить{% endif %}</button>
                         </form>
                         <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}">Отклонить</a>
                       {% endif %}
