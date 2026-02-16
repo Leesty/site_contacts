@@ -1,8 +1,11 @@
 """Хранилище медиа: S3 из настроек в БД или локальный каталог."""
+import logging
 import time
 
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
+
+logger = logging.getLogger(__name__)
 
 # Кэш конфига из БД (ключ, чтобы сбросить при сохранении в админке)
 _MEDIA_CONFIG_CACHE = {"config": None, "cache_until": 0}
@@ -47,7 +50,10 @@ class ConfigurableMediaStorage(FileSystemStorage):
         config = get_media_config_from_db()
         if config and config.enabled and config.bucket_name and config.access_key_id and config.secret_access_key:
             try:
-                from storages.backends.s3boto3 import S3Boto3Storage
+                try:
+                    from storages.backends.s3boto3 import S3Boto3Storage
+                except ImportError:
+                    from storages.backends.s3 import S3Storage as S3Boto3Storage
                 opts = {
                     "access_key": config.access_key_id,
                     "secret_key": config.secret_access_key,
@@ -55,12 +61,22 @@ class ConfigurableMediaStorage(FileSystemStorage):
                     "region_name": config.region_name or "ru-1",
                 }
                 if config.endpoint_url:
-                    opts["endpoint_url"] = config.endpoint_url
+                    opts["endpoint_url"] = config.endpoint_url.strip()
                 self._s3_backend = S3Boto3Storage(**opts)
                 self._use_s3 = True
+                logger.info(
+                    "Media storage: using S3 bucket=%s endpoint=%s",
+                    config.bucket_name,
+                    getattr(config, "endpoint_url", "") or "default",
+                )
                 return self._s3_backend
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Media storage: S3 init failed, using local. bucket=%s err=%s",
+                    getattr(config, "bucket_name", ""),
+                    e,
+                    exc_info=True,
+                )
         self._use_s3 = False
         return self
 
