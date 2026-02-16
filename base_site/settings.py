@@ -105,14 +105,17 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-# Медиафайлы: только в S3 (переменные окружения) или только через админку. Локально не сохраняем.
-USE_S3_MEDIA_ENV = os.getenv("USE_S3_MEDIA", "").strip().lower() in ("1", "true", "yes")
-
+# Медиафайлы: при наличии бакета и ключей в окружении — только S3 (Timeweb). Иначе — из админки. Локально не сохраняем.
 _s3_bucket = os.getenv("AWS_STORAGE_BUCKET_NAME", "").strip()
 _s3_access = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
 _s3_secret = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
 _s3_region = os.getenv("AWS_S3_REGION_NAME", "ru-1").strip() or "ru-1"
 _s3_endpoint = os.getenv("AWS_S3_ENDPOINT_URL", "").strip().rstrip("/")
+
+USE_S3_MEDIA_ENV = (
+    os.getenv("USE_S3_MEDIA", "").strip().lower() in ("1", "true", "yes")
+    or bool(_s3_bucket and _s3_access and _s3_secret)
+)
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
