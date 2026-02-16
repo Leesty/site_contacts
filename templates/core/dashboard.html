@@ -25,6 +25,17 @@
     </p>
   {% endif %}
 
+  {% if rework_leads_count %}
+    <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+      <span class="me-2">⚠️</span>
+      <div class="flex-grow-1">
+        <strong>Есть отчёты на доработке.</strong>
+        Администратор отправил на доработку {{ rework_leads_count }} отчёт(ов). Зайдите в «Мои лиды», доработайте и загрузите заново.
+      </div>
+      <a class="btn btn-warning btn-sm ms-2" href="{% url 'leads_my_list' %}">Перейти к моим лидам</a>
+    </div>
+  {% endif %}
+
   <div class="row row-cols-1 row-cols-md-2 g-3 mt-2 dashboard-grid">
     <div class="col">
       <div class="card h-100 shadow-sm">

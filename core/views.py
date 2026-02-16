@@ -118,6 +118,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             support_has_unread = thread.messages.filter(
                 is_from_support=True, created_at__gt=thread.user_last_read_at
             ).exists()
+    # Лиды, отправленные админом на доработку — показываем уведомление на главной
+    rework_leads_count = Lead.objects.filter(user=user, status=Lead.Status.REWORK).count()
     return render(
         request,
         "core/dashboard.html",
@@ -127,6 +129,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "withdrawal_pending": withdrawal_pending,
             "can_request_withdrawal": can_request_withdrawal,
             "support_has_unread": support_has_unread,
+            "rework_leads_count": rework_leads_count,
         },
     )
 
@@ -496,7 +499,7 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
                     messages.success(request, "Лид сохранён. Можете добавить ещё один.")
                     form = LeadReportForm()
                 except (OperationalError, ProgrammingError) as e:
-                    logger.exception("Ошибка БД при сохранении лида (возможно не применена миграция 0013): %s", e)
+                    logger.exception("Ошибка БД при сохранении лида (выполните: python manage.py migrate, нужна миграция 0015_lead_date): %s", e)
                     messages.error(
                         request,
                         "Ошибка базы данных. Убедитесь, что выполнены миграции: python manage.py migrate",
