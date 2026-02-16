@@ -367,6 +367,7 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
 @login_required
 def admin_lead_attachment(request: HttpRequest, user_id: int, lead_id: int) -> HttpResponse:
     """Отдаёт вложение лида (фото/видео). Доступ: staff или владелец лида. В проде /media/ не раздаётся — используем эту вьюху."""
+    import logging
     lead = get_object_or_404(Lead, pk=lead_id, user_id=user_id)
     if not lead.attachment:
         return HttpResponseForbidden("У этого лида нет вложения.")
@@ -374,8 +375,19 @@ def admin_lead_attachment(request: HttpRequest, user_id: int, lead_id: int) -> H
         return HttpResponseForbidden("Нет доступа к этому файлу.")
     try:
         f = lead.attachment.open("rb")
-    except OSError:
-        return HttpResponseForbidden("Файл не найден на диске.")
+    except OSError as e:
+        logging.getLogger(__name__).warning(
+            "Lead attachment missing on disk: lead_id=%s user_id=%s path=%s err=%s",
+            lead_id, user_id, lead.attachment.name, e,
+        )
+        html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Файл недоступен</title></head><body style='font-family:sans-serif;padding:2rem;'>"
+            "<h1>Файл не найден на диске</h1>"
+            "<p>Вложение этого отчёта в базе есть, но файл на сервере отсутствует. Так бывает, если хранилище загрузок не сохраняется между перезапусками/деплоями (временный диск).</p>"
+            "<p><strong>Что сделать:</strong> попросите пользователя @%s заново отправить скриншот или видео через форму доработки лида или в поддержку.</p>"
+            "<p><a href='javascript:history.back()'>← Назад</a></p></body></html>"
+        ) % (lead.user.username,)
+        return HttpResponse(html, status=404, content_type="text/html; charset=utf-8")
     filename = lead.attachment.name.split("/")[-1] if lead.attachment.name else "attachment"
     response = FileResponse(f, as_attachment=False)
     response["Content-Disposition"] = f'inline; filename="{filename}"'

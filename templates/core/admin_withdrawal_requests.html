@@ -29,7 +29,11 @@
           <tbody>
             {% for req in pending_requests %}
               <tr>
-                <td>@{{ req.user.username }}</td>
+                <td>
+                  <a href="{% url 'admin_user_leads_list' req.user.pk %}">@{{ req.user.username }}</a>
+                  <span class="text-muted small"> · </span>
+                  <a href="{% url 'admin_user_lead_stats' req.user.pk %}" class="small">Статистика</a>
+                </td>
                 <td>{{ req.amount }}</td>
                 <td style="max-width: 260px; white-space: pre-wrap;">{{ req.payout_details|default:"—" }}</td>
                 <td>{{ req.created_at|date:"d.m.Y H:i" }}</td>
@@ -78,7 +82,11 @@
           <tbody>
             {% for req in history_requests %}
               <tr>
-                <td>@{{ req.user.username }}</td>
+                <td>
+                  <a href="{% url 'admin_user_leads_list' req.user.pk %}">@{{ req.user.username }}</a>
+                  <span class="text-muted small"> · </span>
+                  <a href="{% url 'admin_user_lead_stats' req.user.pk %}" class="small">Статистика</a>
+                </td>
                 <td>{{ req.amount }}</td>
                 <td style="max-width: 260px; white-space: pre-wrap;">{{ req.payout_details|default:"—" }}</td>
                 <td>

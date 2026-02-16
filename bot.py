@@ -2931,11 +2931,7 @@ async def on_report_category_callback(callback: CallbackQuery, state: FSMContext
     if len(parts) < 4:
         await callback.answer()
         return
-    try:
-        idx = int(parts[2])
-    except ValueError:
-        await callback.answer()
-        return
+    idx = int(parts[2])
     category = "_".join(parts[3:])  # на случай "lead_cat_0_self"
     
     data = await state.get_data()
