@@ -1,4 +1,4 @@
-"""Хранилище медиа: S3 из настроек в БД или локальный каталог."""
+"""Хранилище медиа: только S3 из настроек в БД. Локальное сохранение не используется — при отсутствии/ошибке S3 операции падают с ошибкой."""
 import logging
 import time
 
@@ -26,9 +26,13 @@ def get_media_config_from_db():
         _MEDIA_CONFIG_CACHE["cache_until"] = now + CACHE_SECONDS
         return config
     except Exception as e:
-        logger.debug("MediaStorageConfig from DB failed (using local storage): %s", e)
+        logger.warning(
+            "MediaStorageConfig from DB failed. Выполните миграции? %s",
+            e,
+            exc_info=True,
+        )
         _MEDIA_CONFIG_CACHE["config"] = None
-        _MEDIA_CONFIG_CACHE["cache_until"] = now + 60  # кэшируем «нет конфига» на 1 мин, чтобы не долбить БД
+        _MEDIA_CONFIG_CACHE["cache_until"] = now + 60
         return None
 
 
@@ -38,85 +42,88 @@ def clear_media_config_cache():
     _MEDIA_CONFIG_CACHE["cache_until"] = 0
 
 
+def _build_s3_opts(config):
+    """Параметры для S3Storage: endpoint без слэша в конце, s3v4 для кастомных endpoint."""
+    endpoint = (getattr(config, "endpoint_url", None) or "").strip().rstrip("/")
+    opts = {
+        "access_key": config.access_key_id,
+        "secret_key": config.secret_access_key,
+        "bucket_name": config.bucket_name,
+        "region_name": (config.region_name or "").strip() or "ru-1",
+        "signature_version": "s3v4",
+    }
+    if endpoint:
+        opts["endpoint_url"] = endpoint
+    return opts
+
+
 class ConfigurableMediaStorage(FileSystemStorage):
-    """Storage, который при первом обращении выбирает бэкенд: S3 из БД или локальный каталог."""
+    """Storage: только S3 из БД. Если S3 включён в админке — используем только его, без fallback на локальный диск. Если S3 не настроен или ошибка — операции с файлами падают с ошибкой."""
 
     def __init__(self, **kwargs):
-        # Инициализируем как FileSystemStorage по умолчанию (location из settings)
         super().__init__(location=kwargs.get("location", settings.MEDIA_ROOT), **kwargs)
         self._s3_backend = None
         self._use_s3 = None
+        self._resolve_error = None  # сообщение ошибки при неудачной инициализации S3
 
     def _resolve_backend(self):
         if self._use_s3 is not None:
-            return self._s3_backend if self._use_s3 else self
-        config = get_media_config_from_db()
-        if config and config.enabled and config.bucket_name and config.access_key_id and config.secret_access_key:
-            try:
-                try:
-                    from storages.backends.s3boto3 import S3Boto3Storage
-                except ImportError:
-                    from storages.backends.s3 import S3Storage as S3Boto3Storage
-                opts = {
-                    "access_key": config.access_key_id,
-                    "secret_key": config.secret_access_key,
-                    "bucket_name": config.bucket_name,
-                    "region_name": config.region_name or "ru-1",
-                }
-                if config.endpoint_url:
-                    opts["endpoint_url"] = config.endpoint_url.strip()
-                self._s3_backend = S3Boto3Storage(**opts)
-                self._use_s3 = True
-                logger.info(
-                    "Media storage: using S3 bucket=%s endpoint=%s",
-                    config.bucket_name,
-                    getattr(config, "endpoint_url", "") or "default",
-                )
+            if self._use_s3:
                 return self._s3_backend
-            except Exception as e:
-                logger.warning(
-                    "Media storage: S3 init failed, using local. bucket=%s err=%s",
-                    getattr(config, "bucket_name", ""),
-                    e,
-                    exc_info=True,
-                )
-        self._use_s3 = False
-        return self
+            raise RuntimeError(
+                "Медиа только в S3. В админке включите и заполните «Настройки хранилища медиа (S3)» (бакет, ключи, endpoint). "
+                "Локальное сохранение отключено."
+            )
+        config = get_media_config_from_db()
+        if not config or not config.bucket_name or not config.access_key_id or not config.secret_access_key:
+            self._use_s3 = False
+            raise RuntimeError(
+                "Медиа только в S3. В админке Django: Core → «Настройки хранилища медиа (S3)» → включите и заполните бакет, Access Key, Secret Key, Endpoint URL (например https://s3.twcstorage.ru)."
+            )
+        try:
+            from storages.backends.s3 import S3Storage
+            opts = _build_s3_opts(config)
+            self._s3_backend = S3Storage(**opts)
+            self._use_s3 = True
+            logger.info(
+                "Media storage: S3 включён, bucket=%s endpoint=%s",
+                config.bucket_name,
+                opts.get("endpoint_url", "default"),
+            )
+            return self._s3_backend
+        except Exception as e:
+            self._use_s3 = False
+            self._resolve_error = str(e)
+            logger.exception(
+                "Media storage: не удалось подключиться к S3 (локальное сохранение отключено). bucket=%s endpoint=%s",
+                config.bucket_name,
+                getattr(config, "endpoint_url", ""),
+            )
+            raise RuntimeError(
+                "Не удалось подключиться к S3. Проверьте в админке ключи и Endpoint URL (для Timeweb: https://s3.twcstorage.ru или https://s3.timeweb.cloud). Ошибка: %s"
+                % e
+            ) from e
 
     def _open(self, name, mode="rb"):
         backend = self._resolve_backend()
-        if backend is self:
-            return super()._open(name, mode)
         return backend._open(name, mode)
 
     def _save(self, name, content):
         backend = self._resolve_backend()
-        if backend is self:
-            return super()._save(name, content)
+        logger.info("Media storage: сохранение в S3: %s", name)
         return backend._save(name, content)
 
     def delete(self, name):
-        backend = self._resolve_backend()
-        if backend is self:
-            return super().delete(name)
-        return backend.delete(name)
+        return self._resolve_backend().delete(name)
 
     def exists(self, name):
-        backend = self._resolve_backend()
-        if backend is self:
-            return super().exists(name)
-        return backend.exists(name)
+        return self._resolve_backend().exists(name)
 
     def url(self, name):
-        backend = self._resolve_backend()
-        if backend is self:
-            return super().url(name)
-        return backend.url(name)
+        return self._resolve_backend().url(name)
 
     def path(self, name):
         backend = self._resolve_backend()
-        if backend is self:
-            return super().path(name)
         if hasattr(backend, "path"):
             return backend.path(name)
         return None  # S3 — нет локального пути

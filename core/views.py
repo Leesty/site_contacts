@@ -504,6 +504,15 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
                         request,
                         "Ошибка базы данных. Убедитесь, что выполнены миграции: python manage.py migrate",
                     )
+                except RuntimeError as e:
+                    if "S3" in str(e) or "хранилищ" in str(e).lower():
+                        logger.warning("Сохранение отчёта: %s", e)
+                        messages.error(
+                            request,
+                            "Сейчас нельзя сохранить файл: не настроено облачное хранилище или ошибка подключения к S3. Обратитесь к администратору сайта (админка → Настройки хранилища медиа (S3)).",
+                        )
+                    else:
+                        raise
                 except Exception as e:
                     logger.exception("Ошибка при сохранении лида (отчёт): %s", e)
                     messages.error(
@@ -571,20 +580,29 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                         "Такой контакт уже есть в базе отчётов. Укажите другой контакт или оставьте прежний.",
                     )
                 else:
-                    lead.raw_contact = new_contact
-                    lead.source = lead.raw_contact or ""
-                    lead.normalized_contact = normalize_lead_contact(lead.raw_contact)
-                    lead.comment = form.cleaned_data.get("comment") or ""
-                    update_fields = ["raw_contact", "source", "normalized_contact", "comment", "status", "rework_comment", "updated_at"]
-                    if form.cleaned_data.get("attachment"):
-                        lead.attachment = form.cleaned_data["attachment"]
-                        update_fields.append("attachment")
-                    lead.status = Lead.Status.PENDING
-                    lead.rework_comment = ""
-                    lead.save(update_fields=update_fields)
-                    compress_lead_attachment(lead)
-                    messages.success(request, "Лид отправлен на повторную проверку.")
-                    return redirect("leads_my_list")
+                    try:
+                        lead.raw_contact = new_contact
+                        lead.source = lead.raw_contact or ""
+                        lead.normalized_contact = normalize_lead_contact(lead.raw_contact)
+                        lead.comment = form.cleaned_data.get("comment") or ""
+                        update_fields = ["raw_contact", "source", "normalized_contact", "comment", "status", "rework_comment", "updated_at"]
+                        if form.cleaned_data.get("attachment"):
+                            lead.attachment = form.cleaned_data["attachment"]
+                            update_fields.append("attachment")
+                        lead.status = Lead.Status.PENDING
+                        lead.rework_comment = ""
+                        lead.save(update_fields=update_fields)
+                        compress_lead_attachment(lead)
+                        messages.success(request, "Лид отправлен на повторную проверку.")
+                        return redirect("leads_my_list")
+                    except RuntimeError as e:
+                        if "S3" in str(e) or "хранилищ" in str(e).lower():
+                            messages.error(
+                                request,
+                                "Не удалось сохранить файл: не настроено облачное хранилище. Обратитесь к администратору.",
+                            )
+                        else:
+                            raise
     else:
         form = LeadReworkUserForm(
             initial={

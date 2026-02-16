@@ -397,13 +397,15 @@ def admin_lead_attachment(request: HttpRequest, user_id: int, lead_id: int) -> H
             "Lead attachment missing on disk: lead_id=%s user_id=%s path=%s err=%s",
             lead_id, user_id, lead.attachment.name, e,
         )
+        username = getattr(lead.user, "username", "id:%s" % lead.user_id)
         html = (
             "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Файл недоступен</title></head><body style='font-family:sans-serif;padding:2rem;'>"
-            "<h1>Файл не найден на диске</h1>"
-            "<p>Вложение этого отчёта в базе есть, но файл на сервере отсутствует. Так бывает, если хранилище загрузок не сохраняется между перезапусками/деплоями (временный диск).</p>"
-            "<p><strong>Что сделать:</strong> попросите пользователя @%s заново отправить скриншот или видео через форму доработки лида или в поддержку.</p>"
+            "<h1>Файл не найден</h1>"
+            "<p>Вложение этого отчёта в базе есть, но файл на сервере отсутствует. Обычно так бывает, если файл был загружен до настройки S3 и потерялся при обновлении/редеплое сервера.</p>"
+            "<p><strong>Что сделать:</strong> попросите пользователя <strong>%s</strong> заново загрузить скриншот или видео через «Мои лиды» → доработка отчёта.</p>"
+            "<p>После настройки S3 в админке (Настройки хранилища медиа) новые загрузки не будут теряться при редеплое.</p>"
             "<p><a href='javascript:history.back()'>← Назад</a></p></body></html>"
-        ) % (lead.user.username,)
+        ) % (username,)
         return HttpResponse(html, status=404, content_type="text/html; charset=utf-8")
     filename = lead.attachment.name.split("/")[-1] if lead.attachment.name else "attachment"
     response = FileResponse(f, as_attachment=False)
