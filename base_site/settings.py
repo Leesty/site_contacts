@@ -105,30 +105,52 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-# Медиафайлы (вложения лидов): только S3 из .env или локально не сохраняем.
-# Рекомендуется: S3 напрямую из кода (.env) — задайте USE_S3_MEDIA=1 и ключи ниже.
+# Медиафайлы: только в S3 (переменные окружения) или только через админку. Локально не сохраняем.
 USE_S3_MEDIA_ENV = os.getenv("USE_S3_MEDIA", "").strip().lower() in ("1", "true", "yes")
 
-if USE_S3_MEDIA_ENV:
-    # S3 напрямую из переменных окружения (.env). Админка не используется.
-    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
-    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-    AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "").strip()
-    AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "ru-1").strip()
-    _s3_endpoint = os.getenv("AWS_S3_ENDPOINT_URL", "").strip().rstrip("/")
+_s3_bucket = os.getenv("AWS_STORAGE_BUCKET_NAME", "").strip()
+_s3_access = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+_s3_secret = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+_s3_region = os.getenv("AWS_S3_REGION_NAME", "ru-1").strip() or "ru-1"
+_s3_endpoint = os.getenv("AWS_S3_ENDPOINT_URL", "").strip().rstrip("/")
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+if USE_S3_MEDIA_ENV and _s3_bucket and _s3_access and _s3_secret:
+    # S3 напрямую из переменных окружения (Timeweb Cloud и др.): STORAGES + явные OPTIONS.
+    # Timeweb: подпись AWS Signature V4, path-style URL (https://s3.twcstorage.ru/bucket/key).
+    # Все медиа — в бакете под префиксом media/ (media/leads/user_5/..., media/support/...).
+    _s3_options = {
+        "access_key": _s3_access,
+        "secret_key": _s3_secret,
+        "bucket_name": _s3_bucket,
+        "region_name": _s3_region,
+        "signature_version": "s3v4",
+        "addressing_style": "path",  # Timeweb: URL вида /bucket/key, не virtual-hosted
+        "object_parameters": {"CacheControl": "max-age=86400"},
+        "default_acl": None,
+        "location": "media",
+    }
+    if _s3_endpoint:
+        _s3_options["endpoint_url"] = _s3_endpoint
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": _s3_options,
+        },
+    }
+    # Для обратной совместимости (если что-то читает DEFAULT_FILE_STORAGE)
+    DEFAULT_FILE_STORAGE = "storages.backends.s3.S3Storage"
+    AWS_ACCESS_KEY_ID = _s3_access
+    AWS_SECRET_ACCESS_KEY = _s3_secret
+    AWS_STORAGE_BUCKET_NAME = _s3_bucket
+    AWS_S3_REGION_NAME = _s3_region
     if _s3_endpoint:
         AWS_S3_ENDPOINT_URL = _s3_endpoint
-        # Для кастомного endpoint (Timeweb и др.) нужна подпись s3v4
         AWS_S3_SIGNATURE_VERSION = "s3v4"
-    AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400"}
-    AWS_DEFAULT_ACL = None
-    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-    MEDIA_URL = "/media/"
-    MEDIA_ROOT = BASE_DIR / "media"
 else:
-    MEDIA_URL = "/media/"
-    MEDIA_ROOT = BASE_DIR / "media"
-    # Конфиг из БД: админка → «Настройки хранилища медиа (S3)». Если включено — загрузки в S3.
+    # Конфиг из БД: админка → «Настройки хранилища медиа (S3)».
     DEFAULT_FILE_STORAGE = "core.storage.ConfigurableMediaStorage"
 
 

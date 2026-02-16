@@ -160,7 +160,13 @@ def compress_lead_attachment(lead) -> bool:
     except ImportError:
         return False
 
-    path = getattr(lead.attachment, "path", None)
+    # Для S3-хранилищ (django-storages S3Storage) у файлов нет локального пути,
+    # свойство .path либо отсутствует, либо выбрасывает NotImplementedError.
+    # В этом случае просто пропускаем сжатие: файл уже лежит в бакете.
+    try:
+        path = lead.attachment.path  # type: ignore[assignment]
+    except Exception:
+        return False
     if not path or not os.path.exists(path):
         return False
     try:

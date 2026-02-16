@@ -72,7 +72,7 @@ def get_media_storage_diagnostic():
 
 
 def _build_s3_opts(config):
-    """Параметры для S3Storage: endpoint без слэша в конце, s3v4 для кастомных endpoint."""
+    """Параметры для S3Storage: endpoint без слэша, s3v4, path-style (как в Timeweb: /bucket/key)."""
     endpoint = (getattr(config, "endpoint_url", None) or "").strip().rstrip("/")
     opts = {
         "access_key": config.access_key_id,
@@ -80,6 +80,7 @@ def _build_s3_opts(config):
         "bucket_name": config.bucket_name,
         "region_name": (config.region_name or "").strip() or "ru-1",
         "signature_version": "s3v4",
+        "addressing_style": "path",
     }
     if endpoint:
         opts["endpoint_url"] = endpoint

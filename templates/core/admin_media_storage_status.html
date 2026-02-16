@@ -13,8 +13,8 @@
   <div class="card shadow-sm">
     <div class="card-body">
       {% if diag.source == "env" %}
-        <p class="mb-2"><strong>Сейчас используется S3 из переменных окружения</strong> (<code>USE_S3_MEDIA=1</code>).</p>
-        <p class="mb-1">Бакет в env: <code>{{ diag.bucket|default:"— не задан" }}</code></p>
+        <p class="mb-2"><strong>Сейчас используется S3 из переменных окружения</strong> (<code>USE_S3_MEDIA=1</code>). Все медиа пишутся в бакет в папку <code>media/</code> (внутри: <code>media/leads/user_5/...</code> и т.д.).</p>
+        <p class="mb-1">Бакет: <code>{{ diag.bucket|default:"— не задан" }}</code></p>
         <p class="mb-0">Endpoint: <code>{{ diag.endpoint|default:"— по умолчанию" }}</code></p>
         <form method="post" action="" class="mt-2 mb-2">
           {% csrf_token %}
