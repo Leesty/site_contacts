@@ -638,12 +638,22 @@ def leads_stats_placeholder(request: HttpRequest) -> HttpResponse:
     yesterday_start, yesterday_end = day_bounds(from_day - timedelta(days=1))
 
     today_count = (
-        Lead.objects.filter(user=user, created_at__gte=today_start, created_at__lt=today_end).count()
+        Lead.objects.filter(
+            user=user,
+            status=Lead.Status.APPROVED,
+            created_at__gte=today_start,
+            created_at__lt=today_end,
+        ).count()
     )
     yesterday_count = (
-        Lead.objects.filter(user=user, created_at__gte=yesterday_start, created_at__lt=yesterday_end).count()
+        Lead.objects.filter(
+            user=user,
+            status=Lead.Status.APPROVED,
+            created_at__gte=yesterday_start,
+            created_at__lt=yesterday_end,
+        ).count()
     )
-    total_count = Lead.objects.filter(user=user).count()
+    total_count = Lead.objects.filter(user=user, status=Lead.Status.APPROVED).count()
 
     return render(
         request,
