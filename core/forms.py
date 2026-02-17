@@ -3,7 +3,7 @@ from __future__ import annotations
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 
-from .models import BaseType, Lead, User
+from .models import BaseType, Lead, LeadType, User
 
 
 class UserRegistrationForm(UserCreationForm):
@@ -122,6 +122,13 @@ class LeadReportForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Пользовательский сайт: скрываем категорию «Самостоятельные лиды»
+        # (slug='self'), чтобы её нельзя было выбрать в выпадающем списке.
+        try:
+            self.fields["lead_type"].queryset = LeadType.objects.exclude(slug="self").order_by("order", "id")
+        except Exception:
+            # На случай проблем с миграциями/БД — не ломаем форму, просто оставляем стандартный queryset.
+            pass
         self.fields["attachment"].required = True
         self.fields["lead_date"].required = True
         if not self.instance or not self.instance.pk:

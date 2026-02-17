@@ -497,3 +497,27 @@ input[type="radio"] {
   background: transparent;
 }
 
+/* Админская таблица «Новые отчёты (лиды)» — длинные контакты не ломают вёрстку */
+.table-dark-site td.contact-cell {
+  max-width: 260px;
+  word-break: break-all;
+  white-space: normal;
+}
+.table-dark-site td.comment-cell {
+  max-width: 220px;
+  word-break: break-word;
+  white-space: normal;
+}
+@media (max-width: 991.98px) {
+  .table-dark-site td.contact-cell,
+  .table-dark-site td.comment-cell {
+    max-width: 200px;
+    font-size: 0.8rem;
+  }
+  .table-dark-site thead th,
+  .table-dark-site tbody td {
+    padding: 0.5rem 0.5rem;
+  }
+}
+
+

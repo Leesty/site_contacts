@@ -646,6 +646,8 @@ def admin_stats(request: HttpRequest) -> HttpResponse:
     leads_month = {x["lead_type__name"] or "Без категории": x["c"] for x in q_month}
     leads_all = {x["lead_type__name"] or "Без категории": x["c"] for x in q_all}
 
+    # Для админской статистики показываем все типы лидов, включая «Самостоятельные лиды»,
+    # чтобы не терять уже существующие данные.
     type_names = list(LeadType.objects.values_list("name", flat=True).order_by("name"))
     lead_type_stats = [
         {
