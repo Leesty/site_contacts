@@ -58,6 +58,7 @@
               {% else %}
                 <th>Отклонил</th>
               {% endif %}
+              {% if tab == 'rework' %}<th>Причина доработки</th>{% elif tab == 'rejected' %}<th>Причина отклонения</th>{% endif %}
               <th>Вложение</th>
               <th>Контакт</th>
               <th>Комментарий</th>
@@ -80,6 +81,11 @@
                     —
                   {% endif %}
                 </td>
+                {% if tab == 'rework' or tab == 'rejected' %}
+                <td class="text-break small">
+                  {% if tab == 'rework' %}{{ lead.rework_comment|default:"—"|truncatechars:80 }}{% else %}{{ lead.rejection_reason|default:"—"|truncatechars:80 }}{% endif %}
+                </td>
+                {% endif %}
                 <td class="text-break small">
                   {% if lead.attachment %}
                     {% if lead.attachment|lead_attachment_is_video %}
@@ -121,7 +127,7 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="{% if tab == 'rejected' %}8{% else %}9{% endif %}" class="text-muted py-4 text-center">
+                <td colspan="{% if tab == 'rejected' %}9{% elif tab == 'rework' %}10{% else %}9{% endif %}" class="text-muted py-4 text-center">
                   {% if tab == 'new' %}Нет новых отчётов.{% elif tab == 'rework' %}Нет отчётов на доработке.{% elif tab == 'approved' %}Нет принятых отчётов.{% else %}Нет отклонённых отчётов.{% endif %}
                 </td>
               </tr>

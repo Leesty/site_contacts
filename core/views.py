@@ -172,6 +172,7 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
         agg = Lead.objects.filter(user=user).aggregate(m=Max("updated_at"))
         if agg.get("m"):
             data["leads_updated_at"] = agg["m"].isoformat()
+        data["rework_leads_count"] = Lead.objects.filter(user=user, status=Lead.Status.REWORK).count()
     return JsonResponse(data)
 
 
