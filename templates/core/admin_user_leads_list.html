@@ -48,26 +48,27 @@
                     <div class="d-flex flex-wrap align-items-center gap-1">
                       {% if lead.status == 'approved' %}
                         <span class="badge bg-success">Одобрен</span>
+                        <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">Отменить</a>
+                        <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">На доработку</a>
                       {% elif lead.status == 'rejected' %}
                         <span class="badge bg-danger">Отклонён</span>
                       {% elif lead.status == 'rework' %}
                         <span class="badge bg-warning text-dark">На доработке</span>
+                        <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}" class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-success btn-sm" title="Одобрить без доработки">Одобрить без доработки</button>
+                        </form>
+                        <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">Отклонить</a>
                       {% else %}
                         <span class="badge bg-secondary">На проверке</span>
-                      {% endif %}
-                      {% if lead.status == 'pending' or lead.status == 'rework' %}
-                        <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}" class="d-inline">
+                        <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}" class="d-inline">
                           {% csrf_token %}
-                          <button type="submit" class="btn btn-success btn-sm" title="{% if lead.status == 'rework' %}Одобрить без доработки{% endif %}">{% if lead.status == 'rework' %}Одобрить без доработки{% else %}Одобрить{% endif %}</button>
+                          <button type="submit" class="btn btn-success btn-sm">Одобрить</button>
                         </form>
-                        <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}">Отклонить</a>
+                        <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">Отклонить</a>
+                        <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">На доработку</a>
                       {% endif %}
                     </div>
-                    {% if lead.status == 'pending' %}
-                      <div>
-                        <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}">На доработку</a>
-                      </div>
-                    {% endif %}
                   </div>
                 </td>
                 <td>
