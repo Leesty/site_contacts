@@ -1,19 +1,42 @@
 {% extends "base.html" %}
 {% load support_extras %}
 
-{% block title %}Новые отчёты — Партнёрка{% endblock %}
+{% block title %}Отчёты — Партнёрка{% endblock %}
 
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <h1 class="h4 mb-0">Новые отчёты (лиды)</h1>
+    <h1 class="h4 mb-0">Отчёты</h1>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
       <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_all_users' %}">Все пользователи</a>
     </div>
   </div>
 
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new">Новые отчёты</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">В доработке</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Принятые отчёты</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые отчёты</a>
+    </li>
+  </ul>
+
   <p class="text-muted small mb-3">
-    Все отчёты на проверке и на доработке от всех пользователей. Одобрить, отклонить или отправить на доработку можно прямо из таблицы.
+    {% if tab == 'new' %}
+      Новые отчёты на проверке. Одобрить, отклонить или отправить на доработку.
+    {% elif tab == 'rework' %}
+      Отчёты на доработке. Можно одобрить без доработки или отклонить.
+    {% elif tab == 'approved' %}
+      Принятые отчёты. Можно отменить (списание {{ lead_approve_reward }} руб. с баланса) или отправить на доработку.
+    {% else %}
+      Отклонённые отчёты. История.
+    {% endif %}
   </p>
 
   <div class="card shadow-sm">
@@ -26,11 +49,19 @@
               <th>Пользователь</th>
               <th>Создан</th>
               <th>Тип лида</th>
-              <th>Статус</th>
+              {% if tab == 'new' %}
+                <th>—</th>
+              {% elif tab == 'rework' %}
+                <th>Отправил на доработку</th>
+              {% elif tab == 'approved' %}
+                <th>Одобрил</th>
+              {% else %}
+                <th>Отклонил</th>
+              {% endif %}
               <th>Вложение</th>
               <th>Контакт</th>
               <th>Комментарий</th>
-              <th>Действия</th>
+              {% if tab != 'rejected' %}<th>Действия</th>{% endif %}
             </tr>
           </thead>
           <tbody>
@@ -43,10 +74,10 @@
                 <td>{{ lead.created_at|date:"d.m.Y H:i" }}</td>
                 <td>{{ lead.lead_type.name|default:"—" }}</td>
                 <td>
-                  {% if lead.status == 'rework' %}
-                    <span class="badge bg-warning text-dark">На доработке</span>
+                  {% if tab != 'new' %}
+                    {% if lead.reviewed_by %}@{{ lead.reviewed_by.username }}{% else %}—{% endif %}
                   {% else %}
-                    <span class="badge bg-secondary">На проверке</span>
+                    —
                   {% endif %}
                 </td>
                 <td class="text-break small">
@@ -62,23 +93,37 @@
                 </td>
                 <td class="contact-cell text-break small">{{ lead.raw_contact|default:"—"|contact_link }}</td>
                 <td class="comment-cell text-break small">{{ lead.comment|default:"—"|truncatechars:40 }}</td>
+                {% if tab != 'rejected' %}
                 <td>
                   <div class="d-flex flex-wrap gap-1">
-                    <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}" class="d-inline js-lead-approve-form">
-                      {% csrf_token %}
-                      <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}">
-                      <button type="submit" class="btn btn-success btn-sm" title="{% if lead.status == 'rework' %}Одобрить без доработки. +{{ lead_approve_reward }} руб. пользователю{% else %}+{{ lead_approve_reward }} руб. пользователю{% endif %}">{% if lead.status == 'rework' %}Одобрить без доработки{% else %}Одобрить{% endif %}</button>
-                    </form>
-                    <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}">Отклонить</a>
-                    {% if lead.status != 'rework' %}
-                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}">На доработку</a>
+                    {% if tab == 'approved' %}
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Drejected">Отменить</a>
+                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Drework">На доработку</a>
+                    {% elif tab == 'rework' %}
+                      <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Drework" class="d-inline js-lead-approve-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab=rework">
+                        <button type="submit" class="btn btn-success btn-sm" title="Одобрить без доработки. +{{ lead_approve_reward }} руб. пользователю">Одобрить без доработки</button>
+                      </form>
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Drework">Отклонить</a>
+                    {% else %}
+                      <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Dnew" class="d-inline js-lead-approve-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab=new">
+                        <button type="submit" class="btn btn-success btn-sm" title="+{{ lead_approve_reward }} руб. пользователю">Одобрить</button>
+                      </form>
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Dnew">Отклонить</a>
+                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Dnew">На доработку</a>
                     {% endif %}
                   </div>
                 </td>
+                {% endif %}
               </tr>
             {% empty %}
               <tr>
-                <td colspan="9" class="text-muted py-4 text-center">Нет отчётов на проверке или на доработке.</td>
+                <td colspan="{% if tab == 'rejected' %}8{% else %}9{% endif %}" class="text-muted py-4 text-center">
+                  {% if tab == 'new' %}Нет новых отчётов.{% elif tab == 'rework' %}Нет отчётов на доработке.{% elif tab == 'approved' %}Нет принятых отчётов.{% else %}Нет отклонённых отчётов.{% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -90,11 +135,11 @@
         <nav>
           <ul class="pagination pagination-sm mb-0">
             {% if page_obj.has_previous %}
-              <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a></li>
+              <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>
             {% endif %}
             <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
             {% if page_obj.has_next %}
-              <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a></li>
+              <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>
             {% endif %}
           </ul>
         </nav>
@@ -134,7 +179,7 @@
                 var tbody = document.querySelector('.table-responsive tbody');
                 if (tbody && tbody.querySelectorAll('tr').length === 0) {
                   var emptyRow = document.createElement('tr');
-                  emptyRow.innerHTML = '<td colspan="9" class="text-muted py-4 text-center">Нет отчётов на проверке или на доработке.</td>';
+                  emptyRow.innerHTML = '<td colspan="9" class="text-muted py-4 text-center">Нет отчётов.</td>';
                   tbody.appendChild(emptyRow);
                 }
               }, 250);
@@ -147,7 +192,7 @@
           })
           .catch(function() {
             btn.disabled = false;
-            btn.textContent = 'Одобрить';
+            btn.textContent = btn.textContent === '…' ? 'Одобрить' : 'Одобрить без доработки';
             if (toast) {
               toast.textContent = 'Ошибка. Попробуйте ещё раз или обновите страницу.';
               toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-danger py-2 px-3 mb-0 shadow-sm';

@@ -253,15 +253,22 @@ def admin_user_leads_list(request: HttpRequest, user_id: int) -> HttpResponse:
 
 @login_required
 def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
-    """Единая страница «Новые отчёты»: все лиды на проверке и на доработке от всех пользователей."""
+    """Единая страница «Отчёты»: 4 вкладки — Новые отчёты, В доработке, Принятые, Отклонённые."""
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
+    tab = request.GET.get("tab", "new")
+    if tab not in ("new", "rework", "approved", "rejected"):
+        tab = "new"
     try:
-        qs = (
-            Lead.objects.filter(status__in=(Lead.Status.PENDING, Lead.Status.REWORK))
-            .select_related("user", "lead_type", "base_type")
-            .order_by("-created_at")
-        )
+        base = Lead.objects.select_related("user", "lead_type", "base_type", "reviewed_by")
+        if tab == "new":
+            qs = base.filter(status=Lead.Status.PENDING).order_by("-created_at")
+        elif tab == "rework":
+            qs = base.filter(status=Lead.Status.REWORK).order_by("-reviewed_at")
+        elif tab == "approved":
+            qs = base.filter(status=Lead.Status.APPROVED).order_by("-reviewed_at")
+        else:  # rejected
+            qs = base.filter(status=Lead.Status.REJECTED).order_by("-reviewed_at")
         paginator = Paginator(qs, 50)
         page_number = request.GET.get("page", 1)
         page_obj = paginator.get_page(page_number)
@@ -271,7 +278,7 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
         return HttpResponse(
             "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Ошибка</title></head><body style='font-family:sans-serif;padding:2rem;'>"
             "<h1>Ошибка базы данных</h1>"
-            "<p>Страница «Новые отчёты» не загружается. Часто это из‑за неприменённых миграций после обновления кода.</p>"
+            "<p>Страница «Отчёты» не загружается. Часто это из‑за неприменённых миграций после обновления кода.</p>"
             "<p><strong>На сервере выполните:</strong> <code>python manage.py migrate</code></p>"
             "<p><a href='/staff/'>← В кабинет</a></p></body></html>",
             status=500,
@@ -284,6 +291,7 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
         {
             "page_obj": page_obj,
             "lead_approve_reward": lead_approve_reward,
+            "tab": tab,
         },
     )
 
@@ -359,20 +367,27 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
 
 @login_required
 def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpResponse:
-    """Отклонить лид — форма с причиной отклонения."""
+    """Отклонить лид — форма с причиной отклонения. Поддерживает и одобренные: списывает баланс."""
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
     lead = get_object_or_404(Lead, pk=lead_id, user_id=user_id)
     if request.method == "POST":
         form = LeadRejectForm(request.POST)
         if form.is_valid():
-            lead.status = Lead.Status.REJECTED
-            lead.rejection_reason = form.cleaned_data["rejection_reason"].strip()
-            lead.rework_comment = ""
-            lead.reviewed_at = timezone.now()
-            lead.reviewed_by = request.user
-            lead.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
-            messages.success(request, f"Лид #{lead_id} отклонён.")
+            with transaction.atomic():
+                lead_refresh = Lead.objects.select_for_update().select_related("user").get(pk=lead_id, user_id=user_id)
+                was_approved = lead_refresh.status == Lead.Status.APPROVED
+                lead_refresh.status = Lead.Status.REJECTED
+                lead_refresh.rejection_reason = form.cleaned_data["rejection_reason"].strip()
+                lead_refresh.rework_comment = ""
+                lead_refresh.reviewed_at = timezone.now()
+                lead_refresh.reviewed_by = request.user
+                lead_refresh.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
+                if was_approved:
+                    reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
+                    lead_refresh.user.balance = max(0, (lead_refresh.user.balance or 0) - reward)
+                    lead_refresh.user.save(update_fields=["balance"])
+            messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
             next_url = request.GET.get("next") or request.POST.get("next")
             if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
@@ -389,20 +404,27 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
 
 @login_required
 def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpResponse:
-    """Отправить лид на доработку — форма с указанием, что доработать."""
+    """Отправить лид на доработку — форма с указанием, что доработать. Поддерживает одобренные: списывает баланс."""
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
     lead = get_object_or_404(Lead, pk=lead_id, user_id=user_id)
     if request.method == "POST":
         form = LeadReworkForm(request.POST)
         if form.is_valid():
-            lead.status = Lead.Status.REWORK
-            lead.rework_comment = form.cleaned_data["rework_comment"].strip()
-            lead.rejection_reason = ""
-            lead.reviewed_at = timezone.now()
-            lead.reviewed_by = request.user
-            lead.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by"])
-            messages.success(request, f"Лид #{lead_id} отправлен на доработку.")
+            with transaction.atomic():
+                lead_refresh = Lead.objects.select_for_update().select_related("user").get(pk=lead_id, user_id=user_id)
+                was_approved = lead_refresh.status == Lead.Status.APPROVED
+                lead_refresh.status = Lead.Status.REWORK
+                lead_refresh.rework_comment = form.cleaned_data["rework_comment"].strip()
+                lead_refresh.rejection_reason = ""
+                lead_refresh.reviewed_at = timezone.now()
+                lead_refresh.reviewed_by = request.user
+                lead_refresh.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by"])
+                if was_approved:
+                    reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
+                    lead_refresh.user.balance = max(0, (lead_refresh.user.balance or 0) - reward)
+                    lead_refresh.user.save(update_fields=["balance"])
+            messages.success(request, f"Лид #{lead_id} отправлен на доработку." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
             next_url = request.GET.get("next") or request.POST.get("next")
             if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
