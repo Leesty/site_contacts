@@ -11,7 +11,8 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.utils import OperationalError, ProgrammingError
-from django.db.models import Case, Count, F, IntegerField, Max, Q, Sum, Value, When
+from django.db.models import Case, CharField, Count, F, IntegerField, Max, Q, Sum, Value, When
+from django.db.models.functions import Cast
 from django.http import FileResponse, HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -269,7 +270,7 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
     tab = request.GET.get("tab", "new")
-    if tab not in ("new", "rework", "approved", "rejected"):
+    if tab not in ("new", "rework", "approved", "rejected", "all"):
         tab = "new"
     try:
         base = Lead.objects.select_related("user", "lead_type", "base_type", "reviewed_by")
@@ -279,8 +280,52 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
             qs = base.filter(status=Lead.Status.REWORK).order_by("-reviewed_at")
         elif tab == "approved":
             qs = base.filter(status=Lead.Status.APPROVED).order_by("-reviewed_at")
-        else:  # rejected
+        elif tab == "rejected":
             qs = base.filter(status=Lead.Status.REJECTED).order_by("-reviewed_at")
+        else:  # all
+            qs = base.order_by("-created_at")
+            search_q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
+            if search_q:
+                qs = qs.annotate(id_str=Cast("id", CharField()))
+                words = [w.strip() for w in search_q.split() if w.strip()]
+                for word in words:
+                    date_filt = None
+                    time_filt = None
+                    try:
+                        if len(word) == 10 and word[4] == "-" and word[7] == "-":  # YYYY-MM-DD
+                            date_filt = datetime.strptime(word, "%Y-%m-%d").date()
+                        elif len(word) == 10 and word[2] == "." and word[5] == ".":  # DD.MM.YYYY
+                            date_filt = datetime.strptime(word, "%d.%m.%Y").date()
+                        elif len(word) == 5 and word[2] == ".":  # DD.MM
+                            date_filt = datetime.strptime(word, "%d.%m").date()
+                        elif len(word) == 5 and word[2] == ":" and word.replace(":", "").isdigit():  # HH:MM
+                            time_filt = datetime.strptime(word, "%H:%M").time()
+                        elif len(word) == 5 and word[2] == "." and word.replace(".", "").isdigit():  # HH.MM
+                            time_filt = datetime.strptime(word, "%H.%M").time()
+                    except ValueError:
+                        pass
+                    base_q = (
+                        Q(user__username__icontains=word)
+                        | Q(raw_contact__icontains=word)
+                        | Q(normalized_contact__icontains=word)
+                        | Q(contact__value__icontains=word)
+                        | Q(source__icontains=word)
+                        | Q(comment__icontains=word)
+                        | Q(rework_comment__icontains=word)
+                        | Q(rejection_reason__icontains=word)
+                        | Q(lead_type__name__icontains=word)
+                        | Q(reviewed_by__username__icontains=word)
+                    )
+                    if word.isdigit():
+                        base_q = base_q | Q(id_str__icontains=word)
+                    if date_filt:
+                        if date_filt.year != 1900:
+                            base_q = base_q | Q(created_at__date=date_filt)
+                        else:
+                            base_q = base_q | Q(created_at__month=date_filt.month, created_at__day=date_filt.day)
+                    if time_filt:
+                        base_q = base_q | Q(created_at__hour=time_filt.hour, created_at__minute=time_filt.minute)
+                    qs = qs.filter(base_q)
         paginator = Paginator(qs, 50)
         page_number = request.GET.get("page", 1)
         page_obj = paginator.get_page(page_number)
@@ -297,6 +342,7 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
             content_type="text/html; charset=utf-8",
         )
     lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
+    search_query = request.GET.get("q", "").strip() if tab == "all" else ""
     return render(
         request,
         "core/admin_leads_all_new.html",
@@ -304,6 +350,7 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
             "page_obj": page_obj,
             "lead_approve_reward": lead_approve_reward,
             "tab": tab,
+            "search_query": search_query,
         },
     )
 

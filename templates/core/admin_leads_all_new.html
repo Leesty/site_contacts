@@ -14,6 +14,9 @@
 
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
+      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">Все отчёты + поиск</a>
+    </li>
+    <li class="nav-item">
       <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new">Новые отчёты</a>
     </li>
     <li class="nav-item">
@@ -27,8 +30,20 @@
     </li>
   </ul>
 
+  {% if tab == 'all' %}
+  <form method="get" class="mb-3" style="max-width: 400px;">
+    <input type="hidden" name="tab" value="all">
+    <div class="input-group">
+      <input type="text" name="q" class="form-control" placeholder="Поиск по всем отчётам: ник, ID, ссылка, контакт, комментарий" value="{{ search_query|default:'' }}" autocomplete="off">
+      <button type="submit" class="btn btn-outline-primary">Найти</button>
+    </div>
+  </form>
+  {% endif %}
+
   <p class="text-muted small mb-3">
-    {% if tab == 'new' %}
+    {% if tab == 'all' %}
+      Все отчёты. Поиск по нику, дате, ID, контакту, ссылке, комментарию.
+    {% elif tab == 'new' %}
       Новые отчёты на проверке. Одобрить, отклонить или отправить на доработку.
     {% elif tab == 'rework' %}
       Отчёты на доработке. Можно одобрить без доработки или отклонить.
@@ -49,7 +64,10 @@
               <th>Пользователь</th>
               <th>Создан</th>
               <th>Тип лида</th>
-              {% if tab == 'new' %}
+              {% if tab == 'all' %}
+                <th>Статус</th>
+                <th>Админ / Причина</th>
+              {% elif tab == 'new' %}
                 <th>—</th>
               {% elif tab == 'rework' %}
                 <th>Отправил на доработку</th>
@@ -67,7 +85,7 @@
           </thead>
           <tbody>
             {% for lead in page_obj %}
-              <tr data-lead-id="{{ lead.id }}">
+              <tr data-lead-id="{{ lead.id }}" data-search="{% if tab == 'all' %}{{ lead.id }} {{ lead.user.username|lower }} {{ lead.created_at|date:'Y-m-d' }} {{ lead.created_at|date:'d.m.Y' }} {{ lead.raw_contact|default:''|lower }} {{ lead.source|default:''|lower }} {{ lead.comment|default:''|lower }} {{ lead.lead_type.name|default:''|lower }} {{ lead.rework_comment|default:''|lower }} {{ lead.rejection_reason|default:''|lower }}{% endif %}">
                 <td>{{ lead.id }}</td>
                 <td>
                   <a href="{% url 'admin_user_leads_list' lead.user_id %}">@{{ lead.user.username }}</a>
@@ -75,12 +93,19 @@
                 <td>{{ lead.created_at|date:"d.m.Y H:i" }}</td>
                 <td>{{ lead.lead_type.name|default:"—" }}</td>
                 <td>
-                  {% if tab != 'new' %}
+                  {% if tab == 'all' %}
+                    {% if lead.status == 'approved' %}<span class="badge bg-success">Одобрен</span>{% elif lead.status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>{% elif lead.status == 'rework' %}<span class="badge bg-warning text-dark">На доработке</span>{% else %}<span class="badge bg-secondary">На проверке</span>{% endif %}
+                  {% elif tab != 'new' %}
                     {% if lead.reviewed_by %}@{{ lead.reviewed_by.username }}{% else %}—{% endif %}
                   {% else %}
                     —
                   {% endif %}
                 </td>
+                {% if tab == 'all' %}
+                <td class="text-break small">
+                  {% if lead.reviewed_by %}@{{ lead.reviewed_by.username }}{% if lead.rework_comment %}: {{ lead.rework_comment|truncatechars:50 }}{% elif lead.rejection_reason %}: {{ lead.rejection_reason|truncatechars:50 }}{% endif %}{% else %}—{% endif %}
+                </td>
+                {% endif %}
                 {% if tab == 'rework' or tab == 'rejected' %}
                 <td class="text-break small">
                   {% if tab == 'rework' %}{{ lead.rework_comment|default:"—"|truncatechars:80 }}{% else %}{{ lead.rejection_reason|default:"—"|truncatechars:80 }}{% endif %}
@@ -99,27 +124,29 @@
                 </td>
                 <td class="contact-cell text-break small">{{ lead.raw_contact|default:"—"|contact_link }}</td>
                 <td class="comment-cell text-break small">{{ lead.comment|default:"—"|truncatechars:40 }}</td>
-                {% if tab != 'rejected' %}
+                {% if tab != 'rejected' or tab == 'all' %}
                 <td>
                   <div class="d-flex flex-wrap gap-1">
-                    {% if tab == 'approved' %}
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Drejected">Отменить</a>
-                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Drework">На доработку</a>
-                    {% elif tab == 'rework' %}
-                      <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Drework" class="d-inline js-lead-approve-form">
+                    {% if lead.status == 'approved' or tab == 'approved' %}
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">Отменить</a>
+                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">На доработку</a>
+                    {% elif lead.status == 'rework' or tab == 'rework' %}
+                      <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" class="d-inline js-lead-approve-form">
                         {% csrf_token %}
-                        <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab=rework">
+                        <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab={{ tab }}">
                         <button type="submit" class="btn btn-success btn-sm" title="Одобрить без доработки. +{{ lead_approve_reward }} руб. пользователю">Одобрить без доработки</button>
                       </form>
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Drework">Отклонить</a>
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">Отклонить</a>
+                    {% elif lead.status == 'rejected' %}
+                      <span class="text-muted small">—</span>
                     {% else %}
-                      <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Dnew" class="d-inline js-lead-approve-form">
+                      <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" class="d-inline js-lead-approve-form">
                         {% csrf_token %}
-                        <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab=new">
+                        <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab={{ tab }}">
                         <button type="submit" class="btn btn-success btn-sm" title="+{{ lead_approve_reward }} руб. пользователю">Одобрить</button>
                       </form>
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Dnew">Отклонить</a>
-                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3Dnew">На доработку</a>
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">Отклонить</a>
+                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">На доработку</a>
                     {% endif %}
                   </div>
                 </td>
@@ -127,8 +154,8 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="{% if tab == 'rejected' %}9{% elif tab == 'rework' %}10{% else %}9{% endif %}" class="text-muted py-4 text-center">
-                  {% if tab == 'new' %}Нет новых отчётов.{% elif tab == 'rework' %}Нет отчётов на доработке.{% elif tab == 'approved' %}Нет принятых отчётов.{% else %}Нет отклонённых отчётов.{% endif %}
+                <td colspan="{% if tab == 'all' %}10{% elif tab == 'rejected' %}9{% elif tab == 'rework' %}10{% else %}9{% endif %}" class="text-muted py-4 text-center">
+                  {% if tab == 'all' %}Нет отчётов.{% elif tab == 'new' %}Нет новых отчётов.{% elif tab == 'rework' %}Нет отчётов на доработке.{% elif tab == 'approved' %}Нет принятых отчётов.{% else %}Нет отклонённых отчётов.{% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -141,11 +168,11 @@
         <nav>
           <ul class="pagination pagination-sm mb-0">
             {% if page_obj.has_previous %}
-              <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>
+              <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">←</a></li>
             {% endif %}
             <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
             {% if page_obj.has_next %}
-              <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>
+              <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">→</a></li>
             {% endif %}
           </ul>
         </nav>
