@@ -33,9 +33,8 @@
     {% if show == 'all' %}Список пользователей сайта. Написать — открыть чат с поддержкой, Статистика — лиды пользователя, Отчёты — лиды пользователя.{% endif %}
   </p>
 
-  <div class="mb-3 position-relative" style="max-width: 320px;">
-    <input type="text" class="form-control" id="admin-user-search" placeholder="Поиск по нику (часть ника, можно с @)" autocomplete="off">
-    <div id="admin-user-search-dropdown" class="dropdown-menu shadow-sm border" style="position: absolute; top: 100%; left: 0; right: 0; max-height: 280px; overflow-y: auto; display: none; z-index: 1050;"></div>
+  <div class="mb-3" style="max-width: 320px;">
+    <input type="text" class="form-control" id="admin-user-search" placeholder="Поиск по нику (фильтр таблицы)" autocomplete="off">
   </div>
 
   <div class="card shadow-sm">
@@ -53,7 +52,7 @@
           </thead>
           <tbody>
             {% for u in users_list %}
-              <tr>
+              <tr data-username="{{ u.username|lower }}">
                 <td><a href="{% url 'admin_user_leads_list' u.pk %}">@{{ u.username }}</a></td>
                 <td>
                   {% if u.status == 'approved' %}
@@ -89,63 +88,19 @@
   <script>
   (function() {
     var input = document.getElementById('admin-user-search');
-    var dropdown = document.getElementById('admin-user-search-dropdown');
-    var timeout;
-    var searchUrl = '{% url "admin_user_search" %}';
-    var baseUrl = '{% url "admin_user_leads_list" 0 %}'.replace('/0/', '/');
+    var rows = document.querySelectorAll('tbody tr[data-username]');
 
-    function hideDropdown() {
-      if (dropdown) dropdown.style.display = 'none';
-    }
-
-    function showDropdown(items) {
-      if (!dropdown) return;
-      dropdown.innerHTML = '';
-      if (!items || !items.length) {
-        dropdown.innerHTML = '<div class="dropdown-item text-muted">Никого не найдено</div>';
-      } else {
-        items.forEach(function(u) {
-          var a = document.createElement('a');
-          a.className = 'dropdown-item';
-          a.href = baseUrl + u.id + '/';
-          a.textContent = '@' + u.username;
-          dropdown.appendChild(a);
-        });
-      }
-      dropdown.style.display = 'block';
-    }
-
-    function search() {
-      var q = (input.value || '').trim().replace(/^@+/, '');
-      if (!q || q.length < 2) {
-        hideDropdown();
-        return;
-      }
-      fetch(searchUrl + '?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-        .then(function(r) {
-          if (!r.ok) throw new Error('Search failed');
-          return r.json();
-        })
-        .then(function(data) {
-          showDropdown(data.users || []);
-        })
-        .catch(function() { hideDropdown(); });
+    function filter() {
+      var q = (input.value || '').trim().replace(/^@+/, '').toLowerCase();
+      rows.forEach(function(tr) {
+        var username = tr.getAttribute('data-username') || '';
+        tr.style.display = (!q || username.indexOf(q) !== -1) ? '' : 'none';
+      });
     }
 
     if (input) {
-      input.addEventListener('input', function() {
-        clearTimeout(timeout);
-        timeout = setTimeout(search, 250);
-      });
-      input.addEventListener('focus', function() {
-        if (input.value.trim().length >= 2) search();
-      });
-      input.addEventListener('blur', function() {
-        setTimeout(hideDropdown, 150);
-      });
-      document.addEventListener('click', function(e) {
-        if (!input.contains(e.target) && !dropdown.contains(e.target)) hideDropdown();
-      });
+      input.addEventListener('input', filter);
+      input.addEventListener('keyup', filter);
     }
   })();
   </script>
