@@ -16,8 +16,27 @@
     </div>
   </div>
 
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all">Все</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new">Новые</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">В доработке</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Принятые</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые</a>
+    </li>
+  </ul>
+
   <p class="text-muted small mb-3">
-    Список лидов пользователя. В колонке «Вложение» — просмотр скриншота или видео (запись экрана). Периоды «сегодня» и «вчера» — по границе 20:00 МСК.
+    {% if tab == 'all' %}Все лиды пользователя.{% elif tab == 'new' %}Лиды на проверке.{% elif tab == 'rework' %}Лиды на доработке.{% elif tab == 'approved' %}Принятые лиды.{% else %}Отклонённые лиды.{% endif %}
+    Вложение — просмотр скриншота или видео. Периоды «сегодня»/«вчера» — граница 20:00 МСК.
   </p>
 
   <div class="card shadow-sm">
@@ -30,6 +49,7 @@
               <th>Создан</th>
               <th>Тип лида</th>
               <th>Статус</th>
+              {% if tab == 'rework' %}<th>Причина доработки</th>{% elif tab == 'rejected' %}<th>Причина отклонения</th>{% endif %}
               <th>Вложение</th>
               <th>Контакт</th>
               <th>Источник</th>
@@ -44,33 +64,34 @@
                 <td>{{ lead.created_at|date:"d.m.Y H:i" }}</td>
                 <td>{{ lead.lead_type.name|default:"—" }}</td>
                 <td>
-                  <div class="d-flex flex-column gap-1">
-                    <div class="d-flex flex-wrap align-items-center gap-1">
-                      {% if lead.status == 'approved' %}
-                        <span class="badge bg-success">Одобрен</span>
-                        <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">Отменить</a>
-                        <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">На доработку</a>
-                      {% elif lead.status == 'rejected' %}
-                        <span class="badge bg-danger">Отклонён</span>
-                      {% elif lead.status == 'rework' %}
-                        <span class="badge bg-warning text-dark">На доработке</span>
-                        <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}" class="d-inline">
-                          {% csrf_token %}
-                          <button type="submit" class="btn btn-success btn-sm" title="Одобрить без доработки">Одобрить без доработки</button>
-                        </form>
-                        <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">Отклонить</a>
-                      {% else %}
-                        <span class="badge bg-secondary">На проверке</span>
-                        <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}" class="d-inline">
-                          {% csrf_token %}
-                          <button type="submit" class="btn btn-success btn-sm">Одобрить</button>
-                        </form>
-                        <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">Отклонить</a>
-                        <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}">На доработку</a>
-                      {% endif %}
-                    </div>
+                  <div class="d-flex flex-wrap align-items-center gap-1">
+                    {% if lead.status == 'approved' %}
+                      <span class="badge bg-success">Одобрен</span>
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">Отменить</a>
+                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">На доработку</a>
+                    {% elif lead.status == 'rejected' %}
+                      <span class="badge bg-danger">Отклонён</span>
+                    {% elif lead.status == 'rework' %}
+                      <span class="badge bg-warning text-dark">На доработке</span>
+                      <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm" title="Одобрить без доработки">Одобрить без доработки</button>
+                      </form>
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">Отклонить</a>
+                    {% else %}
+                      <span class="badge bg-secondary">На проверке</span>
+                      <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm">Одобрить</button>
+                      </form>
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">Отклонить</a>
+                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">На доработку</a>
+                    {% endif %}
                   </div>
                 </td>
+                {% if tab == 'rework' or tab == 'rejected' %}
+                <td class="text-break small">{% if tab == 'rework' %}{{ lead.rework_comment|default:"—"|truncatechars:80 }}{% else %}{{ lead.rejection_reason|default:"—"|truncatechars:80 }}{% endif %}</td>
+                {% endif %}
                 <td>
                   {% if lead.attachment %}
                     {% if lead.attachment|lead_attachment_is_video %}
@@ -89,7 +110,9 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="9" class="text-muted py-4 text-center">Лидов пока нет.</td>
+                <td colspan="{% if tab == 'rework' or tab == 'rejected' %}10{% else %}9{% endif %}" class="text-muted py-4 text-center">
+                  {% if tab == 'all' %}Лидов пока нет.{% elif tab == 'new' %}Нет новых лидов.{% elif tab == 'rework' %}Нет лидов на доработке.{% elif tab == 'approved' %}Нет принятых лидов.{% else %}Нет отклонённых лидов.{% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -102,7 +125,7 @@
           <ul class="pagination pagination-sm mb-0 justify-content-center">
             {% if page_obj.has_previous %}
               <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a>
+                <a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a>
               </li>
             {% endif %}
             <li class="page-item disabled">
@@ -110,7 +133,7 @@
             </li>
             {% if page_obj.has_next %}
               <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a>
+                <a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a>
               </li>
             {% endif %}
           </ul>

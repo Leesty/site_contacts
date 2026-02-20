@@ -50,6 +50,11 @@ urlpatterns = [
         name="admin_all_users",
     ),
     path(
+        "staff/users/search/",
+        views_support_admin.admin_user_search,
+        name="admin_user_search",
+    ),
+    path(
         "staff/users/<int:user_id>/leads-stats/",
         views_support_admin.admin_user_lead_stats,
         name="admin_user_lead_stats",

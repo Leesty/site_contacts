@@ -33,6 +33,11 @@
     {% if show == 'all' %}Список пользователей сайта. Написать — открыть чат с поддержкой, Статистика — лиды пользователя, Отчёты — лиды пользователя.{% endif %}
   </p>
 
+  <div class="mb-3 position-relative">
+    <input type="text" class="form-control" id="admin-user-search" placeholder="Поиск по нику (введите часть ника)" autocomplete="off" style="max-width: 320px;">
+    <div id="admin-user-search-dropdown" class="dropdown-menu w-100 shadow-sm" style="max-width: 320px; max-height: 280px; overflow-y: auto; display: none;"></div>
+  </div>
+
   <div class="card shadow-sm">
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -49,7 +54,7 @@
           <tbody>
             {% for u in users_list %}
               <tr>
-                <td>@{{ u.username }}</td>
+                <td><a href="{% url 'admin_user_leads_list' u.pk %}">@{{ u.username }}</a></td>
                 <td>
                   {% if u.status == 'approved' %}
                     <span class="badge bg-success">Одобрен</span>
@@ -80,4 +85,64 @@
       </div>
     </div>
   </div>
+
+  <script>
+  (function() {
+    var input = document.getElementById('admin-user-search');
+    var dropdown = document.getElementById('admin-user-search-dropdown');
+    var timeout;
+    var searchUrl = '{% url "admin_user_search" %}';
+    var baseUrl = '{% url "admin_user_leads_list" 0 %}'.replace('/0/', '/');
+
+    function hideDropdown() {
+      dropdown.style.display = 'none';
+    }
+
+    function showDropdown(items) {
+      dropdown.innerHTML = '';
+      if (!items || !items.length) {
+        dropdown.innerHTML = '<div class="dropdown-item text-muted">Никого не найдено</div>';
+      } else {
+        items.forEach(function(u) {
+          var a = document.createElement('a');
+          a.className = 'dropdown-item';
+          a.href = baseUrl + u.id + '/';
+          a.textContent = '@' + u.username;
+          dropdown.appendChild(a);
+        });
+      }
+      dropdown.style.display = 'block';
+    }
+
+    function search() {
+      var q = (input.value || '').trim();
+      if (!q || q.length < 2) {
+        hideDropdown();
+        return;
+      }
+      fetch(searchUrl + '?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          showDropdown(data.users || []);
+        })
+        .catch(function() { hideDropdown(); });
+    }
+
+    if (input) {
+      input.addEventListener('input', function() {
+        clearTimeout(timeout);
+        timeout = setTimeout(search, 250);
+      });
+      input.addEventListener('focus', function() {
+        if (input.value.trim().length >= 2) search();
+      });
+      input.addEventListener('blur', function() {
+        setTimeout(hideDropdown, 150);
+      });
+      document.addEventListener('click', function(e) {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) hideDropdown();
+      });
+    }
+  })();
+  </script>
 {% endblock %}

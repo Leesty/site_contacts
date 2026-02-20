@@ -229,24 +229,36 @@ def admin_user_lead_stats(request: HttpRequest, user_id: int) -> HttpResponse:
 
 @login_required
 def admin_user_leads_list(request: HttpRequest, user_id: int) -> HttpResponse:
-    """Список лидов (отчётов) пользователя с возможностью скачать за сегодня/вчера."""
+    """Список лидов (отчётов) пользователя по вкладкам: новые, в доработке, принятые, отклонённые."""
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
     target_user = get_object_or_404(User, pk=user_id)
-    leads_qs = (
-        Lead.objects.filter(user=target_user)
-        .select_related("lead_type", "base_type", "reviewed_by")
-        .order_by("-created_at")
-    )
-    paginator = Paginator(leads_qs, 50)
+    tab = request.GET.get("tab", "all")
+    if tab not in ("all", "new", "rework", "approved", "rejected"):
+        tab = "all"
+    base = Lead.objects.filter(user=target_user).select_related("lead_type", "base_type", "reviewed_by")
+    if tab == "all":
+        qs = base.order_by("-created_at")
+    elif tab == "new":
+        qs = base.filter(status=Lead.Status.PENDING).order_by("-created_at")
+    elif tab == "rework":
+        qs = base.filter(status=Lead.Status.REWORK).order_by("-reviewed_at")
+    elif tab == "approved":
+        qs = base.filter(status=Lead.Status.APPROVED).order_by("-reviewed_at")
+    else:
+        qs = base.filter(status=Lead.Status.REJECTED).order_by("-reviewed_at")
+    paginator = Paginator(qs, 50)
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
+    lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
     return render(
         request,
         "core/admin_user_leads_list.html",
         {
             "target_user": target_user,
             "page_obj": page_obj,
+            "tab": tab,
+            "lead_approve_reward": lead_approve_reward,
         },
     )
 
@@ -572,6 +584,22 @@ def admin_user_balance(request: HttpRequest, user_id: int) -> HttpResponse:
         "core/admin_user_balance.html",
         {"target_user": target_user},
     )
+
+
+@login_required
+def admin_user_search(request: HttpRequest) -> HttpResponse:
+    """Поиск пользователей по нику (или части) — для выпадающего списка."""
+    if not _require_support(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    q = (request.GET.get("q") or "").strip()[:50]
+    if not q:
+        return JsonResponse({"users": []})
+    users = (
+        User.objects.filter(username__icontains=q)
+        .values("id", "username")[:15]
+        .order_by("username")
+    )
+    return JsonResponse({"users": list(users)})
 
 
 @login_required
