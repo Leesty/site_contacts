@@ -591,7 +591,7 @@ def admin_user_search(request: HttpRequest) -> HttpResponse:
     """Поиск пользователей по нику (или части) — для выпадающего списка."""
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
-    q = (request.GET.get("q") or "").strip()[:50]
+    q = (request.GET.get("q") or "").strip().lstrip("@")[:50]
     if not q:
         return JsonResponse({"users": []})
     users = (

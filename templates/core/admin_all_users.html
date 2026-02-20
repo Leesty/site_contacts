@@ -33,9 +33,9 @@
     {% if show == 'all' %}Список пользователей сайта. Написать — открыть чат с поддержкой, Статистика — лиды пользователя, Отчёты — лиды пользователя.{% endif %}
   </p>
 
-  <div class="mb-3 position-relative">
-    <input type="text" class="form-control" id="admin-user-search" placeholder="Поиск по нику (введите часть ника)" autocomplete="off" style="max-width: 320px;">
-    <div id="admin-user-search-dropdown" class="dropdown-menu w-100 shadow-sm" style="max-width: 320px; max-height: 280px; overflow-y: auto; display: none;"></div>
+  <div class="mb-3 position-relative" style="max-width: 320px;">
+    <input type="text" class="form-control" id="admin-user-search" placeholder="Поиск по нику (часть ника, можно с @)" autocomplete="off">
+    <div id="admin-user-search-dropdown" class="dropdown-menu shadow-sm border" style="position: absolute; top: 100%; left: 0; right: 0; max-height: 280px; overflow-y: auto; display: none; z-index: 1050;"></div>
   </div>
 
   <div class="card shadow-sm">
@@ -95,10 +95,11 @@
     var baseUrl = '{% url "admin_user_leads_list" 0 %}'.replace('/0/', '/');
 
     function hideDropdown() {
-      dropdown.style.display = 'none';
+      if (dropdown) dropdown.style.display = 'none';
     }
 
     function showDropdown(items) {
+      if (!dropdown) return;
       dropdown.innerHTML = '';
       if (!items || !items.length) {
         dropdown.innerHTML = '<div class="dropdown-item text-muted">Никого не найдено</div>';
@@ -115,13 +116,16 @@
     }
 
     function search() {
-      var q = (input.value || '').trim();
+      var q = (input.value || '').trim().replace(/^@+/, '');
       if (!q || q.length < 2) {
         hideDropdown();
         return;
       }
-      fetch(searchUrl + '?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
-        .then(function(r) { return r.json(); })
+      fetch(searchUrl + '?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r) {
+          if (!r.ok) throw new Error('Search failed');
+          return r.json();
+        })
         .then(function(data) {
           showDropdown(data.users || []);
         })
