@@ -14,6 +14,25 @@
 
   {% if page_obj.object_list %}
     <div class="card shadow-sm">
+      {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-header bg-transparent border-secondary d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div class="d-flex gap-1">
+            <a class="btn btn-outline-primary btn-sm" href="{% url 'leads_report' %}">Добавить лид</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{% url 'leads_stats' %}">Статистика</a>
+          </div>
+          <nav aria-label="Страницы лидов">
+            <ul class="pagination pagination-sm mb-0">
+                {% if page_obj.has_previous %}
+                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a></li>
+                {% endif %}
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
       <div class="card-body p-0">
         <ul class="list-group list-group-flush">
           {% for lead in page_obj %}
@@ -44,25 +63,14 @@
           {% endfor %}
         </ul>
       </div>
+      {% if page_obj.paginator.num_pages <= 1 %}
       <div class="card-footer bg-transparent border-secondary d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div class="d-flex gap-1">
           <a class="btn btn-outline-primary btn-sm" href="{% url 'leads_report' %}">Добавить лид</a>
           <a class="btn btn-outline-secondary btn-sm" href="{% url 'leads_stats' %}">Статистика</a>
         </div>
-        {% if page_obj.paginator.num_pages > 1 %}
-          <nav aria-label="Страницы лидов">
-            <ul class="pagination pagination-sm mb-0">
-                {% if page_obj.has_previous %}
-                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a></li>
-                {% endif %}
-                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-                {% if page_obj.has_next %}
-                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a></li>
-                {% endif %}
-            </ul>
-          </nav>
-        {% endif %}
       </div>
+      {% endif %}
     </div>
   {% else %}
     <div class="card shadow-sm">

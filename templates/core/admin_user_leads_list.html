@@ -40,6 +40,27 @@
   </p>
 
   <div class="card shadow-sm">
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-header bg-transparent border-secondary py-2">
+        <nav>
+          <ul class="pagination pagination-sm mb-0 justify-content-center">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a>
+              </li>
+            {% endif %}
+            <li class="page-item disabled">
+              <span class="page-link">Стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+            </li>
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a>
+              </li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-sm mb-0 align-middle table-dark-site">
@@ -119,26 +140,5 @@
         </table>
       </div>
     </div>
-    {% if page_obj.paginator.num_pages > 1 %}
-      <div class="card-footer py-2">
-        <nav>
-          <ul class="pagination pagination-sm mb-0 justify-content-center">
-            {% if page_obj.has_previous %}
-              <li class="page-item">
-                <a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a>
-              </li>
-            {% endif %}
-            <li class="page-item disabled">
-              <span class="page-link">Стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
-            </li>
-            {% if page_obj.has_next %}
-              <li class="page-item">
-                <a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a>
-              </li>
-            {% endif %}
-          </ul>
-        </nav>
-      </div>
-    {% endif %}
   </div>
 {% endblock %}

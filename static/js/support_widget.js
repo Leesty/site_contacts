@@ -65,11 +65,19 @@
   function onSubmit(e) {
     e.preventDefault();
     var form = e.target;
+    var textarea = form.querySelector('textarea[name="text"]');
+    var fileInput = form.querySelector('input[type="file"]');
     var submitBtn = form.querySelector('button[type="submit"]');
+    
+    if (submitBtn && submitBtn.disabled) return;
     if (submitBtn) {
       submitBtn.disabled = true;
+      submitBtn.textContent = "...";
     }
+    
+    var submittedText = textarea ? textarea.value : "";
     var formData = new FormData(form);
+    
     fetch("/support/widget/", {
       method: "POST",
       body: formData,
@@ -90,14 +98,28 @@
         if (newMessages && current) {
           current.innerHTML = newMessages.innerHTML;
         }
-        form.reset();
+        if (textarea && textarea.value === submittedText) {
+          textarea.value = "";
+        }
+        if (fileInput) {
+          fileInput.value = "";
+        }
+        if (typeof window.threadUpdatedAt !== 'undefined' && window.threadUpdatedAt !== '') {
+          window.threadUpdatedAt = new Date().toISOString();
+        }
         scrollMessagesToBottom();
+        if (textarea) {
+          textarea.focus();
+        }
       })
       .catch(function () {
-        alert("Не удалось отправить сообщение.");
+        alert("Не удалось отправить сообщение. Попробуйте ещё раз.");
       })
       .finally(function () {
-        if (submitBtn) submitBtn.disabled = false;
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Отправить";
+        }
       });
   }
 

@@ -102,9 +102,14 @@
         (function() {
           var updatesUrl = '{% url "account_updates_api" %}';
           var leadsUpdatedAt = '{{ leads_updated_at|default:""|escapejs }}';
-          var threadUpdatedAt = '{{ thread_updated_at|default:""|escapejs }}';
+          window.threadUpdatedAt = '{{ thread_updated_at|default:""|escapejs }}';
           var adminThreadsUpdatedAt = document.body.getAttribute('data-admin-threads-updated-at') || '';
           var pollInterval = 20000; // 20 сек
+
+          function isSupportPanelOpen() {
+            var panel = document.getElementById('support-panel');
+            return panel && !panel.classList.contains('d-none');
+          }
 
           function poll() {
             fetch(updatesUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
@@ -121,8 +126,12 @@
                 if (leadsUpdatedAt !== '' && data.leads_updated_at && data.leads_updated_at !== leadsUpdatedAt) {
                   location.reload();
                 }
-                if (threadUpdatedAt !== '' && data.thread_updated_at && data.thread_updated_at !== threadUpdatedAt) {
-                  location.reload();
+                if (window.threadUpdatedAt !== '' && data.thread_updated_at && data.thread_updated_at !== window.threadUpdatedAt) {
+                  if (!isSupportPanelOpen()) {
+                    location.reload();
+                  } else {
+                    window.threadUpdatedAt = data.thread_updated_at;
+                  }
                 }
                 if (adminThreadsUpdatedAt !== '' && data.admin && data.admin.threads_updated_at && data.admin.threads_updated_at !== adminThreadsUpdatedAt) {
                   location.reload();
