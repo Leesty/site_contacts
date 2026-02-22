@@ -63,4 +63,25 @@
       </form>
     </div>
   </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary">
+      <strong>Автоодобрение пользователей</strong>
+    </div>
+    <div class="card-body">
+      <p class="text-muted small mb-3">
+        Если включено — новые пользователи будут автоматически одобряться при регистрации.
+        Управлять можно также на странице <a href="{% url 'admin_users_pending' %}">Заявки пользователей</a>.
+      </p>
+      <div class="d-flex align-items-center gap-3">
+        <span>Статус:</span>
+        {% if site_settings.auto_approve_users %}
+          <span class="badge bg-success">Включено</span>
+        {% else %}
+          <span class="badge bg-secondary">Выключено</span>
+        {% endif %}
+        <a href="{% url 'admin_users_pending' %}" class="btn btn-outline-primary btn-sm">Перейти к настройке</a>
+      </div>
+    </div>
+  </div>
 {% endblock %}

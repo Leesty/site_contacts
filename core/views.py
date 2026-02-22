@@ -49,11 +49,25 @@ def register(request: HttpRequest) -> HttpResponse:
         form = UserRegistrationForm(request.POST)
         try:
             if form.is_valid():
-                form.save()
-                messages.success(
-                    request,
-                    "Регистрация прошла успешно. Войдите в личный кабинет, используя логин и пароль.",
-                )
+                user = form.save(commit=False)
+                try:
+                    from .models import SiteSettings
+                    site_settings = SiteSettings.get_settings()
+                    if site_settings.auto_approve_users:
+                        user.status = User.Status.APPROVED
+                except Exception:
+                    pass
+                user.save()
+                if user.status == User.Status.APPROVED:
+                    messages.success(
+                        request,
+                        "Регистрация прошла успешно. Ваш аккаунт уже активен — войдите в личный кабинет.",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        "Регистрация прошла успешно. Войдите в личный кабинет, используя логин и пароль.",
+                    )
                 return redirect("login")
         except Exception as e:
             logger.exception("Ошибка при регистрации: %s", e)

@@ -54,7 +54,23 @@ def admin_users_pending(request: HttpRequest) -> HttpResponse:
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
 
+    auto_approve_enabled = False
+    try:
+        site_settings = SiteSettings.get_settings()
+        auto_approve_enabled = site_settings.auto_approve_users
+    except Exception:
+        site_settings = None
+
     if request.method == "POST":
+        if request.POST.get("action") == "toggle_auto_approve" and site_settings:
+            site_settings.auto_approve_users = not site_settings.auto_approve_users
+            site_settings.save(update_fields=["auto_approve_users"])
+            if site_settings.auto_approve_users:
+                messages.success(request, "Автоодобрение включено. Новые пользователи будут одобряться автоматически.")
+            else:
+                messages.info(request, "Автоодобрение выключено.")
+            return redirect("admin_users_pending")
+        
         user_id = request.POST.get("user_id")
         action = request.POST.get("action")
         if user_id and action in {"approve", "ban"}:
@@ -75,6 +91,7 @@ def admin_users_pending(request: HttpRequest) -> HttpResponse:
         "core/admin_users_pending.html",
         {
             "pending_users": pending_users,
+            "auto_approve_enabled": auto_approve_enabled,
         },
     )
 

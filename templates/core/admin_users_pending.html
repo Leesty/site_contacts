@@ -13,6 +13,22 @@
     к кабинету или сразу заблокировать аккаунт.
   </p>
 
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2 d-flex align-items-center justify-content-between">
+      <div>
+        <strong>Автоодобрение</strong>
+        <span class="text-muted small ms-2">Новые пользователи будут одобряться автоматически при регистрации</span>
+      </div>
+      <form method="post" class="d-inline">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="toggle_auto_approve">
+        <button type="submit" class="btn btn-sm {% if auto_approve_enabled %}btn-success{% else %}btn-outline-secondary{% endif %}">
+          {% if auto_approve_enabled %}Вкл{% else %}Выкл{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+
   {% if pending_users %}
     <div class="card shadow-sm">
       <div class="card-body p-0">

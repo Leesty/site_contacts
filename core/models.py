@@ -495,6 +495,10 @@ class SiteSettings(models.Model):
         default="Посмотрите пример идеального видео-отчёта",
         help_text="Текст ссылки на пример видео.",
     )
+    auto_approve_users = models.BooleanField(
+        default=False,
+        help_text="Автоматически одобрять новых пользователей при регистрации.",
+    )
 
     class Meta:
         verbose_name = "Настройки сайта"
