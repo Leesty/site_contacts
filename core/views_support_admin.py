@@ -28,6 +28,7 @@ from .models import (
     ContactRequest,
     Lead,
     LeadType,
+    SiteSettings,
     SupportMessage,
     SupportThread,
     User,
@@ -1311,4 +1312,52 @@ def download_leads_excel(request: HttpRequest) -> HttpResponse:
     )
     response["Content-Disposition"] = 'attachment; filename="leads.xlsx"'
     return response
+
+
+@login_required
+def admin_site_settings(request: HttpRequest) -> HttpResponse:
+    """Настройки сайта: пример видео-отчёта и другие параметры."""
+    if not request.user.is_superuser:
+        return HttpResponseForbidden("Только для суперадминистраторов.")
+    
+    site_settings = SiteSettings.get_settings()
+    
+    if request.method == "POST":
+        description = request.POST.get("example_video_description", "").strip()
+        if description:
+            site_settings.example_video_description = description
+        
+        if "example_video" in request.FILES:
+            video_file = request.FILES["example_video"]
+            allowed_ext = ("mp4", "mov", "webm", "m4v")
+            ext = video_file.name.rsplit(".", 1)[-1].lower() if "." in video_file.name else ""
+            if ext not in allowed_ext:
+                messages.error(request, f"Разрешены только видео: {', '.join(allowed_ext)}")
+            elif video_file.size > 100 * 1024 * 1024:
+                messages.error(request, "Максимальный размер видео — 100 МБ.")
+            else:
+                if site_settings.example_video:
+                    try:
+                        site_settings.example_video.delete(save=False)
+                    except Exception:
+                        pass
+                site_settings.example_video = video_file
+                messages.success(request, "Видео-пример успешно загружено.")
+        
+        if request.POST.get("delete_video") == "1" and site_settings.example_video:
+            try:
+                site_settings.example_video.delete(save=False)
+            except Exception:
+                pass
+            site_settings.example_video = None
+            messages.success(request, "Видео-пример удалено.")
+        
+        site_settings.save()
+        return redirect("admin_site_settings")
+    
+    return render(
+        request,
+        "core/admin_site_settings.html",
+        {"site_settings": site_settings},
+    )
 

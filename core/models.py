@@ -475,3 +475,37 @@ class MediaStorageConfig(models.Model):
     def __str__(self) -> str:
         return f"S3: {self.bucket_name or 'не задано'}" + (" (вкл.)" if self.enabled else " (выкл.)")
 
+
+def site_settings_upload_to(instance, filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "mp4"
+    return f"site/{uuid4().hex[:12]}.{ext}"
+
+
+class SiteSettings(models.Model):
+    """Настройки сайта. Одна запись на весь сайт."""
+    example_video = models.FileField(
+        upload_to=site_settings_upload_to,
+        null=True,
+        blank=True,
+        help_text="Видео-пример идеального отчёта. Загрузите MP4/MOV/WEBM.",
+    )
+    example_video_description = models.CharField(
+        max_length=500,
+        blank=True,
+        default="Посмотрите пример идеального видео-отчёта",
+        help_text="Текст ссылки на пример видео.",
+    )
+
+    class Meta:
+        verbose_name = "Настройки сайта"
+        verbose_name_plural = "Настройки сайта"
+
+    def __str__(self) -> str:
+        return "Настройки сайта"
+
+    @classmethod
+    def get_settings(cls):
+        """Получить или создать единственную запись настроек."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+

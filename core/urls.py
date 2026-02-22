@@ -70,6 +70,11 @@ urlpatterns = [
         name="admin_media_storage_status",
     ),
     path(
+        "staff/site-settings/",
+        views_support_admin.admin_site_settings,
+        name="admin_site_settings",
+    ),
+    path(
         "staff/users/<int:user_id>/leads/",
         views_support_admin.admin_user_leads_list,
         name="admin_user_leads_list",

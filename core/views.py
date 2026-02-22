@@ -520,7 +520,7 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
                         logger.warning("Таймаут при сохранении лида: %s", e)
                         messages.error(
                             request,
-                            "Загрузка файла заняла слишком много времени. Попробуйте: 1) Сжать видео перед загрузкой, 2) Загрузить скриншот вместо видео, 3) Попробовать позже при более стабильном интернете.",
+                            "Загрузка файла заняла слишком много времени. Попробуйте: 1) Сжать видео перед загрузкой, 2) Попробовать позже при более стабильном интернете.",
                         )
                     else:
                         logger.exception("Ошибка при сохранении лида (отчёт): %s", e)
@@ -531,7 +531,16 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
     else:
         form = LeadReportForm()
 
-    return render(request, "core/leads_report.html", {"form": form})
+    from .models import SiteSettings
+    site_settings = SiteSettings.get_settings()
+    example_video_url = site_settings.example_video.url if site_settings.example_video else None
+    example_video_description = site_settings.example_video_description or "Пример идеального видео-отчёта"
+    
+    return render(request, "core/leads_report.html", {
+        "form": form,
+        "example_video_url": example_video_url,
+        "example_video_description": example_video_description,
+    })
 
 
 @login_required

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки сайта — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">Настройки сайта</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-4">
+    Здесь можно загрузить видео-пример идеального отчёта. Это видео будет показано пользователям на странице добавления отчёта.
+  </p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert py-2 mb-3 {% if message.tags == 'error' %}alert-danger{% elif message.tags == 'success' %}alert-success{% else %}alert-info{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary">
+      <strong>Видео-пример отчёта</strong>
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="mb-3">
+          <label class="form-label">Текст ссылки на видео-пример</label>
+          <input type="text" name="example_video_description" class="form-control" value="{{ site_settings.example_video_description }}" placeholder="Посмотрите пример идеального видео-отчёта">
+          <div class="form-text">Этот текст будет показан как ссылка на видео.</div>
+        </div>
+
+        {% if site_settings.example_video %}
+          <div class="mb-3">
+            <label class="form-label">Текущее видео</label>
+            <div class="p-3 bg-dark rounded">
+              <video controls style="max-width: 100%; max-height: 400px;">
+                <source src="{{ site_settings.example_video.url }}" type="video/mp4">
+                Ваш браузер не поддерживает видео.
+              </video>
+            </div>
+            <div class="mt-2">
+              <a href="{{ site_settings.example_video.url }}" target="_blank" class="btn btn-outline-primary btn-sm">Открыть в новой вкладке</a>
+            </div>
+          </div>
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" name="delete_video" value="1" id="delete_video">
+            <label class="form-check-label text-danger" for="delete_video">Удалить текущее видео</label>
+          </div>
+        {% else %}
+          <div class="alert alert-warning py-2 mb-3">Видео-пример ещё не загружено.</div>
+        {% endif %}
+
+        <div class="mb-3">
+          <label class="form-label">{% if site_settings.example_video %}Заменить видео{% else %}Загрузить видео{% endif %}</label>
+          <input type="file" name="example_video" class="form-control" accept="video/mp4,video/webm,video/quicktime,.mp4,.mov,.webm,.m4v">
+          <div class="form-text">Максимум 100 МБ. Форматы: MP4, MOV, WEBM, M4V.</div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

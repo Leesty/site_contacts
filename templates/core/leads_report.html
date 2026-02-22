@@ -39,12 +39,17 @@
   </style>
 
   <p class="text-muted">
-    Заполните форму: укажите контакт или ссылку, выберите категорию лида и загрузите скриншот или запись экрана (видео).
+    Заполните форму: укажите контакт или ссылку, выберите категорию лида и загрузите видео.
     Максимальный размер файла — 30 МБ. Сайт разрешит отправить отчёт только после выбора подходящего файла.
     Все лиды проверяются модераторами. Если возникли вопросы — пишите в поддержку.
   </p>
+  {% if example_video_url %}
+  <div class="alert alert-success py-2 small mb-3">
+    <strong>Пример:</strong> <a href="#" data-bs-toggle="modal" data-bs-target="#exampleVideoModal" class="alert-link">{{ example_video_description }}</a>
+  </div>
+  {% endif %}
   <div class="alert alert-info py-2 small mb-3">
-    <strong>Совет:</strong> Для быстрой загрузки рекомендуем использовать скриншоты или короткие видео до 10 МБ. 
+    <strong>Совет:</strong> Для быстрой загрузки рекомендуем короткие видео до 10 МБ. 
     Если у вас медленный интернет и загрузка не проходит — попробуйте сжать видео.
   </div>
 
@@ -160,13 +165,13 @@
     function checkFile() {
       if (!hasValidDate()) {
         submitBtn.disabled = true;
-        if (statusEl) setStatus('Выберите дату лида и приложите скриншот или видео.', false);
+        if (statusEl) setStatus('Выберите дату лида и приложите видео.', false);
         return;
       }
       var files = input && input.files;
       if (!files || !files.length) {
         submitBtn.disabled = true;
-        setStatus('Выберите скриншот или видео — после проверки файла кнопка «Отправить отчёт» станет активной.', false);
+        setStatus('Выберите видео — после проверки файла кнопка «Отправить отчёт» станет активной.', false);
         return;
       }
       var file = files[0];
@@ -178,7 +183,7 @@
       }
       if (file.size > MAX_SIZE) {
         submitBtn.disabled = true;
-        setStatus('Файл слишком большой (' + formatSize(file.size) + '). Максимум 30 МБ. Сожмите видео или приложите скриншот.', true);
+        setStatus('Файл слишком большой (' + formatSize(file.size) + '). Максимум 30 МБ. Сожмите видео перед загрузкой.', true);
         return;
       }
       submitBtn.disabled = false;
@@ -225,4 +230,32 @@
     }
   })();
   </script>
+
+  {% if example_video_url %}
+  <div class="modal fade" id="exampleVideoModal" tabindex="-1" aria-labelledby="exampleVideoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title" id="exampleVideoModalLabel">{{ example_video_description }}</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body p-0">
+          <video id="exampleVideo" controls style="width: 100%; max-height: 70vh;">
+            <source src="{{ example_video_url }}" type="video/mp4">
+            Ваш браузер не поддерживает видео.
+          </video>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    var exampleModal = document.getElementById('exampleVideoModal');
+    if (exampleModal) {
+      exampleModal.addEventListener('hidden.bs.modal', function () {
+        var video = document.getElementById('exampleVideo');
+        if (video) video.pause();
+      });
+    }
+  </script>
+  {% endif %}
 {% endblock %}
