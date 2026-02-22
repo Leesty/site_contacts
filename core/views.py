@@ -531,10 +531,16 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
     else:
         form = LeadReportForm()
 
-    from .models import SiteSettings
-    site_settings = SiteSettings.get_settings()
-    example_video_url = site_settings.example_video.url if site_settings.example_video else None
-    example_video_description = site_settings.example_video_description or "Пример идеального видео-отчёта"
+    example_video_url = None
+    example_video_description = "Пример идеального видео-отчёта"
+    try:
+        from .models import SiteSettings
+        site_settings = SiteSettings.get_settings()
+        if site_settings.example_video:
+            example_video_url = site_settings.example_video.url
+        example_video_description = site_settings.example_video_description or example_video_description
+    except Exception:
+        pass
     
     return render(request, "core/leads_report.html", {
         "form": form,

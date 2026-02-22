@@ -1320,7 +1320,11 @@ def admin_site_settings(request: HttpRequest) -> HttpResponse:
     if not request.user.is_superuser:
         return HttpResponseForbidden("Только для суперадминистраторов.")
     
-    site_settings = SiteSettings.get_settings()
+    try:
+        site_settings = SiteSettings.get_settings()
+    except Exception as e:
+        messages.error(request, f"Не удалось загрузить настройки. Возможно, нужно выполнить миграцию: python manage.py migrate core. Ошибка: {e}")
+        return redirect("dashboard")
     
     if request.method == "POST":
         description = request.POST.get("example_video_description", "").strip()

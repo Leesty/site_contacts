@@ -44,8 +44,8 @@
     Все лиды проверяются модераторами. Если возникли вопросы — пишите в поддержку.
   </p>
   {% if example_video_url %}
-  <div class="alert alert-success py-2 small mb-3">
-    <strong>Пример:</strong> <a href="#" data-bs-toggle="modal" data-bs-target="#exampleVideoModal" class="alert-link">{{ example_video_description }}</a>
+  <div class="alert py-2 small mb-3" style="background-color: #1e3a5f; border: 1px solid #3b82f6;">
+    <strong style="color: #93c5fd;">Пример:</strong> <a href="#" data-bs-toggle="modal" data-bs-target="#exampleVideoModal" style="color: #60a5fa; text-decoration: underline; font-weight: 500;">{{ example_video_description }}</a>
   </div>
   {% endif %}
   <div class="alert alert-info py-2 small mb-3">
@@ -178,7 +178,7 @@
       var ext = (file.name || '').split('.').pop().toLowerCase();
       if (ALLOWED_EXT.indexOf(ext) === -1) {
         submitBtn.disabled = true;
-        setStatus('Разрешены только изображения и видео (jpg, png, gif, webp, mp4, mov и т.д.). Выберите другой файл.', true);
+        setStatus('Разрешены только видео (mp4, mov, webm и т.д.). Выберите другой файл.', true);
         return;
       }
       if (file.size > MAX_SIZE) {
