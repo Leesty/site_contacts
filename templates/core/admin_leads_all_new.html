@@ -101,7 +101,7 @@
           <tbody>
             {% for lead in page_obj %}
               <tr data-lead-id="{{ lead.id }}" data-search="{% if tab == 'all' %}{{ lead.id }} {{ lead.user.username|lower }} {{ lead.created_at|date:'Y-m-d' }} {{ lead.created_at|date:'d.m.Y' }} {{ lead.raw_contact|default:''|lower }} {{ lead.source|default:''|lower }} {{ lead.comment|default:''|lower }} {{ lead.lead_type.name|default:''|lower }} {{ lead.rework_comment|default:''|lower }} {{ lead.rejection_reason|default:''|lower }}{% endif %}">
-                <td>{{ lead.id }}</td>
+                <td>{{ lead.id }}{% if lead.needs_team_contact %} <span class="badge bg-info text-dark" title="Связаться самим">СС</span>{% endif %}</td>
                 <td>
                   <a href="{% url 'admin_user_leads_list' lead.user_id %}">@{{ lead.user.username }}</a>
                 </td>

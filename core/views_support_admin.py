@@ -106,6 +106,7 @@ def support_threads_list(request: HttpRequest) -> HttpResponse:
         {
             "threads": threads,
             "admin_threads_updated_at": admin_threads_updated_at,
+            "disable_polling": True,
         },
     )
 
@@ -146,6 +147,7 @@ def support_thread_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "thread": thread,
             "support_messages": messages_qs,
             "admin_threads_updated_at": admin_threads_updated_at,
+            "disable_polling": True,
         },
     )
 

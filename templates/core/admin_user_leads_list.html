@@ -81,7 +81,7 @@
           <tbody>
             {% for lead in page_obj %}
               <tr>
-                <td>{{ lead.id }}</td>
+                <td>{{ lead.id }}{% if lead.needs_team_contact %} <span class="badge bg-info text-dark" title="Связаться самим">СС</span>{% endif %}</td>
                 <td>{{ lead.created_at|date:"d.m.Y H:i" }}</td>
                 <td>{{ lead.lead_type.name|default:"—" }}</td>
                 <td>

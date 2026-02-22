@@ -70,17 +70,19 @@ class LeadReportForm(forms.ModelForm):
 
     class Meta:
         model = Lead
-        fields = ("lead_type", "lead_date", "raw_contact", "attachment", "comment")
+        fields = ("lead_type", "lead_date", "raw_contact", "attachment", "comment", "needs_team_contact")
         labels = {
             "lead_type": "Категория лида",
             "lead_date": "Дата лида",
             "comment": "Комментарий (необязательно)",
             "attachment": "Файл / скриншот или видео",
+            "needs_team_contact": "Связаться самим",
         }
         help_texts = {
             "comment": "",
             "lead_date": "К какой дате относите отчёт. По умолчанию — сегодня. Обязательно.",
             "attachment": "Скриншот или запись экрана (видео), подтверждающие лид (обязательно)",
+            "needs_team_contact": "Отметьте, если команда должна связаться с контактом.",
         }
         widgets = {
             "lead_type": forms.Select(
@@ -116,6 +118,11 @@ class LeadReportForm(forms.ModelForm):
                     "class": "form-control",
                     "placeholder": "Комментарий (необязательно)",
                     "style": "background-color: rgba(15, 23, 42, 0.95); border: 1px solid rgba(55, 65, 81, 0.9); color: #e5e7eb;",
+                }
+            ),
+            "needs_team_contact": forms.CheckboxInput(
+                attrs={
+                    "class": "form-check-input",
                 }
             ),
         }

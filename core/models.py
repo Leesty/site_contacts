@@ -275,6 +275,10 @@ class Lead(TimeStampedModel):
         related_name="reviewed_leads",
         help_text="Кто проверил лид.",
     )
+    needs_team_contact = models.BooleanField(
+        default=False,
+        help_text="Пометка «Связаться самим» — команда должна связаться с контактом.",
+    )
 
     class Meta:
         verbose_name = "Лид"

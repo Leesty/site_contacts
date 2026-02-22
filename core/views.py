@@ -701,6 +701,7 @@ def support_placeholder(request: HttpRequest) -> HttpResponse:
             "thread": thread,
             "support_messages": messages_qs,
             "thread_updated_at": thread.updated_at.isoformat(),
+            "disable_polling": True,
         },
     )
 
