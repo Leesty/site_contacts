@@ -515,11 +515,19 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
                     else:
                         raise
                 except Exception as e:
-                    logger.exception("Ошибка при сохранении лида (отчёт): %s", e)
-                    messages.error(
-                        request,
-                        "Не удалось сохранить отчёт. Попробуйте ещё раз или обратитесь в поддержку.",
-                    )
+                    err_str = str(e).lower()
+                    if "timeout" in err_str or "timed out" in err_str or "connection" in err_str:
+                        logger.warning("Таймаут при сохранении лида: %s", e)
+                        messages.error(
+                            request,
+                            "Загрузка файла заняла слишком много времени. Попробуйте: 1) Сжать видео перед загрузкой, 2) Загрузить скриншот вместо видео, 3) Попробовать позже при более стабильном интернете.",
+                        )
+                    else:
+                        logger.exception("Ошибка при сохранении лида (отчёт): %s", e)
+                        messages.error(
+                            request,
+                            "Не удалось сохранить отчёт. Попробуйте ещё раз или обратитесь в поддержку.",
+                        )
     else:
         form = LeadReportForm()
 

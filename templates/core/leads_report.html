@@ -43,6 +43,10 @@
     Максимальный размер файла — 30 МБ. Сайт разрешит отправить отчёт только после выбора подходящего файла.
     Все лиды проверяются модераторами. Если возникли вопросы — пишите в поддержку.
   </p>
+  <div class="alert alert-info py-2 small mb-3">
+    <strong>Совет:</strong> Для быстрой загрузки рекомендуем использовать скриншоты или короткие видео до 10 МБ. 
+    Если у вас медленный интернет и загрузка не проходит — попробуйте сжать видео или сделать скриншот.
+  </div>
 
   {% if messages %}
     {% for message in messages %}
@@ -194,9 +198,29 @@
     }
 
     if (form) {
-      form.addEventListener('submit', function() {
+      form.addEventListener('submit', function(e) {
+        if (submitBtn.disabled) {
+          e.preventDefault();
+          return;
+        }
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Отправка…';
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Загрузка файла...';
+        
+        var files = input && input.files;
+        if (files && files.length && files[0].size > 5 * 1024 * 1024) {
+          submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Загрузка большого файла... Не закрывайте страницу';
+        }
+        
+        var startTime = Date.now();
+        var progressInterval = setInterval(function() {
+          var elapsed = Math.floor((Date.now() - startTime) / 1000);
+          if (elapsed > 10) {
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Загрузка... ' + elapsed + ' сек. Не закрывайте страницу!';
+          }
+          if (elapsed > 60) {
+            clearInterval(progressInterval);
+          }
+        }, 1000);
       });
     }
   })();
