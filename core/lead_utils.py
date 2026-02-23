@@ -167,13 +167,26 @@ def _get_attachment_extension(attachment) -> str | None:
     return None
 
 
+def _get_ffmpeg_path() -> str | None:
+    """Путь к ffmpeg: imageio-ffmpeg (бандл) или системный."""
+    try:
+        import imageio_ffmpeg
+        path = imageio_ffmpeg.get_ffmpeg_exe()
+        if path and os.path.isfile(path):
+            return path
+    except Exception:
+        pass
+    return shutil.which("ffmpeg")
+
+
 def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 180) -> bool:
     """Сжимает видео через ffmpeg: H.264, CRF 36, макс. 480p. Режим для чтения текста/букв (~7x сжатие)."""
-    if not shutil.which("ffmpeg"):
-        logger.warning("ffmpeg не найден — сжатие видео пропущено")
+    ffmpeg_exe = _get_ffmpeg_path()
+    if not ffmpeg_exe:
+        logger.warning("ffmpeg не найден (imageio-ffmpeg или системный) — сжатие видео пропущено")
         return False
     cmd = [
-        "ffmpeg", "-y", "-i", input_path,
+        ffmpeg_exe, "-y", "-i", input_path,
         "-vf", "scale='min(480,iw)':'min(480,ih)':force_original_aspect_ratio=decrease",
         "-c:v", "libx264", "-crf", "36", "-preset", "slow",
         "-c:a", "aac", "-b:a", "64k", "-ac", "1",

@@ -36,7 +36,7 @@
           <div class="mb-3">
             <label class="form-label">Текущее видео</label>
             <div class="p-3 bg-dark rounded">
-              <video controls style="max-width: 100%; max-height: 400px;">
+              <video controls preload="none" style="max-width: 100%; max-height: 400px;">
                 <source src="{{ site_settings.example_video.url }}" type="video/mp4">
                 Ваш браузер не поддерживает видео.
               </video>
