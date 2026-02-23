@@ -14,17 +14,20 @@
   </p>
 
   <div class="card shadow-sm mb-3">
-    <div class="card-body py-2 d-flex align-items-center justify-content-between">
+    <div class="card-body py-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
       <div>
         <strong>Автоодобрение</strong>
         <span class="text-muted small ms-2">Новые пользователи будут одобряться автоматически при регистрации</span>
       </div>
-      <form method="post" class="d-inline">
+      <form method="post" action="{% url 'admin_users_pending' %}" id="form-auto-approve" class="d-flex align-items-center gap-2">
         {% csrf_token %}
         <input type="hidden" name="action" value="toggle_auto_approve">
-        <button type="submit" class="btn btn-sm {% if auto_approve_enabled %}btn-success{% else %}btn-outline-secondary{% endif %}">
-          {% if auto_approve_enabled %}Вкл{% else %}Выкл{% endif %}
-        </button>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="autoApproveSwitch" {% if auto_approve_enabled %}checked{% endif %} onchange="document.getElementById('form-auto-approve').submit();">
+          <label class="form-check-label" for="autoApproveSwitch">
+            {% if auto_approve_enabled %}Вкл{% else %}Выкл{% endif %}
+          </label>
+        </div>
       </form>
     </div>
   </div>

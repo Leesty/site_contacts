@@ -291,6 +291,56 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
     )
 
 
+@login_required
+def contacts_view(request: HttpRequest) -> HttpResponse:
+    """Просмотр выданных контактов: таблица с пагинацией и кнопкой копирования."""
+    user = request.user
+    if not _ensure_user_approved(request):
+        return redirect("dashboard")
+
+    base_type_id = request.GET.get("base_type")
+    base_type = None
+    if base_type_id:
+        try:
+            base_type = BaseType.objects.get(pk=base_type_id)
+        except (BaseType.DoesNotExist, ValueError):
+            pass
+
+    qs = Contact.objects.filter(assigned_to=user, assigned_at__isnull=False)
+    if base_type:
+        qs = qs.filter(base_type=base_type)
+    qs = qs.order_by("assigned_at")
+
+    paginator = Paginator(qs, 50)
+    page = request.GET.get("page", 1)
+    try:
+        page_obj = paginator.page(int(page))
+    except (ValueError, paginator.InvalidPage):
+        page_obj = paginator.page(1)
+
+    # Список баз для ссылок на страницу (все базы с выданными контактами)
+    from django.db.models import Count
+    issued_by_base = []
+    counts = dict(
+        Contact.objects.filter(assigned_to=user)
+        .values_list("base_type_id")
+        .annotate(count=Count("id"))
+        .values_list("base_type_id", "count")
+    )
+    for b in BaseType.objects.filter(id__in=counts).order_by("order"):
+        issued_by_base.append((b, counts[b.id]))
+
+    return render(
+        request,
+        "core/contacts_view.html",
+        {
+            "page_obj": page_obj,
+            "base_type": base_type,
+            "issued_by_base": issued_by_base,
+        },
+    )
+
+
 def download_my_contacts_txt(request: HttpRequest) -> HttpResponse:
     """Скачать выданные пользователю контакты в виде .txt (один контакт на строку).
     Группировка по дням выдачи. GET: base_type — только эта база; date — YYYY-MM-DD за один день.

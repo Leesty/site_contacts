@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Мои контакты — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">
+      {% if base_type %}Контакты: {{ base_type.name }}{% else %}Все выданные контакты{% endif %}
+    </h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'contacts' %}">← Списки контактов</a>
+  </div>
+
+  <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
+    <span class="text-muted small">Скачать .txt:</span>
+    <a class="btn btn-outline-primary btn-sm" href="{% url 'download_my_contacts_txt' %}">Все базы</a>
+    {% for base, count in issued_by_base %}
+      <a class="btn btn-outline-primary btn-sm" href="{% url 'download_my_contacts_txt' %}?base_type={{ base.pk }}">{{ base.name }} ({{ count }})</a>
+    {% endfor %}
+    <span class="text-muted small ms-2">За дату:</span>
+    <form action="{% url 'download_my_contacts_txt' %}" method="get" class="d-inline-flex gap-1 align-items-center">
+      {% if base_type %}<input type="hidden" name="base_type" value="{{ base_type.pk }}">{% endif %}
+      <input type="date" name="date" class="form-control form-control-sm" style="width: auto;" required>
+      <button type="submit" class="btn btn-outline-primary btn-sm">Скачать</button>
+    </form>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 border-secondary">
+      <span>Контакты для копирования</span>
+      {% if page_obj.paginator.num_pages > 1 %}
+        <nav aria-label="Пагинация">
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?{% if base_type %}base_type={{ base_type.pk }}&{% endif %}page={{ page_obj.previous_page_number }}">←</a>
+              </li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?{% if base_type %}base_type={{ base_type.pk }}&{% endif %}page={{ page_obj.next_page_number }}">→</a>
+              </li>
+            {% endif %}
+          </ul>
+        </nav>
+      {% endif %}
+    </div>
+    <div class="card-body p-0">
+      {% if page_obj %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th style="width: 48px;"></th>
+                <th>Контакт</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for contact in page_obj %}
+                <tr>
+                  <td>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-copy-contact" title="Скопировать" data-value="{{ contact.value|default:'' }}">
+                      📋
+                    </button>
+                  </td>
+                  <td class="text-break">{{ contact.value }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted p-3 mb-0">Нет выданных контактов.</p>
+      {% endif %}
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer border-secondary d-flex justify-content-center">
+        <nav aria-label="Пагинация снизу">
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?{% if base_type %}base_type={{ base_type.pk }}&{% endif %}page={{ page_obj.previous_page_number }}">← Назад</a>
+              </li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?{% if base_type %}base_type={{ base_type.pk }}&{% endif %}page={{ page_obj.next_page_number }}">Вперёд →</a>
+              </li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
+  </div>
+
+  <p class="text-muted small mt-2">Клик по значку 📋 копирует контакт в буфер обмена.</p>
+
+  <script>
+    document.querySelectorAll('.js-copy-contact').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var value = btn.getAttribute('data-value');
+        if (!value) return;
+        navigator.clipboard.writeText(value).then(function() {
+          var orig = btn.textContent;
+          btn.textContent = '✓';
+          btn.classList.remove('btn-outline-secondary');
+          btn.classList.add('btn-outline-success');
+          setTimeout(function() {
+            btn.textContent = orig;
+            btn.classList.remove('btn-outline-success');
+            btn.classList.add('btn-outline-secondary');
+          }, 800);
+        });
+      });
+    });
+  </script>
+{% endblock %}

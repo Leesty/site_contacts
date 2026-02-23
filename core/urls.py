@@ -19,6 +19,7 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     # Основные разделы кабинета
     path("contacts/", views.contacts_placeholder, name="contacts"),
+    path("contacts/view/", views.contacts_view, name="contacts_view"),
     path("contacts/download/", views.download_my_contacts_txt, name="download_my_contacts_txt"),
     path("contacts/request/", views.request_contact_create, name="request_contact_create"),
     path("balance/withdraw/", views.request_withdrawal_create, name="request_withdrawal_create"),

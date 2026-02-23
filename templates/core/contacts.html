@@ -54,12 +54,16 @@
   {% endif %}
 
   {% if issued_by_base %}
-    <h2 class="h5 mt-4">Скачать выданные контакты</h2>
-    <p class="text-muted small">Скачайте ранее выданные контакты в виде .txt (по одному на строку). В файле — разбивка по дням выдачи.</p>
-    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-      <a class="btn btn-outline-primary btn-sm" href="{% url 'download_my_contacts_txt' %}">Все базы</a>
+    <h2 class="h5 mt-4">Выданные контакты</h2>
+    <p class="text-muted small mb-2">Нажмите на плашку — откроется страница с таблицей контактов. Там можно копировать контакты в один клик или скачать .txt</p>
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      <a class="btn btn-outline-primary" href="{% url 'contacts_view' %}">
+        Все базы
+      </a>
       {% for base, count in issued_by_base %}
-        <a class="btn btn-outline-primary btn-sm" href="{% url 'download_my_contacts_txt' %}?base_type={{ base.pk }}">{{ base.name }} ({{ count }})</a>
+        <a class="btn btn-outline-primary" href="{% url 'contacts_view' %}?base_type={{ base.pk }}">
+          {{ base.name }} ({{ count }}) — смотреть
+        </a>
       {% endfor %}
     </div>
     <p class="text-muted small mb-1">Скачать контакты за конкретную дату:</p>
