@@ -1,12 +1,21 @@
-"""Вспомогательные функции для лидов: автоопределение типа базы, сжатие скриншотов, нормализация контактов."""
+"""Вспомогательные функции для лидов: автоопределение типа базы, сжатие скриншотов/видео, нормализация контактов."""
 from __future__ import annotations
 
 import io
+import logging
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 from typing import TYPE_CHECKING
 
+from django.core.files.base import ContentFile
 from django.db.models import Q
+
+logger = logging.getLogger(__name__)
+
+LEAD_VIDEO_EXTENSIONS = frozenset(("mp4", "mov", "webm", "m4v", "3gp"))
 
 if TYPE_CHECKING:
     from .models import User
@@ -150,21 +159,131 @@ def determine_base_type_for_contact(raw_contact: str, user: User) -> BaseType | 
     return None
 
 
+def _get_attachment_extension(attachment) -> str | None:
+    """Возвращает расширение файла вложения в нижнем регистре."""
+    name = getattr(attachment, "name", None) or ""
+    if "." in name:
+        return name.rsplit(".", 1)[-1].lower()
+    return None
+
+
+def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 120) -> bool:
+    """Сжимает видео через ffmpeg: H.264, CRF 28, макс. 720p. Возвращает True при успехе."""
+    if not shutil.which("ffmpeg"):
+        logger.warning("ffmpeg не найден — сжатие видео пропущено")
+        return False
+    cmd = [
+        "ffmpeg", "-y", "-i", input_path,
+        "-vf", "scale='min(720,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+        "-c:v", "libx264", "-crf", "28", "-preset", "medium",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        output_path,
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+        return os.path.exists(output_path) and os.path.getsize(output_path) > 0
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+        logger.warning("Ошибка ffmpeg при сжатии видео: %s", e)
+        return False
+
+
+def _compress_video_local(path: str) -> bool:
+    """Сжимает видео по локальному пути. Перезаписывает файл, если результат меньше."""
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    if ext not in LEAD_VIDEO_EXTENSIONS:
+        return False
+    fd, out_path = tempfile.mkstemp(suffix=".mp4")
+    try:
+        os.close(fd)
+        if not _compress_video_ffmpeg(path, out_path):
+            return False
+        orig_size = os.path.getsize(path)
+        new_size = os.path.getsize(out_path)
+        if new_size < orig_size:
+            with open(out_path, "rb") as f:
+                with open(path, "wb") as w:
+                    w.write(f.read())
+            return True
+        return False
+    finally:
+        if os.path.exists(out_path):
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+
+
+def _compress_video_remote(lead) -> bool:
+    """Сжимает видео из S3/удалённого хранилища: скачать → ffmpeg → загрузить обратно."""
+    storage = lead.attachment.storage
+    name = lead.attachment.name
+    ext = _get_attachment_extension(lead.attachment)
+    if ext not in LEAD_VIDEO_EXTENSIONS:
+        return False
+    tmp_in = None
+    tmp_out = None
+    try:
+        with storage.open(name, "rb") as f:
+            data = f.read()
+        fd_in, tmp_in = tempfile.mkstemp(suffix="." + (ext or "mp4"))
+        os.write(fd_in, data)
+        os.close(fd_in)
+        fd_out, tmp_out = tempfile.mkstemp(suffix=".mp4")
+        os.close(fd_out)
+        if not _compress_video_ffmpeg(tmp_in, tmp_out):
+            return False
+        with open(tmp_out, "rb") as f:
+            compressed = f.read()
+        if len(compressed) >= len(data):
+            return False
+        try:
+            storage.delete(name)
+        except Exception:
+            pass
+        new_name = storage.save(name, ContentFile(compressed))
+        if new_name != name:
+            lead.attachment.name = new_name
+            lead.save(update_fields=["attachment"])
+        return True
+    except Exception as e:
+        logger.warning("Ошибка при сжатии видео (S3): %s", e)
+        return False
+    finally:
+        for p in (tmp_in, tmp_out):
+            if p and os.path.exists(p):
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+
+
 def compress_lead_attachment(lead) -> bool:
-    """Сжимает файл вложения лида, если это изображение. Перезаписывает файл на месте.
-    При хранении в S3 (нет локального path) сжатие не выполняется."""
+    """Сжимает файл вложения лида: изображения (PIL) или видео (ffmpeg).
+    Перезаписывает файл на месте. Для S3 — скачивает, сжимает, загружает обратно.
+    Возвращает True, если сжатие применено."""
     if not lead or not getattr(lead, "attachment", None) or not lead.attachment:
         return False
+
+    ext = _get_attachment_extension(lead.attachment)
+
+    # Видео — ffmpeg
+    if ext in LEAD_VIDEO_EXTENSIONS:
+        try:
+            path = lead.attachment.path
+            if path and os.path.exists(path):
+                return _compress_video_local(path)
+        except (AttributeError, NotImplementedError, OSError):
+            pass
+        return _compress_video_remote(lead)
+
+    # Изображения — PIL
     try:
         from PIL import Image
     except ImportError:
         return False
-
-    # Для S3-хранилищ (django-storages S3Storage) у файлов нет локального пути,
-    # свойство .path либо отсутствует, либо выбрасывает NotImplementedError.
-    # В этом случае просто пропускаем сжатие: файл уже лежит в бакете.
     try:
-        path = lead.attachment.path  # type: ignore[assignment]
+        path = lead.attachment.path
     except Exception:
         return False
     if not path or not os.path.exists(path):

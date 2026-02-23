@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import date, datetime, time, timedelta, timezone as dt_utc
 from zoneinfo import ZoneInfo
 
@@ -15,7 +16,13 @@ from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 
 from .forms import BaseRequestForm, LeadReportForm, LeadReworkUserForm, UserRegistrationForm
-from .lead_utils import compress_lead_attachment, determine_base_type_for_contact, normalize_lead_contact
+from .lead_utils import (
+    LEAD_VIDEO_EXTENSIONS,
+    _get_attachment_extension,
+    compress_lead_attachment,
+    determine_base_type_for_contact,
+    normalize_lead_contact,
+)
 from django.conf import settings
 
 from .models import BaseType, Contact, ContactRequest, Lead, SupportMessage, SupportThread, User, UserBaseLimit, WithdrawalRequest
@@ -173,7 +180,10 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
             "threads_updated_at": threads_agg["m"].isoformat() if threads_agg.get("m") else None,
         }
     else:
-        # Непрочитанные сообщения от поддержки, лиды, диалог пользователя (для перезагрузки при ответе админа)
+        if getattr(user, "status", None) != "approved":
+            data["rework_leads_count"] = 0
+        else:
+            data["rework_leads_count"] = Lead.objects.filter(user=user, status=Lead.Status.REWORK).count()
         thread = SupportThread.objects.filter(user=user).order_by("-updated_at").first()
         if thread:
             data["thread_updated_at"] = thread.updated_at.isoformat()
@@ -186,7 +196,6 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
         agg = Lead.objects.filter(user=user).aggregate(m=Max("updated_at"))
         if agg.get("m"):
             data["leads_updated_at"] = agg["m"].isoformat()
-        data["rework_leads_count"] = Lead.objects.filter(user=user, status=Lead.Status.REWORK).count()
     return JsonResponse(data)
 
 
@@ -560,7 +569,19 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
                         contact_qs = contact_qs.filter(base_type=lead.base_type)
                     lead.contact = contact_qs.first()
                     lead.save()
-                    compress_lead_attachment(lead)
+                    ext = _get_attachment_extension(lead.attachment)
+                    if ext in LEAD_VIDEO_EXTENSIONS:
+                        lead_id = lead.id
+                        def _compress_video_bg():
+                            try:
+                                l = Lead.objects.filter(pk=lead_id).select_related().first()
+                                if l and l.attachment:
+                                    compress_lead_attachment(l)
+                            except Exception as e:
+                                logger.warning("Фоновая компрессия видео (lead %s): %s", lead_id, e)
+                        threading.Thread(target=_compress_video_bg, daemon=True).start()
+                    else:
+                        compress_lead_attachment(lead)
                     messages.success(request, "Лид сохранён. Можете добавить ещё один.")
                     form = LeadReportForm()
                 except (OperationalError, ProgrammingError) as e:
@@ -680,7 +701,19 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                         lead.status = Lead.Status.PENDING
                         lead.rework_comment = ""
                         lead.save(update_fields=update_fields)
-                        compress_lead_attachment(lead)
+                        ext = _get_attachment_extension(lead.attachment) if lead.attachment else None
+                        if ext in LEAD_VIDEO_EXTENSIONS:
+                            lead_id = lead.id
+                            def _compress_rework_bg():
+                                try:
+                                    l = Lead.objects.filter(pk=lead_id).select_related().first()
+                                    if l and l.attachment:
+                                        compress_lead_attachment(l)
+                                except Exception as e:
+                                    logger.warning("Фоновая компрессия видео (rework lead %s): %s", lead_id, e)
+                            threading.Thread(target=_compress_rework_bg, daemon=True).start()
+                        else:
+                            compress_lead_attachment(lead)
                         messages.success(request, "Лид отправлен на повторную проверку.")
                         return redirect("leads_my_list")
                     except RuntimeError as e:

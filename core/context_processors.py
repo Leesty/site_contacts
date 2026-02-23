@@ -7,6 +7,8 @@ def rework_leads(request):
     """Количество лидов на доработке у текущего пользователя (для колокольчика)."""
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return {"rework_leads_count": 0}
+    if getattr(request.user, "status", None) != "approved":
+        return {"rework_leads_count": 0}
     if getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False):
         return {"rework_leads_count": 0}
     if getattr(request.user, "role", None) in ("support", "admin"):

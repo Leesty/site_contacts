@@ -55,20 +55,25 @@ def admin_users_pending(request: HttpRequest) -> HttpResponse:
         return HttpResponseForbidden("Недостаточно прав.")
 
     auto_approve_enabled = False
+    settings_error = None
     try:
         site_settings = SiteSettings.get_settings()
         auto_approve_enabled = site_settings.auto_approve_users
-    except Exception:
+    except Exception as e:
         site_settings = None
+        settings_error = str(e)
 
     if request.method == "POST":
-        if request.POST.get("action") == "toggle_auto_approve" and site_settings:
-            site_settings.auto_approve_users = not site_settings.auto_approve_users
-            site_settings.save(update_fields=["auto_approve_users"])
-            if site_settings.auto_approve_users:
-                messages.success(request, "Автоодобрение включено. Новые пользователи будут одобряться автоматически.")
+        if request.POST.get("action") == "toggle_auto_approve":
+            if site_settings:
+                site_settings.auto_approve_users = not site_settings.auto_approve_users
+                site_settings.save(update_fields=["auto_approve_users"])
+                if site_settings.auto_approve_users:
+                    messages.success(request, "Автоодобрение включено. Новые пользователи будут одобряться автоматически.")
+                else:
+                    messages.info(request, "Автоодобрение выключено.")
             else:
-                messages.info(request, "Автоодобрение выключено.")
+                messages.error(request, "Не удалось переключить: настройки сайта недоступны. Проверьте, что миграции применены: python manage.py migrate core")
             return redirect("admin_users_pending")
         
         user_id = request.POST.get("user_id")
@@ -92,6 +97,7 @@ def admin_users_pending(request: HttpRequest) -> HttpResponse:
         {
             "pending_users": pending_users,
             "auto_approve_enabled": auto_approve_enabled,
+            "settings_error": settings_error,
         },
     )
 
