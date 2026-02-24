@@ -47,7 +47,7 @@
                 <tr>
                   <td>#{{ lead.id }}</td>
                   <td>@{{ lead.user.username }}</td>
-                  <td class="text-break small">{{ lead.raw_contact|default:lead.contact.value|default:"—" }}</td>
+                  <td class="text-break small">{% if lead.raw_contact %}{{ lead.raw_contact }}{% elif lead.contact %}{{ lead.contact.value }}{% else %}—{% endif %}</td>
                   <td>{{ lead.lead_type.name|default:"—" }}</td>
                   <td>{{ lead.reviewed_at|date:"d.m.Y H:i"|default:"—" }}</td>
                   {% if tab == 'new' %}

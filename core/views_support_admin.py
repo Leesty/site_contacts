@@ -116,6 +116,17 @@ def standalone_admin_ss_leads(request: HttpRequest) -> HttpResponse:
     if not _require_standalone_admin(request):
         return HttpResponseForbidden("Недостаточно прав. Только роль «Самостоятельный админ».")
 
+    try:
+        return _standalone_admin_ss_leads_impl(request)
+    except (OperationalError, ProgrammingError) as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception("СС лиды: ошибка БД (миграция?): %s", e)
+        messages.error(request, "Ошибка базы данных. Убедитесь, что выполнена миграция: python manage.py migrate core")
+        return redirect("dashboard")
+
+
+def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
     tab = request.GET.get("tab", "new")
     if tab not in ("new", "rejected", "in_progress", "meeting"):
         tab = "new"
@@ -141,14 +152,18 @@ def standalone_admin_ss_leads(request: HttpRequest) -> HttpResponse:
                 messages.success(request, f"Лид #{lead_id} перемещён.")
         return redirect(reverse("standalone_admin_ss_leads") + f"?tab={tab}")
 
-    counts = base_qs.aggregate(
-        new=Count("id", filter=Q(ss_admin_status__isnull=True)),
-        rejected=Count("id", filter=Q(ss_admin_status="rejected")),
-        in_progress=Count("id", filter=Q(ss_admin_status="in_progress")),
-        meeting=Count("id", filter=Q(ss_admin_status="meeting")),
-    )
+    counts = {
+        "new": base_qs.filter(ss_admin_status__isnull=True).count(),
+        "rejected": base_qs.filter(ss_admin_status="rejected").count(),
+        "in_progress": base_qs.filter(ss_admin_status="in_progress").count(),
+        "meeting": base_qs.filter(ss_admin_status="meeting").count(),
+    }
     paginator = Paginator(leads, 30)
-    page_obj = paginator.get_page(request.GET.get("page", 1))
+    try:
+        page_num = int(request.GET.get("page", 1))
+    except (TypeError, ValueError):
+        page_num = 1
+    page_obj = paginator.get_page(page_num)
 
     return render(
         request,
