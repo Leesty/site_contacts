@@ -649,26 +649,37 @@ def leads_my_list(request: HttpRequest) -> HttpResponse:
     user = request.user
     if not _ensure_user_approved(request):
         return redirect("dashboard")
-    leads_qs = (
-        Lead.objects.filter(user=user)
-        .select_related("lead_type")
-        .order_by("-created_at")
-    )
-    paginator = Paginator(leads_qs, 30)
-    page_number = request.GET.get("page", 1)
-    page_obj = paginator.get_page(page_number)
-    lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
-    agg = Lead.objects.filter(user=user).aggregate(m=Max("updated_at"))
-    leads_updated_at = agg["m"].isoformat() if agg.get("m") else ""
-    return render(
-        request,
-        "core/leads_my_list.html",
-        {
-            "page_obj": page_obj,
-            "lead_approve_reward": lead_approve_reward,
-            "leads_updated_at": leads_updated_at,
-        },
-    )
+    try:
+        leads_qs = (
+            Lead.objects.filter(user=user)
+            .select_related("lead_type")
+            .order_by("-created_at")
+        )
+        paginator = Paginator(leads_qs, 30)
+        try:
+            page_number = int(request.GET.get("page", 1))
+        except (TypeError, ValueError):
+            page_number = 1
+        page_obj = paginator.get_page(page_number)
+        lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
+        agg = Lead.objects.filter(user=user).aggregate(m=Max("updated_at"))
+        leads_updated_at = agg.get("m").isoformat() if agg.get("m") else ""
+        return render(
+            request,
+            "core/leads_my_list.html",
+            {
+                "page_obj": page_obj,
+                "lead_approve_reward": lead_approve_reward,
+                "leads_updated_at": leads_updated_at,
+            },
+        )
+    except Exception as e:
+        logger.exception("leads_my_list: %s", e)
+        messages.error(
+            request,
+            "Ошибка загрузки лидов. Проверьте логи сервера. Если недавно применяли миграции — перезапустите приложение.",
+        )
+        return redirect("dashboard")
 
 
 @login_required

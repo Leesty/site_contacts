@@ -40,7 +40,7 @@
               <div class="flex-grow-1">
                 <span class="fw-medium">#{{ lead.id }}</span>
                 {% if lead.needs_team_contact %}<span class="badge bg-info text-dark ms-1" title="Связаться самим">СС</span>{% endif %}
-                {{ lead.lead_type.name|default:"" }}
+                {% if lead.lead_type %}{{ lead.lead_type.name }}{% endif %}
                 — {{ lead.raw_contact|default:"—"|truncatechars:40 }}
                 <span class="text-muted small">({{ lead.created_at|date:"d.m.Y H:i" }})</span>
                 {% if lead.status == 'pending' %}
