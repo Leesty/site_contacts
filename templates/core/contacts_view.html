@@ -53,17 +53,19 @@
               <tr>
                 <th style="width: 48px;"></th>
                 <th>Контакт</th>
+                <th style="width: 40px;" class="text-end" title="Скопировано"></th>
               </tr>
             </thead>
             <tbody>
               {% for contact in page_obj %}
-                <tr>
+                <tr class="contact-row" data-contact-value="{{ contact.value|default:'' }}">
                   <td>
                     <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-copy-contact" title="Скопировать" data-value="{{ contact.value|default:'' }}">
                       📋
                     </button>
                   </td>
-                  <td class="text-break">{{ contact.value }}</td>
+                  <td class="text-break user-select-none">{{ contact.value }}</td>
+                  <td class="text-end"><span class="js-copied-mark text-success" style="display:none;">✓</span></td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -94,14 +96,52 @@
     {% endif %}
   </div>
 
-  <p class="text-muted small mt-2">Клик по значку 📋 копирует контакт в буфер обмена.</p>
+  <p class="text-muted small mt-2">Клик по значку 📋 копирует один контакт в буфер обмена. ✓ — уже скопировали.</p>
 
+  <style>
+    .contact-row .user-select-none { -webkit-user-select: none; user-select: none; }
+  </style>
   <script>
-    document.querySelectorAll('.js-copy-contact').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var value = btn.getAttribute('data-value');
-        if (!value) return;
-        navigator.clipboard.writeText(value).then(function() {
+    (function() {
+      var STORAGE_KEY = 'contacts_copied';
+      function getCopied() {
+        try {
+          var s = sessionStorage.getItem(STORAGE_KEY);
+          return s ? JSON.parse(s) : {};
+        } catch (e) { return {}; }
+      }
+      function setCopied(value) {
+        try {
+          var o = getCopied();
+          o[value] = true;
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(o));
+        } catch (e) {}
+      }
+      function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(text);
+        }
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+          document.execCommand('copy');
+          return Promise.resolve();
+        } catch (e) {
+          return Promise.reject(e);
+        } finally {
+          document.body.removeChild(ta);
+        }
+      }
+      function markRowCopied(row, value) {
+        setCopied(value);
+        var mark = row.querySelector('.js-copied-mark');
+        if (mark) { mark.style.display = ''; }
+        var btn = row.querySelector('.js-copy-contact');
+        if (btn) {
           var orig = btn.textContent;
           btn.textContent = '✓';
           btn.classList.remove('btn-outline-secondary');
@@ -110,9 +150,28 @@
             btn.textContent = orig;
             btn.classList.remove('btn-outline-success');
             btn.classList.add('btn-outline-secondary');
-          }, 800);
+          }, 600);
+        }
+      }
+      document.querySelectorAll('.contact-row').forEach(function(row) {
+        var value = row.getAttribute('data-contact-value');
+        if (value && getCopied()[value]) {
+          var m = row.querySelector('.js-copied-mark');
+          if (m) m.style.display = '';
+        }
+      });
+      document.querySelectorAll('.js-copy-contact').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var value = btn.getAttribute('data-value');
+          if (!value) return;
+          var row = btn.closest('.contact-row');
+          copyToClipboard(value).then(function() {
+            if (row) markRowCopied(row, value);
+          });
         });
       });
-    });
+    })();
   </script>
 {% endblock %}

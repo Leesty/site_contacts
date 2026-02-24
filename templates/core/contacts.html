@@ -43,14 +43,48 @@
     <h2 class="h5 mt-4">Выданные контакты</h2>
     <p class="mb-2">
       <a class="btn btn-outline-primary btn-sm" href="{% url 'download_my_contacts_txt' %}?base_type={{ selected_base.pk }}">Скачать .txt</a>
+      <a class="btn btn-outline-primary btn-sm ms-1" href="{% url 'contacts_view' %}{% if selected_base %}?base_type={{ selected_base.pk }}{% endif %}">Смотреть в таблице</a>
     </p>
     <ul class="list-group mt-2">
       {% for contact in allocated_contacts %}
-        <li class="list-group-item">
-          {{ contact.value }}
+        <li class="list-group-item d-flex align-items-center gap-2 contact-row" data-contact-value="{{ contact.value|default:'' }}">
+          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-copy-contact flex-shrink-0" title="Скопировать" data-value="{{ contact.value|default:'' }}">📋</button>
+          <span class="text-break flex-grow-1 user-select-none">{{ contact.value }}</span>
+          <span class="js-copied-mark text-success flex-shrink-0" style="display:none;">✓</span>
         </li>
       {% endfor %}
     </ul>
+    <p class="text-muted small mt-1">Клик по 📋 — копирует один контакт.</p>
+    <style>.user-select-none { -webkit-user-select: none; user-select: none; }</style>
+    <script>
+    (function() {
+      var STORAGE_KEY = 'contacts_copied';
+      function getCopied() { try { var s = sessionStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : {}; } catch (e) { return {}; } }
+      function setCopied(value) { try { var o = getCopied(); o[value] = true; sessionStorage.setItem(STORAGE_KEY, JSON.stringify(o)); } catch (e) {} }
+      function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+        var ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        try { document.execCommand('copy'); return Promise.resolve(); } catch (e) { return Promise.reject(e); } finally { document.body.removeChild(ta); }
+      }
+      document.querySelectorAll('.contact-row').forEach(function(row) {
+        var value = row.getAttribute('data-contact-value');
+        if (value && getCopied()[value]) { var m = row.querySelector('.js-copied-mark'); if (m) m.style.display = ''; }
+      });
+      document.querySelectorAll('.js-copy-contact').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.preventDefault(); e.stopPropagation();
+          var value = btn.getAttribute('data-value'); if (!value) return;
+          var row = btn.closest('.contact-row');
+          copyToClipboard(value).then(function() {
+            setCopied(value); var m = row.querySelector('.js-copied-mark'); if (m) m.style.display = '';
+            var orig = btn.textContent; btn.textContent = '✓'; btn.classList.replace('btn-outline-secondary', 'btn-outline-success');
+            setTimeout(function() { btn.textContent = orig; btn.classList.replace('btn-outline-success', 'btn-outline-secondary'); }, 600);
+          });
+        });
+      });
+    })();
+    </script>
   {% endif %}
 
   {% if issued_by_base %}
