@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Самостоятельный админ — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="mb-3">
+    <h1 class="h4 mb-1">Самостоятельный админ</h1>
+    <p class="text-muted small mb-0">
+      Добро пожаловать, {{ user.username }}. Работа с СС-лидами (связаться самим).
+    </p>
+  </div>
+
+  <div class="row">
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="card-icon mb-2">📋</div>
+          <h2 class="h5 mb-2">СС лиды</h2>
+          <p class="text-muted small mb-3">
+            Одобренные лиды с пометкой «Связаться самим». Распределяйте по категориям: Новые, Отказ, В работе, Встреча.
+          </p>
+          <a class="btn btn-outline-primary" href="{% url 'standalone_admin_ss_leads' %}">Перейти</a>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

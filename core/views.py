@@ -89,8 +89,10 @@ def register(request: HttpRequest) -> HttpResponse:
 
 
 def _is_admin(user) -> bool:
-    """Пользователь — сотрудник поддержки или администратор."""
+    """Пользователь — сотрудник поддержки или администратор (не standalone)."""
     if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "role", None) == "standalone_admin":
         return False
     return bool(
         user.is_staff
@@ -99,10 +101,17 @@ def _is_admin(user) -> bool:
     )
 
 
+def _is_standalone_admin(user) -> bool:
+    """Пользователь — самостоятельный админ (СС лиды)."""
+    return getattr(user, "role", None) == "standalone_admin"
+
+
 @login_required
 def dashboard(request: HttpRequest) -> HttpResponse:
-    """Главная страница кабинета: для админов — админ-дашборд, для пользователей — обычный."""
+    """Главная страница кабинета: для админов — админ-дашборд, для standalone — свой, для пользователей — обычный."""
     user = request.user
+    if _is_standalone_admin(user):
+        return render(request, "core/dashboard_standalone_admin.html", {"user": user})
     if _is_admin(user):
         pending_count = User.objects.filter(status=User.Status.PENDING).count()
         unread_threads_count = SupportThread.objects.filter(

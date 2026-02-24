@@ -47,6 +47,14 @@ def _require_support(request: HttpRequest) -> bool:
     return False
 
 
+def _require_standalone_admin(request: HttpRequest) -> bool:
+    """Только роль «Самостоятельный админ». Выдаётся только суперадмином."""
+    user = request.user
+    if not user.is_authenticated:
+        return False
+    return getattr(user, "role", None) == "standalone_admin"
+
+
 @login_required
 def admin_users_pending(request: HttpRequest) -> HttpResponse:
     """Список новых пользователей со статусом pending с кнопками одобрения/бана."""
@@ -98,6 +106,57 @@ def admin_users_pending(request: HttpRequest) -> HttpResponse:
             "pending_users": pending_users,
             "auto_approve_enabled": auto_approve_enabled,
             "settings_error": settings_error,
+        },
+    )
+
+
+@login_required
+def standalone_admin_ss_leads(request: HttpRequest) -> HttpResponse:
+    """Страница самостоятельного админа: одобренные СС-лиды с выбором статуса."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав. Только роль «Самостоятельный админ».")
+
+    tab = request.GET.get("tab", "new")
+    if tab not in ("new", "rejected", "in_progress", "meeting"):
+        tab = "new"
+
+    base_qs = Lead.objects.filter(
+        status=Lead.Status.APPROVED,
+        needs_team_contact=True,
+    ).select_related("user", "lead_type", "base_type")
+
+    if tab == "new":
+        leads = base_qs.filter(ss_admin_status__isnull=True).order_by("-reviewed_at", "-id")
+    else:
+        leads = base_qs.filter(ss_admin_status=tab).order_by("-updated_at", "-id")
+
+    if request.method == "POST":
+        lead_id = request.POST.get("lead_id")
+        new_status = request.POST.get("ss_admin_status")
+        if lead_id and new_status in ("rejected", "in_progress", "meeting", ""):
+            lead = base_qs.filter(pk=lead_id).first()
+            if lead:
+                lead.ss_admin_status = new_status or None
+                lead.save(update_fields=["ss_admin_status", "updated_at"])
+                messages.success(request, f"Лид #{lead_id} перемещён.")
+        return redirect(reverse("standalone_admin_ss_leads") + f"?tab={tab}")
+
+    counts = base_qs.aggregate(
+        new=Count("id", filter=Q(ss_admin_status__isnull=True)),
+        rejected=Count("id", filter=Q(ss_admin_status="rejected")),
+        in_progress=Count("id", filter=Q(ss_admin_status="in_progress")),
+        meeting=Count("id", filter=Q(ss_admin_status="meeting")),
+    )
+    paginator = Paginator(leads, 30)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    return render(
+        request,
+        "core/standalone_admin_ss_leads.html",
+        {
+            "page_obj": page_obj,
+            "tab": tab,
+            "counts": counts,
         },
     )
 

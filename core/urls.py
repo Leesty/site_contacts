@@ -76,6 +76,11 @@ urlpatterns = [
         name="admin_site_settings",
     ),
     path(
+        "staff/standalone/ss-leads/",
+        views_support_admin.standalone_admin_ss_leads,
+        name="standalone_admin_ss_leads",
+    ),
+    path(
         "staff/users/<int:user_id>/leads/",
         views_support_admin.admin_user_leads_list,
         name="admin_user_leads_list",

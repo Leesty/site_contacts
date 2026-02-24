@@ -13,6 +13,19 @@ class UserAdmin(admin.ModelAdmin):
     ordering = ("username",)
     actions = ("mark_approved", "mark_banned", "mark_unbanned", "clear_contact_limits")
 
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        if db_field.name == "role" and not request.user.is_superuser:
+            choices = list(kwargs.get("choices", []))
+            kwargs["choices"] = [(k, v) for k, v in choices if k != models.User.Role.STANDALONE_ADMIN]
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if obj.role == models.User.Role.STANDALONE_ADMIN and not request.user.is_superuser:
+            from django.contrib import messages
+            messages.error(request, "Роль «Самостоятельный админ» выдаётся только суперпользователем.")
+            obj.role = form.initial.get("role") or models.User.Role.USER
+        super().save_model(request, obj, form, change)
+
     @admin.action(description="Одобрить выбранных пользователей")
     def mark_approved(self, request, queryset):
         queryset.update(status=models.User.Status.APPROVED)
@@ -60,8 +73,8 @@ class LeadTypeAdmin(admin.ModelAdmin):
 
 @admin.register(models.Lead)
 class LeadAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "lead_type", "base_type", "status", "contact", "created_at")
-    list_filter = ("lead_type", "base_type", "status", "created_at")
+    list_display = ("id", "user", "lead_type", "base_type", "status", "ss_admin_status", "contact", "created_at")
+    list_filter = ("lead_type", "base_type", "status", "ss_admin_status", "created_at")
     search_fields = ("user__username", "user__email", "contact__value", "source")
 
 

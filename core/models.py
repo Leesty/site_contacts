@@ -25,6 +25,7 @@ class User(AbstractUser):
         USER = "user", "Пользователь"
         SUPPORT = "support", "Поддержка"
         ADMIN = "admin", "Администратор"
+        STANDALONE_ADMIN = "standalone_admin", "Самостоятельный админ"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Ожидает одобрения"
@@ -278,6 +279,17 @@ class Lead(TimeStampedModel):
     needs_team_contact = models.BooleanField(
         default=False,
         help_text="Пометка «Связаться самим» — команда должна связаться с контактом.",
+    )
+    ss_admin_status = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        choices=(
+            ("rejected", "Отказ"),
+            ("in_progress", "В работе"),
+            ("meeting", "Встреча"),
+        ),
+        help_text="Статус для самостоятельного админа (только одобренные СС-лиды).",
     )
 
     class Meta:

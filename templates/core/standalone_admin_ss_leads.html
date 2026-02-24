@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}СС лиды — Самостоятельный админ{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">СС лиды (Связаться самим)</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Одобренные обычным админом лиды с пометкой «СС». Распределяйте по категориям.
+  </p>
+
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new">Новые ({{ counts.new|default:0 }})</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отказ ({{ counts.rejected|default:0 }})</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'in_progress' %}active{% endif %}" href="?tab=in_progress">В работе ({{ counts.in_progress|default:0 }})</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'meeting' %}active{% endif %}" href="?tab=meeting">Встреча ({{ counts.meeting|default:0 }})</a>
+    </li>
+  </ul>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      {% if page_obj %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Пользователь</th>
+                <th>Контакт</th>
+                <th>Тип</th>
+                <th>Одобрен</th>
+                {% if tab == 'new' %}<th style="width: 200px;">Куда отправить</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for lead in page_obj %}
+                <tr>
+                  <td>#{{ lead.id }}</td>
+                  <td>@{{ lead.user.username }}</td>
+                  <td class="text-break small">{{ lead.raw_contact|default:lead.contact.value|default:"—" }}</td>
+                  <td>{{ lead.lead_type.name|default:"—" }}</td>
+                  <td>{{ lead.reviewed_at|date:"d.m.Y H:i"|default:"—" }}</td>
+                  {% if tab == 'new' %}
+                  <td>
+                    <form method="post" class="d-flex align-items-center gap-1">
+                      {% csrf_token %}
+                      <input type="hidden" name="lead_id" value="{{ lead.id }}">
+                      <select name="ss_admin_status" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">— выбрать —</option>
+                        <option value="rejected">Отказ</option>
+                        <option value="in_progress">В работе</option>
+                        <option value="meeting">Встреча</option>
+                      </select>
+                      <button type="submit" class="btn btn-outline-primary btn-sm py-0 px-1">→</button>
+                    </form>
+                  </td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if page_obj.paginator.num_pages > 1 %}
+          <div class="card-footer border-secondary d-flex justify-content-center py-2">
+            <nav>
+              <ul class="pagination pagination-sm mb-0">
+                {% if page_obj.has_previous %}
+                  <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                  <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>
+                {% endif %}
+              </ul>
+            </nav>
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="text-muted p-4 mb-0 text-center">
+          {% if tab == 'new' %}Нет новых СС-лидов.{% elif tab == 'rejected' %}Нет лидов в «Отказ».{% elif tab == 'in_progress' %}Нет лидов «В работе».{% else %}Нет лидов «Встреча».{% endif %}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
