@@ -494,6 +494,7 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
     """Одобрить лид: начислить пользователю LEAD_APPROVE_REWARD руб., статус — одобрен."""
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
+    from .models import LeadReviewLog
     with transaction.atomic():
         lead = Lead.objects.select_for_update().filter(pk=lead_id, user_id=user_id).select_related("user").first()
         if not lead:
@@ -512,6 +513,7 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         lead.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
         lead.user.balance = (getattr(lead.user, "balance", 0) or 0) + LEAD_APPROVE_REWARD
         lead.user.save(update_fields=["balance"])
+        LeadReviewLog.objects.create(lead=lead, admin=request.user, action=LeadReviewLog.Action.APPROVED)
     msg = f"Лид #{lead_id} одобрен. Пользователю начислено {LEAD_APPROVE_REWARD} руб."
     messages.success(request, msg)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -529,6 +531,7 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
     """Отклонить лид — форма с причиной отклонения. Поддерживает и одобренные: списывает баланс."""
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
+    from .models import LeadReviewLog
     lead = get_object_or_404(Lead, pk=lead_id, user_id=user_id)
     if request.method == "POST":
         form = LeadRejectForm(request.POST)
@@ -546,6 +549,7 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                     reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
                     lead_refresh.user.balance = max(0, (lead_refresh.user.balance or 0) - reward)
                     lead_refresh.user.save(update_fields=["balance"])
+                LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REJECTED)
             messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
             next_url = request.GET.get("next") or request.POST.get("next")
@@ -566,6 +570,7 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
     """Отправить лид на доработку — форма с указанием, что доработать. Поддерживает одобренные: списывает баланс."""
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
+    from .models import LeadReviewLog
     lead = get_object_or_404(Lead, pk=lead_id, user_id=user_id)
     if request.method == "POST":
         form = LeadReworkForm(request.POST)
@@ -583,6 +588,7 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                     reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
                     lead_refresh.user.balance = max(0, (lead_refresh.user.balance or 0) - reward)
                     lead_refresh.user.save(update_fields=["balance"])
+                LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REWORK)
             messages.success(request, f"Лид #{lead_id} отправлен на доработку." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
             next_url = request.GET.get("next") or request.POST.get("next")
@@ -906,19 +912,19 @@ def admin_stats(request: HttpRequest) -> HttpResponse:
             })
 
     # Кто проверял лиды: сводка по админам (одобрено / отклонено / на доработку)
+    from .models import LeadReviewLog
     reviewed_qs = (
-        Lead.objects.filter(reviewed_by__isnull=False)
-        .values("reviewed_by__username", "reviewed_by__id")
+        LeadReviewLog.objects.values("admin__username", "admin__id")
         .annotate(
-            approved=Count("id", filter=Q(status=Lead.Status.APPROVED)),
-            rejected=Count("id", filter=Q(status=Lead.Status.REJECTED)),
-            rework=Count("id", filter=Q(status=Lead.Status.REWORK)),
+            approved=Count("id", filter=Q(action=LeadReviewLog.Action.APPROVED)),
+            rejected=Count("id", filter=Q(action=LeadReviewLog.Action.REJECTED)),
+            rework=Count("id", filter=Q(action=LeadReviewLog.Action.REWORK)),
         )
     )
     reviewed_by_stats = [
         {
-            "username": x["reviewed_by__username"] or "—",
-            "user_id": x["reviewed_by__id"],
+            "username": x["admin__username"] or "—",
+            "user_id": x["admin__id"],
             "approved": x["approved"],
             "rejected": x["rejected"],
             "rework": x["rework"],

@@ -300,6 +300,36 @@ class Lead(TimeStampedModel):
         return f"Лид #{self.pk} от {self.user}"
 
 
+class LeadReviewLog(TimeStampedModel):
+    """История модерации лида: одобрен / отклонён / отправлен на доработку."""
+
+    class Action(models.TextChoices):
+        APPROVED = "approved", "Одобрено"
+        REJECTED = "rejected", "Отклонено"
+        REWORK = "rework", "На доработку"
+
+    lead = models.ForeignKey(
+        Lead,
+        on_delete=models.CASCADE,
+        related_name="review_logs",
+    )
+    admin = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lead_review_logs",
+    )
+    action = models.CharField(max_length=20, choices=Action.choices)
+
+    class Meta:
+        verbose_name = "Событие модерации лида"
+        verbose_name_plural = "События модерации лидов"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.lead_id}: {self.get_action_display()} ({self.created_at})"
+
+
 class SupportThread(TimeStampedModel):
     """Диалог пользователя с поддержкой (аналог топика в SUPPORT_GROUP_ID)."""
 

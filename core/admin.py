@@ -78,6 +78,13 @@ class LeadAdmin(admin.ModelAdmin):
     search_fields = ("user__username", "user__email", "contact__value", "source")
 
 
+@admin.register(models.LeadReviewLog)
+class LeadReviewLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "lead", "admin", "action", "created_at")
+    list_filter = ("action", "created_at")
+    search_fields = ("lead__id", "admin__username")
+
+
 @admin.register(models.SupportThread)
 class SupportThreadAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "is_closed", "last_read_at", "created_at", "updated_at")
