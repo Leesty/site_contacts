@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load support_extras %}
 
 {% block title %}СС лиды — Самостоятельный админ{% endblock %}
 
@@ -39,7 +40,8 @@
                 <th>Контакт</th>
                 <th>Тип</th>
                 <th>Одобрен</th>
-                {% if tab == 'new' %}<th style="width: 200px;">Куда отправить</th>{% endif %}
+                <th>Вложение</th>
+                <th style="width: 220px;">Статус / Переместить</th>
               </tr>
             </thead>
             <tbody>
@@ -50,21 +52,40 @@
                   <td class="text-break small">{% if lead.raw_contact %}{{ lead.raw_contact }}{% elif lead.contact %}{{ lead.contact.value }}{% else %}—{% endif %}</td>
                   <td>{{ lead.lead_type.name|default:"—" }}</td>
                   <td>{{ lead.reviewed_at|date:"d.m.Y H:i"|default:"—" }}</td>
-                  {% if tab == 'new' %}
+                  <td>
+                    {% if lead.attachment %}
+                      {% if lead.attachment|lead_attachment_is_video %}
+                        <button type="button"
+                                class="btn btn-outline-primary btn-sm js-video-preview"
+                                data-video-url="{% url 'standalone_admin_lead_attachment' lead.id %}"
+                                data-lead-id="{{ lead.id }}">
+                          Видео
+                        </button>
+                      {% else %}
+                        <a href="{% url 'standalone_admin_lead_attachment' lead.id %}"
+                           target="_blank"
+                           rel="noopener"
+                           class="btn btn-outline-primary btn-sm">
+                          Открыть
+                        </a>
+                      {% endif %}
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
                   <td>
                     <form method="post" class="d-flex align-items-center gap-1">
                       {% csrf_token %}
                       <input type="hidden" name="lead_id" value="{{ lead.id }}">
                       <select name="ss_admin_status" class="form-select form-select-sm" style="width: auto;">
-                        <option value="">— выбрать —</option>
-                        <option value="rejected">Отказ</option>
-                        <option value="in_progress">В работе</option>
-                        <option value="meeting">Встреча</option>
+                        <option value="" {% if not lead.ss_admin_status %}selected{% endif %}>Новые</option>
+                        <option value="rejected" {% if lead.ss_admin_status == 'rejected' %}selected{% endif %}>Отказ</option>
+                        <option value="in_progress" {% if lead.ss_admin_status == 'in_progress' %}selected{% endif %}>В работе</option>
+                        <option value="meeting" {% if lead.ss_admin_status == 'meeting' %}selected{% endif %}>Встреча</option>
                       </select>
                       <button type="submit" class="btn btn-outline-primary btn-sm py-0 px-1">→</button>
                     </form>
                   </td>
-                  {% endif %}
                 </tr>
               {% endfor %}
             </tbody>
@@ -92,4 +113,54 @@
       {% endif %}
     </div>
   </div>
+
+  <div class="modal fade" id="videoPreviewModal" tabindex="-1" aria-labelledby="videoPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark">
+        <div class="modal-header border-secondary py-2">
+          <h6 class="modal-title" id="videoPreviewModalLabel">Видео лида #<span id="videoLeadId"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body p-0">
+          <video id="videoPreviewPlayer" controls preload="none" style="width: 100%; max-height: 70vh;">
+            Ваш браузер не поддерживает видео.
+          </video>
+        </div>
+        <div class="modal-footer border-secondary py-2">
+          <a id="videoDownloadLink" href="#" target="_blank" class="btn btn-outline-primary btn-sm">Открыть в новой вкладке</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function() {
+    var modal = document.getElementById('videoPreviewModal');
+    var video = document.getElementById('videoPreviewPlayer');
+    var leadIdSpan = document.getElementById('videoLeadId');
+    var downloadLink = document.getElementById('videoDownloadLink');
+
+    document.querySelectorAll('.js-video-preview').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var url = btn.getAttribute('data-video-url');
+        var leadId = btn.getAttribute('data-lead-id');
+        if (video && url) {
+          video.src = url;
+          leadIdSpan.textContent = leadId;
+          downloadLink.href = url;
+          var bsModal = new bootstrap.Modal(modal);
+          bsModal.show();
+        }
+      });
+    });
+
+    if (modal) {
+      modal.addEventListener('hidden.bs.modal', function() {
+        if (video) {
+          video.pause();
+          video.src = '';
+        }
+      });
+    }
+  })();
+  </script>
 {% endblock %}

@@ -81,6 +81,11 @@ urlpatterns = [
         name="standalone_admin_ss_leads",
     ),
     path(
+        "staff/standalone/leads/<int:lead_id>/attachment/",
+        views_support_admin.standalone_admin_lead_attachment,
+        name="standalone_admin_lead_attachment",
+    ),
+    path(
         "staff/users/<int:user_id>/leads/",
         views_support_admin.admin_user_leads_list,
         name="admin_user_leads_list",

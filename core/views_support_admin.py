@@ -631,6 +631,46 @@ def admin_lead_attachment(request: HttpRequest, user_id: int, lead_id: int) -> H
 
 
 @login_required
+def standalone_admin_lead_attachment(request: HttpRequest, lead_id: int) -> HttpResponse:
+    """Отдаёт вложение лида для самостоятельного админа (только одобренные СС-лиды)."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    import logging
+    lead = get_object_or_404(
+        Lead,
+        pk=lead_id,
+        needs_team_contact=True,
+        status=Lead.Status.APPROVED,
+    )
+    if not lead.attachment:
+        return HttpResponseForbidden("У этого лида нет вложения.")
+    try:
+        f = lead.attachment.open("rb")
+    except OSError as e:
+        logging.getLogger(__name__).warning(
+            "Standalone lead attachment missing on disk: lead_id=%s user_id=%s path=%s err=%s",
+            lead_id,
+            lead.user_id,
+            lead.attachment.name,
+            e,
+        )
+        username = getattr(lead.user, "username", "id:%s" % lead.user_id)
+        html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Файл недоступен</title></head><body style='font-family:sans-serif;padding:2rem;'>"
+            "<h1>Файл не найден</h1>"
+            "<p>Вложение этого отчёта в базе есть, но файл на сервере отсутствует. Обычно так бывает, если файл был загружен до настройки S3 и потерялся при обновлении/редеплое сервера.</p>"
+            "<p><strong>Что сделать:</strong> попросите пользователя <strong>%s</strong> заново загрузить скриншот или видео через «Мои лиды» → доработка отчёта.</p>"
+            "<p>После настройки S3 в админке (Настройки хранилища медиа) новые загрузки не будут теряться при редеплое.</p>"
+            "<p><a href='javascript:history.back()'>← Назад</a></p></body></html>"
+        ) % (username,)
+        return HttpResponse(html, status=404, content_type="text/html; charset=utf-8")
+    filename = lead.attachment.name.split("/")[-1] if lead.attachment.name else "attachment"
+    response = FileResponse(f, as_attachment=False)
+    response["Content-Disposition"] = f'inline; filename="{filename}"'
+    return response
+
+
+@login_required
 def admin_user_leads_export(request: HttpRequest, user_id: int, period: str) -> HttpResponse:
     """Выгрузка лидов пользователя за сегодня, вчера или все (Excel). В колонке «Скриншот» — ссылка на файл."""
     if not _require_support(request):
