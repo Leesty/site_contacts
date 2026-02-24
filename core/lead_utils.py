@@ -180,17 +180,32 @@ def _get_ffmpeg_path() -> str | None:
 
 
 def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 180) -> bool:
-    """Сжимает видео через ffmpeg: H.264, CRF 36, макс. 480p. Режим для чтения текста/букв (~7x сжатие)."""
+    """Сжимает видео через ffmpeg: H.264, CRF 30, макс. 720p. Мягкое сжатие (~3x)."""
     ffmpeg_exe = _get_ffmpeg_path()
     if not ffmpeg_exe:
         logger.warning("ffmpeg не найден (imageio-ffmpeg или системный) — сжатие видео пропущено")
         return False
     cmd = [
-        ffmpeg_exe, "-y", "-i", input_path,
-        "-vf", "scale='min(480,iw)':'min(480,ih)':force_original_aspect_ratio=decrease",
-        "-c:v", "libx264", "-crf", "36", "-preset", "slow",
-        "-c:a", "aac", "-b:a", "64k", "-ac", "1",
-        "-movflags", "+faststart",
+        ffmpeg_exe,
+        "-y",
+        "-i",
+        input_path,
+        "-vf",
+        "scale='min(720,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+        "-c:v",
+        "libx264",
+        "-crf",
+        "30",
+        "-preset",
+        "medium",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "96k",
+        "-ac",
+        "1",
+        "-movflags",
+        "+faststart",
         output_path,
     ]
     try:
