@@ -11,7 +11,12 @@ load_dotenv(os.getenv("WEB_DOTENV_PATH", BASE_DIR.parent / ".env"))
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key-change-in-prod")
 
-DEBUG = os.getenv("DJANGO_DEBUG", "True") == "True"
+DEBUG = os.getenv("DJANGO_DEBUG", "False") == "True"
+
+if not DEBUG and SECRET_KEY == "dev-secret-key-change-in-prod":
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY не задан! Укажите надёжный секретный ключ через переменную окружения."
+    )
 
 ALLOWED_HOSTS: list[str] = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 
@@ -185,7 +190,8 @@ _DATA_UPLOAD_MAX = 33 * 1024 * 1024  # 33 МБ, чтобы 30 МБ файл пр
 DATA_UPLOAD_MAX_MEMORY_SIZE = _DATA_UPLOAD_MAX
 FILE_UPLOAD_MAX_MEMORY_SIZE = _DATA_UPLOAD_MAX
 
-# Рекомендации для продакшена (см. SECURITY.md):
-# - DEBUG = False, задать SECRET_KEY и ALLOWED_HOSTS из окружения
-# - Включить валидаторы паролей: AUTH_PASSWORD_VALIDATORS с PasswordValidator
-# - При HTTPS: SESSION_COOKIE_SECURE = True, CSRF_COOKIE_SECURE = True
+# Безопасность при HTTPS (продакшен за прокси)
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

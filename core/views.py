@@ -1,5 +1,5 @@
 import logging
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone as dt_utc
 from zoneinfo import ZoneInfo
 
@@ -28,6 +28,8 @@ from django.conf import settings
 from .models import BaseType, Contact, ContactRequest, Lead, SupportMessage, SupportThread, User, UserBaseLimit, WithdrawalRequest
 
 logger = logging.getLogger(__name__)
+
+_bg_executor = ThreadPoolExecutor(max_workers=4)
 
 
 def health_check(request: HttpRequest) -> HttpResponse:
@@ -208,8 +210,9 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
     return JsonResponse(data)
 
 
+@require_http_methods(["POST"])
 def logout_view(request: HttpRequest) -> HttpResponse:
-    """Простой logout по GET с редиректом на главную."""
+    """Logout по POST (защита от CSRF-атак через GET)."""
     logout(request)
     return redirect("index")
 
@@ -251,29 +254,31 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
         )
         total_allowed = base_limit + extra_limit
 
-        current = Contact.objects.filter(base_type=selected_base, assigned_to=user).count()
-        if current >= total_allowed:
-            reason = "already_got"
-        else:
-            can_give = total_allowed - current
-            # Ищем свободные контакты
-            free_qs = (
-                Contact.objects.select_for_update()
-                .filter(base_type=selected_base, assigned_to__isnull=True, is_active=True)
-                .order_by("id")
-            )
-
-            with transaction.atomic():
+        with transaction.atomic():
+            current = Contact.objects.filter(base_type=selected_base, assigned_to=user).count()
+            if current >= total_allowed:
+                reason = "already_got"
+            else:
+                can_give = total_allowed - current
+                free_qs = (
+                    Contact.objects.select_for_update()
+                    .filter(base_type=selected_base, assigned_to__isnull=True, is_active=True)
+                    .order_by("id")
+                )
                 free_count = free_qs.count()
                 if free_count < can_give:
                     reason = "not_enough"
                 else:
                     now = timezone.now()
                     contacts_to_give = list(free_qs[:can_give])
+                    ids = [c.pk for c in contacts_to_give]
+                    Contact.objects.filter(pk__in=ids).update(
+                        assigned_to=user, assigned_at=now
+                    )
+                    # Обновляем объекты в памяти для отображения в шаблоне
                     for c in contacts_to_give:
                         c.assigned_to = user
                         c.assigned_at = now
-                        c.save(update_fields=["assigned_to", "assigned_at", "updated_at"])
                     allocated_contacts = contacts_to_give
 
         if allocated_contacts:
@@ -359,19 +364,11 @@ def contacts_view(request: HttpRequest) -> HttpResponse:
     )
 
 
+@login_required
 def download_my_contacts_txt(request: HttpRequest) -> HttpResponse:
     """Скачать выданные пользователю контакты в виде .txt (один контакт на строку).
-    Группировка по дням выдачи. GET: base_type — только эта база; date — YYYY-MM-DD за один день.
-    При неавторизованном доступе возвращаем 401 с текстом, а не редирект на логин — иначе при
-    сохранении ссылки как файла пользователь получает HTML страницы входа вместо данных."""
+    Группировка по дням выдачи. GET: base_type — только эта база; date — YYYY-MM-DD за один день."""
     from collections import OrderedDict
-
-    if not request.user.is_authenticated:
-        return HttpResponse(
-            "Требуется вход в аккаунт. Откройте сайт, войдите и снова нажмите «Скачать .txt» на странице контактов.",
-            status=401,
-            content_type="text/plain; charset=utf-8",
-        )
 
     user = request.user
     if not _ensure_user_approved(request):
@@ -581,14 +578,14 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
                     ext = _get_attachment_extension(lead.attachment)
                     if ext in LEAD_VIDEO_EXTENSIONS:
                         lead_id = lead.id
-                        def _compress_video_bg():
+                        def _compress_video_bg(lid=lead_id):
                             try:
-                                l = Lead.objects.filter(pk=lead_id).select_related().first()
+                                l = Lead.objects.filter(pk=lid).select_related().first()
                                 if l and l.attachment:
                                     compress_lead_attachment(l)
                             except Exception as e:
-                                logger.warning("Фоновая компрессия видео (lead %s): %s", lead_id, e)
-                        threading.Thread(target=_compress_video_bg, daemon=True).start()
+                                logger.warning("Фоновая компрессия видео (lead %s): %s", lid, e)
+                        _bg_executor.submit(_compress_video_bg)
                     else:
                         compress_lead_attachment(lead)
                     messages.success(request, "Лид сохранён. Можете добавить ещё один.")
@@ -724,14 +721,14 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                         ext = _get_attachment_extension(lead.attachment) if lead.attachment else None
                         if ext in LEAD_VIDEO_EXTENSIONS:
                             lead_id = lead.id
-                            def _compress_rework_bg():
+                            def _compress_rework_bg(lid=lead_id):
                                 try:
-                                    l = Lead.objects.filter(pk=lead_id).select_related().first()
+                                    l = Lead.objects.filter(pk=lid).select_related().first()
                                     if l and l.attachment:
                                         compress_lead_attachment(l)
                                 except Exception as e:
-                                    logger.warning("Фоновая компрессия видео (rework lead %s): %s", lead_id, e)
-                            threading.Thread(target=_compress_rework_bg, daemon=True).start()
+                                    logger.warning("Фоновая компрессия видео (rework lead %s): %s", lid, e)
+                            _bg_executor.submit(_compress_rework_bg)
                         else:
                             compress_lead_attachment(lead)
                         messages.success(request, "Лид отправлен на повторную проверку.")

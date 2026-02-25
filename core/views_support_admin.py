@@ -849,20 +849,19 @@ def admin_stats(request: HttpRequest) -> HttpResponse:
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
 
-    # Статистика по базам
-    base_stats = []
-    for base in BaseType.objects.all().order_by("order"):
-        total = Contact.objects.filter(base_type=base).count()
-        free = Contact.objects.filter(base_type=base, assigned_to__isnull=True, is_active=True).count()
-        issued = total - free
-        base_stats.append(
-            {
-                "base": base,
-                "total": total,
-                "free": free,
-                "issued": issued,
-            }
-        )
+    # Статистика по базам (один запрос с аннотацией вместо 2N запросов)
+    base_stats = [
+        {
+            "base": bt,
+            "total": bt._total,
+            "free": bt._free,
+            "issued": bt._total - bt._free,
+        }
+        for bt in BaseType.objects.annotate(
+            _total=Count("contacts"),
+            _free=Count("contacts", filter=Q(contacts__assigned_to__isnull=True, contacts__is_active=True)),
+        ).order_by("order")
+    ]
 
     # Статистика по лидам: за неделю, месяц, всё время
     now = timezone.now()
@@ -1352,7 +1351,7 @@ def download_bases_excel(request: HttpRequest) -> HttpResponse:
     first_sheet = True
 
     for base in BaseType.objects.all().order_by("order"):
-        contacts = Contact.objects.filter(base_type=base).order_by("id")
+        contacts = Contact.objects.filter(base_type=base).select_related("assigned_to").order_by("id")
 
         if first_sheet:
             ws = wb.active
@@ -1382,7 +1381,7 @@ def download_bases_excel_category(request: HttpRequest, base_type_id: int) -> Ht
         return HttpResponseForbidden("Недостаточно прав.")
 
     base_type = get_object_or_404(BaseType, pk=base_type_id)
-    contacts = Contact.objects.filter(base_type=base_type).order_by("id")
+    contacts = Contact.objects.filter(base_type=base_type).select_related("assigned_to").order_by("id")
 
     wb = Workbook()
     ws = wb.active

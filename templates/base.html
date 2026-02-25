@@ -64,7 +64,7 @@
                 {% endif %}
               </li>
               <li class="nav-item">
-                <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">Выйти</a>
+                <form method="post" action="{% url 'logout' %}" class="d-inline m-0">{% csrf_token %}<button type="submit" class="btn btn-outline-light btn-sm">Выйти</button></form>
               </li>
             {% else %}
               <li class="nav-item me-2">

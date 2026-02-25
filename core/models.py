@@ -123,6 +123,7 @@ class Contact(TimeStampedModel):
     )
     is_active = models.BooleanField(
         default=True,
+        db_index=True,
         help_text="Можно ли контакт выдавать пользователям.",
     )
 
@@ -257,6 +258,7 @@ class Lead(TimeStampedModel):
         max_length=20,
         choices=Status.choices,
         default=Status.PENDING,
+        db_index=True,
         help_text="Статус модерации лида.",
     )
     rejection_reason = models.TextField(

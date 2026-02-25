@@ -39,7 +39,9 @@
         return r.text();
       })
       .then(function (html) {
-        panel.innerHTML = html;
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, "text/html");
+        panel.replaceChildren.apply(panel, Array.from(doc.body.childNodes).map(function(n) { return document.adoptNode(n); }));
         loaded = true;
         var form = document.getElementById("support-form");
         if (form) {
@@ -96,7 +98,7 @@
         var newMessages = doc.getElementById("support-messages");
         var current = document.getElementById("support-messages");
         if (newMessages && current) {
-          current.innerHTML = newMessages.innerHTML;
+          current.replaceChildren.apply(current, Array.from(newMessages.childNodes).map(function(n) { return document.adoptNode(n); }));
         }
         if (textarea && textarea.value === submittedText) {
           textarea.value = "";
