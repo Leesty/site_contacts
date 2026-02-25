@@ -604,36 +604,61 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
     )
 
 
-@login_required
-def admin_lead_attachment(request: HttpRequest, user_id: int, lead_id: int) -> HttpResponse:
-    """Отдаёт вложение лида (фото/видео). Доступ: staff или владелец лида. В проде /media/ не раздаётся — используем эту вьюху."""
+MIME_BY_EXT = {
+    "mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/quicktime",
+    "webm": "video/webm", "3gp": "video/3gpp",
+    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+    "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
+}
+
+
+def _serve_lead_attachment(lead):
+    """Отдаёт вложение лида: редирект на S3 URL или FileResponse с правильным Content‑Type."""
     import logging
-    lead = get_object_or_404(Lead, pk=lead_id, user_id=user_id)
-    if not lead.attachment:
-        return HttpResponseForbidden("У этого лида нет вложения.")
-    if not _require_support(request) and request.user.id != lead.user_id:
-        return HttpResponseForbidden("Нет доступа к этому файлу.")
+    name = lead.attachment.name or ""
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    content_type = MIME_BY_EXT.get(ext, "application/octet-stream")
+
+    # Если файл в S3 — отдаём редирект на прямую ссылку (быстрее, не тратим память/CPU сервера)
+    try:
+        url = lead.attachment.url
+        if url and ("s3" in url or "twc" in url or "timeweb" in url or url.startswith("http")):
+            from django.shortcuts import redirect
+            return redirect(url)
+    except Exception:
+        pass
+
     try:
         f = lead.attachment.open("rb")
     except OSError as e:
         logging.getLogger(__name__).warning(
-            "Lead attachment missing on disk: lead_id=%s user_id=%s path=%s err=%s",
-            lead_id, user_id, lead.attachment.name, e,
+            "Lead attachment missing: lead_id=%s path=%s err=%s",
+            lead.id, lead.attachment.name, e,
         )
         username = getattr(lead.user, "username", "id:%s" % lead.user_id)
         html = (
             "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Файл недоступен</title></head><body style='font-family:sans-serif;padding:2rem;'>"
             "<h1>Файл не найден</h1>"
-            "<p>Вложение этого отчёта в базе есть, но файл на сервере отсутствует. Обычно так бывает, если файл был загружен до настройки S3 и потерялся при обновлении/редеплое сервера.</p>"
-            "<p><strong>Что сделать:</strong> попросите пользователя <strong>%s</strong> заново загрузить скриншот или видео через «Мои лиды» → доработка отчёта.</p>"
-            "<p>После настройки S3 в админке (Настройки хранилища медиа) новые загрузки не будут теряться при редеплое.</p>"
+            "<p>Вложение этого отчёта в базе есть, но файл на сервере отсутствует.</p>"
+            "<p><strong>Что сделать:</strong> попросите пользователя <strong>%s</strong> заново загрузить видео через «Мои лиды» → доработка отчёта.</p>"
             "<p><a href='javascript:history.back()'>← Назад</a></p></body></html>"
         ) % (username,)
         return HttpResponse(html, status=404, content_type="text/html; charset=utf-8")
-    filename = lead.attachment.name.split("/")[-1] if lead.attachment.name else "attachment"
-    response = FileResponse(f, as_attachment=False)
+    filename = name.split("/")[-1] if name else "attachment"
+    response = FileResponse(f, content_type=content_type)
     response["Content-Disposition"] = f'inline; filename="{filename}"'
     return response
+
+
+@login_required
+def admin_lead_attachment(request: HttpRequest, user_id: int, lead_id: int) -> HttpResponse:
+    """Отдаёт вложение лида (фото/видео). Доступ: staff или владелец лида."""
+    lead = get_object_or_404(Lead, pk=lead_id, user_id=user_id)
+    if not lead.attachment:
+        return HttpResponseForbidden("У этого лида нет вложения.")
+    if not _require_support(request) and request.user.id != lead.user_id:
+        return HttpResponseForbidden("Нет доступа к этому файлу.")
+    return _serve_lead_attachment(lead)
 
 
 @login_required
@@ -641,7 +666,6 @@ def standalone_admin_lead_attachment(request: HttpRequest, lead_id: int) -> Http
     """Отдаёт вложение лида для самостоятельного админа (только одобренные СС-лиды)."""
     if not _require_standalone_admin(request):
         return HttpResponseForbidden("Недостаточно прав.")
-    import logging
     lead = get_object_or_404(
         Lead,
         pk=lead_id,
@@ -650,30 +674,7 @@ def standalone_admin_lead_attachment(request: HttpRequest, lead_id: int) -> Http
     )
     if not lead.attachment:
         return HttpResponseForbidden("У этого лида нет вложения.")
-    try:
-        f = lead.attachment.open("rb")
-    except OSError as e:
-        logging.getLogger(__name__).warning(
-            "Standalone lead attachment missing on disk: lead_id=%s user_id=%s path=%s err=%s",
-            lead_id,
-            lead.user_id,
-            lead.attachment.name,
-            e,
-        )
-        username = getattr(lead.user, "username", "id:%s" % lead.user_id)
-        html = (
-            "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Файл недоступен</title></head><body style='font-family:sans-serif;padding:2rem;'>"
-            "<h1>Файл не найден</h1>"
-            "<p>Вложение этого отчёта в базе есть, но файл на сервере отсутствует. Обычно так бывает, если файл был загружен до настройки S3 и потерялся при обновлении/редеплое сервера.</p>"
-            "<p><strong>Что сделать:</strong> попросите пользователя <strong>%s</strong> заново загрузить скриншот или видео через «Мои лиды» → доработка отчёта.</p>"
-            "<p>После настройки S3 в админке (Настройки хранилища медиа) новые загрузки не будут теряться при редеплое.</p>"
-            "<p><a href='javascript:history.back()'>← Назад</a></p></body></html>"
-        ) % (username,)
-        return HttpResponse(html, status=404, content_type="text/html; charset=utf-8")
-    filename = lead.attachment.name.split("/")[-1] if lead.attachment.name else "attachment"
-    response = FileResponse(f, as_attachment=False)
-    response["Content-Disposition"] = f'inline; filename="{filename}"'
-    return response
+    return _serve_lead_attachment(lead)
 
 
 @login_required
