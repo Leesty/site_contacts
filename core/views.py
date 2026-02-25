@@ -91,10 +91,10 @@ def register(request: HttpRequest) -> HttpResponse:
 
 
 def _is_admin(user) -> bool:
-    """Пользователь — сотрудник поддержки или администратор (не standalone)."""
+    """Пользователь — сотрудник поддержки или администратор (без спец‑кабинетов)."""
     if not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "role", None) == "standalone_admin":
+    if getattr(user, "role", None) in ("standalone_admin", "balance_admin"):
         return False
     return bool(
         user.is_staff
@@ -108,10 +108,53 @@ def _is_standalone_admin(user) -> bool:
     return getattr(user, "role", None) == "standalone_admin"
 
 
+def _is_balance_admin(user) -> bool:
+    """Пользователь — баланс‑админ (отдельный кабинет с историей начислений)."""
+    return getattr(user, "role", None) == "balance_admin"
+
+
 @login_required
 def dashboard(request: HttpRequest) -> HttpResponse:
-    """Главная страница кабинета: для админов — админ-дашборд, для standalone — свой, для пользователей — обычный."""
+    """Главная страница кабинета:
+    - для баланс‑админа — отдельный кабинет баланса;
+    - для админов — админ-дашборд;
+    - для standalone‑админа — кабинет СС-лидов;
+    - для пользователей — обычный кабинет.
+    """
     user = request.user
+    if _is_balance_admin(user):
+        from django.db.models import Sum
+        from .models import LeadReviewLog
+
+        # Всего одобрений лидов (все админы, все времена)
+        total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
+        earned = total_approved * 5
+        withdrawn = (
+            WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
+            .aggregate(s=Sum("amount"))
+            .get("s")
+            or 0
+        )
+        available = max(0, earned - withdrawn)
+        logs = (
+            LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED)
+            .select_related("lead", "admin", "lead__user")
+            .order_by("-created_at")[:200]
+        )
+        withdrawals = WithdrawalRequest.objects.filter(user=user).order_by("-created_at")
+        return render(
+            request,
+            "core/dashboard_balance_admin.html",
+            {
+                "user": user,
+                "earned_total": earned,
+                "withdrawn_total": withdrawn,
+                "available_balance": available,
+                "logs": logs,
+                "withdrawals": withdrawals,
+                "withdrawal_min_balance": getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500),
+            },
+        )
     if _is_standalone_admin(user):
         return render(request, "core/dashboard_standalone_admin.html", {"user": user})
     if _is_admin(user):
@@ -454,7 +497,23 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard")
     user = request.user
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
-    balance = getattr(user, "balance", 0) or 0
+
+    # Специальная логика для баланс‑админа: баланс считается по логу одобренных лидов.
+    if getattr(user, "role", None) == "balance_admin":
+        from django.db.models import Sum
+        from .models import LeadReviewLog
+
+        total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
+        earned = total_approved * 5
+        withdrawn = (
+            WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
+            .aggregate(s=Sum("amount"))
+            .get("s")
+            or 0
+        )
+        balance = max(0, earned - withdrawn)
+    else:
+        balance = getattr(user, "balance", 0) or 0
     if balance < withdrawal_min:
         messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
         return redirect("dashboard")
@@ -478,24 +537,51 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             )
         with transaction.atomic():
             user_refresh = User.objects.select_for_update().get(pk=user.pk)
-            current_balance = getattr(user_refresh, "balance", 0) or 0
-            if WithdrawalRequest.objects.filter(user=user_refresh, status="pending").exists():
-                messages.info(request, "У вас уже есть заявка на вывод на рассмотрении.")
-                return redirect("dashboard")
-            if current_balance < withdrawal_min:
-                messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
-                return redirect("dashboard")
-            WithdrawalRequest.objects.create(
-                user=user_refresh,
-                amount=current_balance,
-                payout_details=payout_details,
-                status="pending",
-            )
-            user_refresh.balance = 0
-            user_refresh.save(update_fields=["balance"])
+            # Повторно считаем баланс внутри транзакции, чтобы учесть параллельные изменения.
+            if getattr(user_refresh, "role", None) == "balance_admin":
+                from django.db.models import Sum
+                from .models import LeadReviewLog
+
+                total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
+                earned = total_approved * 5
+                withdrawn = (
+                    WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
+                    .aggregate(s=Sum("amount"))
+                    .get("s")
+                    or 0
+                )
+                current_balance = max(0, earned - withdrawn)
+                if WithdrawalRequest.objects.filter(user=user_refresh, status="pending").exists():
+                    messages.info(request, "У вас уже есть заявка на вывод на рассмотрении.")
+                    return redirect("dashboard")
+                if current_balance < withdrawal_min:
+                    messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
+                    return redirect("dashboard")
+                WithdrawalRequest.objects.create(
+                    user=user_refresh,
+                    amount=current_balance,
+                    payout_details=payout_details,
+                    status="pending",
+                )
+            else:
+                current_balance = getattr(user_refresh, "balance", 0) or 0
+                if WithdrawalRequest.objects.filter(user=user_refresh, status="pending").exists():
+                    messages.info(request, "У вас уже есть заявка на вывод на рассмотрении.")
+                    return redirect("dashboard")
+                if current_balance < withdrawal_min:
+                    messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
+                    return redirect("dashboard")
+                WithdrawalRequest.objects.create(
+                    user=user_refresh,
+                    amount=current_balance,
+                    payout_details=payout_details,
+                    status="pending",
+                )
+                user_refresh.balance = 0
+                user_refresh.save(update_fields=["balance"])
         messages.success(
             request,
-            f"Заявка на вывод {current_balance} руб. отправлена. Баланс обнулён. Ожидайте решения администратора.",
+            f"Заявка на вывод {current_balance} руб. отправлена. {'Баланс обнулён. ' if getattr(user_refresh, 'role', None) != 'balance_admin' else ''}Ожидайте решения администратора.",
         )
         return redirect("dashboard")
 

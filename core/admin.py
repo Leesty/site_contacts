@@ -16,11 +16,12 @@ class UserAdmin(admin.ModelAdmin):
     def formfield_for_choice_field(self, db_field, request, **kwargs):
         if db_field.name == "role" and not request.user.is_superuser:
             choices = list(kwargs.get("choices", []))
-            kwargs["choices"] = [(k, v) for k, v in choices if k != models.User.Role.STANDALONE_ADMIN]
+            forbidden = {models.User.Role.STANDALONE_ADMIN, models.User.Role.BALANCE_ADMIN}
+            kwargs["choices"] = [(k, v) for k, v in choices if k not in forbidden]
         return super().formfield_for_choice_field(db_field, request, **kwargs)
 
     def save_model(self, request, obj, form, change):
-        if obj.role == models.User.Role.STANDALONE_ADMIN and not request.user.is_superuser:
+        if obj.role in (models.User.Role.STANDALONE_ADMIN, models.User.Role.BALANCE_ADMIN) and not request.user.is_superuser:
             from django.contrib import messages
             messages.error(request, "Роль «Самостоятельный админ» выдаётся только суперпользователем.")
             obj.role = form.initial.get("role") or models.User.Role.USER

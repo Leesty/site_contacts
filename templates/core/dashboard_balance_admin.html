@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Баланс‑админ — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="mb-3">
+    <h1 class="h4 mb-1">Баланс‑кабинет</h1>
+    <p class="text-muted small mb-0">
+      Добро пожаловать, {{ user.username }}. Здесь только баланс, история начислений и заявки на вывод.
+    </p>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="h6 text-muted">Всего начислено</h2>
+          <p class="fs-4 mb-0">{{ earned_total }} <span class="fs-6 text-muted">руб.</span></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="h6 text-muted">Выведено / в заявках</h2>
+          <p class="fs-4 mb-0">{{ withdrawn_total }} <span class="fs-6 text-muted">руб.</span></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body d-flex flex-column">
+          <h2 class="h6 text-muted">Доступно к выводу</h2>
+          <p class="fs-4 mb-2">{{ available_balance }} <span class="fs-6 text-muted">руб.</span></p>
+          <p class="text-muted small mb-2">Минимальная сумма вывода: {{ withdrawal_min_balance }} руб.</p>
+          {% if available_balance >= withdrawal_min_balance %}
+            <a class="btn btn-success btn-sm mt-auto" href="{% url 'request_withdrawal_create' %}">Запросить вывод</a>
+          {% else %}
+            <button class="btn btn-outline-secondary btn-sm mt-auto" disabled>Недостаточно средств для вывода</button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-md-7">
+      <div class="card h-100 shadow-sm">
+        <div class="card-header bg-transparent border-secondary py-2">
+          <strong>История начислений (+5 руб. за каждый одобренный лид)</strong>
+        </div>
+        <div class="card-body p-0">
+          {% if logs %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 align-middle table-dark-site">
+                <thead>
+                  <tr>
+                    <th>Когда</th>
+                    <th>Лид</th>
+                    <th>Пользователь</th>
+                    <th>Админ</th>
+                    <th>Сумма</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for log in logs %}
+                    <tr>
+                      <td class="text-muted small">{{ log.created_at|date:"d.m.Y H:i" }}</td>
+                      <td>#{{ log.lead_id }}</td>
+                      <td>@{{ log.lead.user.username }}</td>
+                      <td>@{{ log.admin.username|default:"—" }}</td>
+                      <td>+5 руб.</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted small p-3 mb-0">Начислений пока нет.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-5">
+      <div class="card h-100 shadow-sm">
+        <div class="card-header bg-transparent border-secondary py-2">
+          <strong>Заявки на вывод</strong>
+        </div>
+        <div class="card-body p-0">
+          {% if withdrawals %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 align-middle table-dark-site">
+                <thead>
+                  <tr>
+                    <th>Создана</th>
+                    <th>Сумма</th>
+                    <th>Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for w in withdrawals %}
+                    <tr>
+                      <td class="text-muted small">{{ w.created_at|date:"d.m.Y H:i" }}</td>
+                      <td>{{ w.amount }} руб.</td>
+                      <td>
+                        {% if w.status == 'pending' %}На рассмотрении{% elif w.status == 'approved' %}Выполнено{% else %}Отклонено{% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted small p-3 mb-0">Заявок на вывод пока нет.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+

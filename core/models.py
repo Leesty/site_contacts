@@ -26,6 +26,7 @@ class User(AbstractUser):
         SUPPORT = "support", "Поддержка"
         ADMIN = "admin", "Администратор"
         STANDALONE_ADMIN = "standalone_admin", "Самостоятельный админ"
+        BALANCE_ADMIN = "balance_admin", "Баланс‑админ"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Ожидает одобрения"
