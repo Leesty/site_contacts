@@ -630,9 +630,9 @@ def _serve_lead_attachment(lead):
 
     try:
         f = lead.attachment.open("rb")
-    except OSError as e:
+    except Exception as e:
         logging.getLogger(__name__).warning(
-            "Lead attachment missing: lead_id=%s path=%s err=%s",
+            "Lead attachment open failed: lead_id=%s path=%s err=%s",
             lead.id, lead.attachment.name, e,
         )
         username = getattr(lead.user, "username", "id:%s" % lead.user_id)
