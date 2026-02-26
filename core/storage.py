@@ -93,46 +93,45 @@ class ConfigurableMediaStorage(FileSystemStorage):
     def __init__(self, **kwargs):
         super().__init__(location=kwargs.get("location", settings.MEDIA_ROOT), **kwargs)
         self._s3_backend = None
-        self._use_s3 = None
-        self._resolve_error = None  # сообщение ошибки при неудачной инициализации S3
+        self._s3_config_key = None  # ключ текущего конфига, чтобы пересоздать бэкенд при смене настроек
 
     def _resolve_backend(self):
-        if self._use_s3 is not None:
-            if self._use_s3:
-                return self._s3_backend
-            raise RuntimeError(
-                "Медиа только в S3. В админке включите и заполните «Настройки хранилища медиа (S3)» (бакет, ключи, endpoint). "
-                "Локальное сохранение отключено."
-            )
         config = get_media_config_from_db()
         if not config or not config.bucket_name or not config.access_key_id or not config.secret_access_key:
-            self._use_s3 = False
             raise RuntimeError(
                 "Медиа только в S3. В админке Django: Core → «Настройки хранилища медиа (S3)» → включите и заполните бакет, Access Key, Secret Key, Endpoint URL (например https://s3.twcstorage.ru)."
             )
-        try:
-            from storages.backends.s3 import S3Storage
-            opts = _build_s3_opts(config)
-            self._s3_backend = S3Storage(**opts)
-            self._use_s3 = True
-            logger.info(
-                "Media storage: S3 включён, bucket=%s endpoint=%s",
-                config.bucket_name,
-                opts.get("endpoint_url", "default"),
-            )
-            return self._s3_backend
-        except Exception as e:
-            self._use_s3 = False
-            self._resolve_error = str(e)
-            logger.exception(
-                "Media storage: не удалось подключиться к S3 (локальное сохранение отключено). bucket=%s endpoint=%s",
-                config.bucket_name,
-                getattr(config, "endpoint_url", ""),
-            )
-            raise RuntimeError(
-                "Не удалось подключиться к S3. Проверьте в админке ключи и Endpoint URL (для Timeweb: https://s3.twcstorage.ru или https://s3.timeweb.cloud). Ошибка: %s"
-                % e
-            ) from e
+        config_key = (
+            config.bucket_name,
+            config.access_key_id,
+            config.secret_access_key,
+            (getattr(config, "endpoint_url", None) or "").strip().rstrip("/"),
+            (config.region_name or "").strip() or "ru-1",
+        )
+        if self._s3_backend is None or self._s3_config_key != config_key:
+            try:
+                from storages.backends.s3 import S3Storage
+                opts = _build_s3_opts(config)
+                self._s3_backend = S3Storage(**opts)
+                self._s3_config_key = config_key
+                logger.info(
+                    "Media storage: S3 бэкенд создан/обновлён, bucket=%s endpoint=%s",
+                    config.bucket_name,
+                    opts.get("endpoint_url", "default"),
+                )
+            except Exception as e:
+                self._s3_backend = None
+                self._s3_config_key = None
+                logger.exception(
+                    "Media storage: не удалось создать S3 бэкенд. bucket=%s endpoint=%s",
+                    config.bucket_name,
+                    getattr(config, "endpoint_url", ""),
+                )
+                raise RuntimeError(
+                    "Не удалось подключиться к S3. Проверьте в админке ключи и Endpoint URL (для Timeweb: https://s3.twcstorage.ru или https://s3.timeweb.cloud). Ошибка: %s"
+                    % e
+                ) from e
+        return self._s3_backend
 
     def _open(self, name, mode="rb"):
         backend = self._resolve_backend()
