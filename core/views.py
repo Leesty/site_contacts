@@ -21,6 +21,7 @@ from .lead_utils import (
     _get_attachment_extension,
     compress_lead_attachment,
     determine_base_type_for_contact,
+    extract_username_from_contact,
     normalize_lead_contact,
 )
 from django.conf import settings
@@ -627,7 +628,20 @@ def _lead_exists_globally(raw_contact: str, exclude_lead_id: int | None = None) 
         qs = Lead.objects.filter(normalized_contact=normalized)
         if exclude_lead_id is not None:
             qs = qs.exclude(pk=exclude_lead_id)
-        return qs.exists()
+        if qs.exists():
+            return True
+        # Кросс-платформенная проверка: тот же username на другой платформе
+        username = extract_username_from_contact(normalized)
+        if username and len(username) >= 3:
+            cross_q = Q()
+            for prefix in ("telegram:", "vk:", "ig:", "ok:"):
+                cross_q |= Q(normalized_contact=prefix + username)
+            cross_qs = Lead.objects.filter(cross_q)
+            if exclude_lead_id is not None:
+                cross_qs = cross_qs.exclude(pk=exclude_lead_id)
+            if cross_qs.exists():
+                return True
+        return False
     except (OperationalError, ProgrammingError):
         return False
 
@@ -646,7 +660,8 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
             if _lead_exists_globally(raw):
                 messages.error(
                     request,
-                    "Такой контакт уже есть в базе отчётов (у вас или другого пользователя). Дубликаты не принимаются — один контакт можно отправить только один раз.",
+                    "Такой контакт уже есть в базе отчётов (у вас или другого пользователя). "
+                    "Дубликаты не принимаются — один контакт можно отправить только один раз, даже на разных платформах.",
                 )
             else:
                 try:
@@ -789,7 +804,7 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                 if _lead_exists_globally(new_contact, exclude_lead_id=lead.id):
                     messages.error(
                         request,
-                        "Такой контакт уже есть в базе отчётов. Укажите другой контакт или оставьте прежний.",
+                        "Такой контакт уже есть в базе отчётов (в том числе на другой платформе). Укажите другой контакт.",
                     )
                 else:
                     try:

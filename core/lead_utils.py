@@ -84,6 +84,20 @@ def normalize_lead_contact(contact: str) -> str:
     return c
 
 
+def extract_username_from_contact(normalized: str) -> str | None:
+    """Извлекает «чистый» идентификатор из нормализованного контакта (без префикса платформы).
+    telegram:marina_k → marina_k, vk:marina_k → marina_k, ig:marina_k → marina_k.
+    Для телефонов и прочих — None (кросс-платформенная проверка не применима)."""
+    if not normalized:
+        return None
+    for prefix in ("telegram:", "vk:", "ig:", "ok:"):
+        if normalized.startswith(prefix):
+            username = normalized[len(prefix):].strip().lower()
+            if username and not username.startswith("id") and len(username) >= 3:
+                return username
+    return None
+
+
 def raw_contact_to_url(contact: str) -> str | None:
     """По значению контакта возвращает URL для перехода (Telegram, VK, WhatsApp, Instagram и т.д.) или None."""
     if not contact or not contact.strip():
