@@ -605,7 +605,7 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
 
 
 MIME_BY_EXT = {
-    "mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/quicktime",
+    "mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/mp4",
     "webm": "video/webm", "3gp": "video/3gpp",
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
     "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
