@@ -34,9 +34,8 @@
           <table class="table table-sm mb-0 align-middle table-dark-site">
             <thead>
               <tr>
-                <th>Код</th>
-                <th>Ссылка</th>
                 <th>Заметка</th>
+                <th>Ссылка для регистрации</th>
                 <th>Создана</th>
                 <th>Статус</th>
                 <th></th>
@@ -44,14 +43,20 @@
             </thead>
             <tbody>
               {% for link in links %}
+                {% with full_url=request.scheme|add:"://"|add:request.get_host|add:"/ref/"|add:link.code|add:"/" %}
                 <tr>
-                  <td><code>{{ link.code }}</code></td>
-                  <td class="text-break small">
-                    <a href="{{ request.scheme }}://{{ request.get_host }}{% url 'ref_register' link.code %}" target="_blank" rel="noopener">
-                      /ref/{{ link.code }}/
-                    </a>
-                  </td>
                   <td>{{ link.note|default:"—" }}</td>
+                  <td class="text-break small">
+                    <div class="d-flex align-items-center gap-2">
+                      <a href="{{ full_url }}" target="_blank" rel="noopener" class="text-break">{{ full_url }}</a>
+                      <button type="button"
+                              class="btn btn-outline-secondary btn-sm py-0 px-1 flex-shrink-0 js-copy-link"
+                              data-url="{{ full_url }}"
+                              title="Скопировать ссылку">
+                        📋
+                      </button>
+                    </div>
+                  </td>
                   <td>{{ link.created_at|date:"d.m.Y" }}</td>
                   <td>
                     {% if link.is_active %}
@@ -74,6 +79,7 @@
                     </form>
                   </td>
                 </tr>
+                {% endwith %}
               {% endfor %}
             </tbody>
           </table>
@@ -83,4 +89,17 @@
   {% else %}
     <p class="text-muted">Ссылок пока нет. Создайте первую выше.</p>
   {% endif %}
+
+  <script>
+  document.querySelectorAll('.js-copy-link').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var url = btn.getAttribute('data-url');
+      navigator.clipboard.writeText(url).then(function() {
+        var orig = btn.textContent;
+        btn.textContent = '✓';
+        setTimeout(function() { btn.textContent = orig; }, 1500);
+      });
+    });
+  });
+  </script>
 {% endblock %}
