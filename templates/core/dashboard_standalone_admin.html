@@ -10,16 +10,57 @@
     </p>
   </div>
 
-  <div class="row">
-    <div class="col-md-6">
-      <div class="card shadow-sm">
+  <div class="row g-3">
+    <div class="col-md-6 col-lg-4">
+      <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="card-icon mb-2">📋</div>
           <h2 class="h5 mb-2">СС лиды</h2>
           <p class="text-muted small mb-3">
-            Одобренные лиды с пометкой «Связаться самим». Распределяйте по категориям: Новые, Отказ, В работе, Встреча.
+            Одобренные лиды с пометкой «Связаться самим». Распределяйте по категориям.
           </p>
           <a class="btn btn-outline-primary" href="{% url 'standalone_admin_ss_leads' %}">Перейти</a>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Отчёты исполнителей
+            {% if pending_worker_reports_count %}
+              <span class="badge bg-danger ms-1">{{ pending_worker_reports_count }}</span>
+            {% endif %}
+          </h2>
+          <p class="text-muted small mb-3">
+            Проверяйте отчёты исполнителей: одобряйте, отклоняйте или отправляйте на доработку.
+          </p>
+          <a class="btn btn-outline-warning" href="{% url 'standalone_admin_worker_reports' %}">Отчёты</a>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Исполнители</h2>
+          <p class="text-muted small mb-3">
+            Управление исполнителями и реферальными ссылками для регистрации.
+          </p>
+          <a class="btn btn-outline-secondary me-2" href="{% url 'standalone_admin_workers' %}">Исполнители{% if workers_count %} ({{ workers_count }}){% endif %}</a>
+          <a class="btn btn-outline-secondary" href="{% url 'standalone_admin_ref_links' %}">Ссылки</a>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Заявки на вывод
+            {% if pending_worker_withdrawals_count %}
+              <span class="badge bg-danger ms-1">{{ pending_worker_withdrawals_count }}</span>
+            {% endif %}
+          </h2>
+          <p class="text-muted small mb-3">
+            Заявки исполнителей на выплату вознаграждения.
+          </p>
+          <a class="btn btn-outline-secondary" href="{% url 'standalone_admin_worker_withdrawal_requests' %}">Заявки</a>
         </div>
       </div>
     </div>

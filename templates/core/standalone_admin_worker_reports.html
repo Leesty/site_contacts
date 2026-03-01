@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% load support_extras %}
+
+{% block title %}Отчёты исполнителей{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Отчёты исполнителей</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+  </div>
+
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">На проверке ({{ counts.pending|default:0 }})</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">Доработка ({{ counts.rework|default:0 }})</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобрены ({{ counts.approved|default:0 }})</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонены ({{ counts.rejected|default:0 }})</a>
+    </li>
+  </ul>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      {% if page_obj %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Исполнитель</th>
+                <th>Лид #</th>
+                <th>Контакт / результат</th>
+                <th>Вложение</th>
+                <th>Получено</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for report in page_obj %}
+                <tr>
+                  <td>#{{ report.id }}</td>
+                  <td>@{{ report.worker.username }}</td>
+                  <td>#{{ report.assignment.lead.id }}</td>
+                  <td class="text-break small">{{ report.raw_contact }}</td>
+                  <td>
+                    {% if report.attachment %}
+                      {% if report.attachment|worker_report_attachment_is_video %}
+                        <a href="{% url 'standalone_admin_worker_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Видео</a>
+                      {% else %}
+                        <a href="{% url 'standalone_admin_worker_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Открыть</a>
+                      {% endif %}
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ report.created_at|date:"d.m.Y" }}</td>
+                  <td>
+                    {% if tab == 'pending' or tab == 'rework' %}
+                      <form method="post" action="{% url 'standalone_admin_report_approve' report.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm py-0">✓</button>
+                      </form>
+                      <a href="{% url 'standalone_admin_report_rework' report.id %}?next={% url 'standalone_admin_worker_reports' %}%3Ftab={{ tab }}" class="btn btn-warning btn-sm py-0">↺</a>
+                      <a href="{% url 'standalone_admin_report_reject' report.id %}?next={% url 'standalone_admin_worker_reports' %}%3Ftab={{ tab }}" class="btn btn-danger btn-sm py-0">✗</a>
+                    {% else %}
+                      <span class="text-muted small">—</span>
+                    {% endif %}
+                    {% if report.comment %}
+                      <span title="{{ report.comment }}" class="ms-1 text-muted small">💬</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% if tab == 'rework' and report.rework_comment %}
+                  <tr class="table-warning">
+                    <td colspan="7" class="small py-1 ps-3">
+                      <strong>Комментарий к доработке:</strong> {{ report.rework_comment }}
+                    </td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if page_obj.paginator.num_pages > 1 %}
+          <div class="card-footer border-secondary d-flex justify-content-center py-2">
+            <nav>
+              <ul class="pagination pagination-sm mb-0">
+                {% if page_obj.has_previous %}
+                  <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                  <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>
+                {% endif %}
+              </ul>
+            </nav>
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="text-muted p-4 mb-0 text-center">
+          {% if tab == 'pending' %}Нет отчётов на проверке.
+          {% elif tab == 'rework' %}Нет отчётов на доработке.
+          {% elif tab == 'approved' %}Нет одобренных отчётов.
+          {% else %}Нет отклонённых отчётов.{% endif %}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

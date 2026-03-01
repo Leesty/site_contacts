@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Вывод средств{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Вывод средств</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'worker_dashboard' %}">← Кабинет</a>
+  </div>
+
+  <div class="card shadow-sm" style="max-width: 480px;">
+    <div class="card-body">
+      <p class="mb-3">
+        Текущий баланс: <strong>{{ balance }} руб.</strong><br>
+        Минимальная сумма вывода: <strong>{{ withdrawal_min_balance }} руб.</strong>
+      </p>
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label" for="payout_details">Реквизиты для вывода</label>
+          <textarea class="form-control" id="payout_details" name="payout_details" rows="3"
+                    placeholder="Номер карты, телефон и банк и т.п."></textarea>
+          <div class="form-text text-muted">Укажите способ, которым хотите получить выплату.</div>
+        </div>
+        <button type="submit" class="btn btn-success">Подать заявку на вывод {{ balance }} руб.</button>
+      </form>
+      <p class="text-muted small mt-3 mb-0">
+        После подачи заявки ваш баланс будет обнулён. Заявка будет рассмотрена администратором.
+      </p>
+    </div>
+  </div>
+{% endblock %}

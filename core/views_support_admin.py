@@ -1508,3 +1508,300 @@ def admin_site_settings(request: HttpRequest) -> HttpResponse:
         {"site_settings": site_settings},
     )
 
+
+# ──────────────────────────────────────────────────────────────
+# SS Admin: Worker Sub-System
+# ──────────────────────────────────────────────────────────────
+
+def _serve_worker_report_attachment(report) -> HttpResponse:
+    """Отдаёт вложение к отчёту воркера (аналог _serve_lead_attachment)."""
+
+    class _Proxy:
+        pass
+
+    obj = _Proxy()
+    obj.attachment = report.attachment
+    obj.user = report.worker
+    obj.pk = report.pk
+    return _serve_lead_attachment(obj)
+
+
+@login_required
+def standalone_admin_ref_links(request: HttpRequest) -> HttpResponse:
+    """Управление реферальными ссылками самостоятельного админа."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import ReferralLink
+    import secrets
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "create":
+            note = (request.POST.get("note") or "").strip()[:100]
+            code = secrets.token_urlsafe(8)[:12]
+            ReferralLink.objects.create(standalone_admin=request.user, code=code, note=note)
+            messages.success(request, f"Ссылка создана: /ref/{code}/")
+            return redirect("standalone_admin_ref_links")
+        elif action == "deactivate":
+            link_id = request.POST.get("link_id")
+            if link_id:
+                ReferralLink.objects.filter(pk=link_id, standalone_admin=request.user).update(is_active=False)
+                messages.success(request, "Ссылка деактивирована.")
+            return redirect("standalone_admin_ref_links")
+        elif action == "activate":
+            link_id = request.POST.get("link_id")
+            if link_id:
+                ReferralLink.objects.filter(pk=link_id, standalone_admin=request.user).update(is_active=True)
+                messages.success(request, "Ссылка активирована.")
+            return redirect("standalone_admin_ref_links")
+
+    links = ReferralLink.objects.filter(standalone_admin=request.user).order_by("-created_at")
+    return render(request, "core/standalone_admin_ref_links.html", {"links": links})
+
+
+@login_required
+def standalone_admin_workers(request: HttpRequest) -> HttpResponse:
+    """Список исполнителей самостоятельного админа со статистикой."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import WorkerReport
+    workers = (
+        User.objects.filter(standalone_admin_owner=request.user, role="worker")
+        .annotate(
+            reports_total=Count("worker_reports"),
+            reports_approved=Count("worker_reports", filter=Q(worker_reports__status="approved")),
+            reports_pending=Count("worker_reports", filter=Q(worker_reports__status="pending")),
+        )
+        .order_by("-date_joined")
+    )
+    return render(request, "core/standalone_admin_workers.html", {"workers": workers})
+
+
+@login_required
+def standalone_admin_assign_lead(request: HttpRequest, lead_id: int) -> HttpResponse:
+    """Назначить лид исполнителю. POST: worker_id, task_description."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import LeadAssignment
+    lead = get_object_or_404(Lead, pk=lead_id, needs_team_contact=True, status=Lead.Status.APPROVED)
+
+    if request.method == "POST":
+        worker_id = request.POST.get("worker_id")
+        task_description = (request.POST.get("task_description") or "").strip()
+        if not worker_id:
+            messages.error(request, "Выберите исполнителя.")
+        else:
+            worker = get_object_or_404(User, pk=worker_id, standalone_admin_owner=request.user, role="worker")
+            assignment, created = LeadAssignment.objects.get_or_create(
+                lead=lead,
+                worker=worker,
+                defaults={"assigned_by": request.user, "task_description": task_description},
+            )
+            if created:
+                messages.success(request, f"Лид #{lead_id} назначен @{worker.username}.")
+            else:
+                # Update task description if already assigned
+                assignment.task_description = task_description
+                assignment.save(update_fields=["task_description", "updated_at"])
+                messages.info(request, f"Назначение обновлено для @{worker.username}.")
+        next_url = request.POST.get("next") or request.GET.get("next")
+        if next_url:
+            from django.utils.http import url_has_allowed_host_and_scheme
+            if url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+                return redirect(next_url)
+        return redirect("standalone_admin_ss_leads")
+
+    # GET: show assignment form
+    workers = User.objects.filter(standalone_admin_owner=request.user, role="worker").order_by("username")
+    from .models import WorkerReport
+    existing_assignments = list(
+        lead.assignments.select_related("worker").prefetch_related("report").all()
+    )
+    # Annotate each assignment with safe report status (None if no report yet)
+    for a in existing_assignments:
+        try:
+            a._report_status = a.report.status
+        except Exception:
+            a._report_status = None
+    return render(request, "core/standalone_admin_assign_lead.html", {
+        "lead": lead,
+        "workers": workers,
+        "existing_assignments": existing_assignments,
+    })
+
+
+@login_required
+def standalone_admin_worker_reports(request: HttpRequest) -> HttpResponse:
+    """Список отчётов исполнителей для самостоятельного админа (вкладки по статусам)."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import WorkerReport
+    tab = request.GET.get("tab", "pending")
+    tab_map = {
+        "pending": WorkerReport.Status.PENDING,
+        "approved": WorkerReport.Status.APPROVED,
+        "rejected": WorkerReport.Status.REJECTED,
+        "rework": WorkerReport.Status.REWORK,
+    }
+    status = tab_map.get(tab, WorkerReport.Status.PENDING)
+    reports_qs = (
+        WorkerReport.objects.filter(standalone_admin=request.user, status=status)
+        .select_related("worker", "assignment__lead", "assignment__lead__lead_type")
+        .order_by("-created_at")
+    )
+    paginator = Paginator(reports_qs, 30)
+    try:
+        page_number = int(request.GET.get("page", 1))
+    except (TypeError, ValueError):
+        page_number = 1
+    page_obj = paginator.get_page(page_number)
+    counts = {
+        t: WorkerReport.objects.filter(standalone_admin=request.user, status=s).count()
+        for t, s in tab_map.items()
+    }
+    return render(request, "core/standalone_admin_worker_reports.html", {
+        "page_obj": page_obj,
+        "tab": tab,
+        "counts": counts,
+    })
+
+
+@login_required
+def standalone_admin_report_approve(request: HttpRequest, report_id: int) -> HttpResponse:
+    """Одобрить отчёт воркера: +reward к балансу воркера."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import WorkerReport
+    if request.method != "POST":
+        return redirect("standalone_admin_worker_reports")
+    report = get_object_or_404(WorkerReport, pk=report_id, standalone_admin=request.user)
+    if report.status not in (WorkerReport.Status.PENDING, WorkerReport.Status.REWORK):
+        messages.warning(request, "Отчёт уже обработан.")
+        return redirect("standalone_admin_worker_reports")
+    with transaction.atomic():
+        report_refresh = WorkerReport.objects.select_for_update().select_related("worker").get(pk=report_id)
+        report_refresh.status = WorkerReport.Status.APPROVED
+        report_refresh.reviewed_at = timezone.now()
+        report_refresh.reviewed_by = request.user
+        report_refresh.rework_comment = ""
+        report_refresh.rejection_reason = ""
+        report_refresh.save(update_fields=["status", "reviewed_at", "reviewed_by", "rework_comment", "rejection_reason", "updated_at"])
+        reward = report_refresh.reward or 150
+        report_refresh.worker.balance = (report_refresh.worker.balance or 0) + reward
+        report_refresh.worker.save(update_fields=["balance"])
+    messages.success(request, f"Отчёт одобрен. @{report_refresh.worker.username} +{reward} руб.")
+    return redirect("standalone_admin_worker_reports")
+
+
+@login_required
+def standalone_admin_report_reject(request: HttpRequest, report_id: int) -> HttpResponse:
+    """Отклонить отчёт воркера — форма с причиной."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import WorkerReport
+    from .forms import LeadRejectForm
+    report = get_object_or_404(WorkerReport, pk=report_id, standalone_admin=request.user)
+    if request.method == "POST":
+        form = LeadRejectForm(request.POST)
+        if form.is_valid():
+            report.status = WorkerReport.Status.REJECTED
+            report.rejection_reason = form.cleaned_data["rejection_reason"].strip()
+            report.rework_comment = ""
+            report.reviewed_at = timezone.now()
+            report.reviewed_by = request.user
+            report.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by", "updated_at"])
+            messages.success(request, f"Отчёт #{report_id} отклонён.")
+            return redirect("standalone_admin_worker_reports")
+    else:
+        form = LeadRejectForm()
+    return render(request, "core/standalone_admin_report_reject.html", {"report": report, "form": form})
+
+
+@login_required
+def standalone_admin_report_rework(request: HttpRequest, report_id: int) -> HttpResponse:
+    """Отправить отчёт воркера на доработку — форма с комментарием."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import WorkerReport
+    from .forms import LeadReworkForm
+    report = get_object_or_404(WorkerReport, pk=report_id, standalone_admin=request.user)
+    if request.method == "POST":
+        form = LeadReworkForm(request.POST)
+        if form.is_valid():
+            report.status = WorkerReport.Status.REWORK
+            report.rework_comment = form.cleaned_data["rework_comment"].strip()
+            report.rejection_reason = ""
+            report.reviewed_at = timezone.now()
+            report.reviewed_by = request.user
+            report.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by", "updated_at"])
+            messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
+            return redirect("standalone_admin_worker_reports")
+    else:
+        form = LeadReworkForm()
+    return render(request, "core/standalone_admin_report_rework.html", {"report": report, "form": form})
+
+
+@login_required
+def standalone_admin_worker_report_attachment(request: HttpRequest, report_id: int) -> HttpResponse:
+    """Отдаёт вложение к отчёту воркера (только для владельца — самостоятельного админа)."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import WorkerReport
+    report = get_object_or_404(WorkerReport, pk=report_id, standalone_admin=request.user)
+    if not report.attachment:
+        return HttpResponseForbidden("Вложение отсутствует.")
+    return _serve_worker_report_attachment(report)
+
+
+@login_required
+def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpResponse:
+    """Список заявок воркеров на вывод. Одобрить — подтвердить. Отклонить — вернуть баланс."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import WorkerWithdrawalRequest
+    if request.method == "POST":
+        req_id = request.POST.get("request_id")
+        action = request.POST.get("action")
+        if req_id and action in ("approve", "reject"):
+            with transaction.atomic():
+                wreq = (
+                    WorkerWithdrawalRequest.objects.select_for_update()
+                    .select_related("worker")
+                    .filter(pk=req_id, standalone_admin=request.user, status="pending")
+                    .first()
+                )
+                if not wreq:
+                    messages.warning(request, "Заявка уже обработана или не найдена.")
+                    return redirect("standalone_admin_worker_withdrawal_requests")
+                now = timezone.now()
+                if action == "approve":
+                    wreq.status = "approved"
+                    messages.success(request, f"Вывод @{wreq.worker.username} на {wreq.amount} руб. одобрен.")
+                else:
+                    wreq.worker.balance = (wreq.worker.balance or 0) + wreq.amount
+                    wreq.worker.save(update_fields=["balance"])
+                    wreq.status = "rejected"
+                    messages.info(request, f"Заявка @{wreq.worker.username} отклонена. Баланс восстановлен.")
+                wreq.processed_at = now
+                wreq.processed_by = request.user
+                wreq.save(update_fields=["status", "processed_at", "processed_by"])
+        return redirect("standalone_admin_worker_withdrawal_requests")
+
+    pending = (
+        WorkerWithdrawalRequest.objects
+        .filter(standalone_admin=request.user, status="pending")
+        .select_related("worker")
+        .order_by("created_at")
+    )
+    history = (
+        WorkerWithdrawalRequest.objects
+        .filter(standalone_admin=request.user)
+        .exclude(status="pending")
+        .select_related("worker", "processed_by")
+        .order_by("-created_at")[:100]
+    )
+    return render(request, "core/standalone_admin_worker_withdrawal_requests.html", {
+        "pending_requests": pending,
+        "history_requests": history,
+    })
+

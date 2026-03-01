@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Кабинет исполнителя{% endblock %}
+
+{% block content %}
+  <div class="mb-3">
+    <h1 class="h4 mb-1">Кабинет исполнителя</h1>
+    <p class="text-muted small mb-0">Добро пожаловать, {{ user.username }}.</p>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1 text-primary">{{ total_tasks }}</div>
+          <div class="small text-muted">Всего заданий</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1 text-success">{{ approved_count }}</div>
+          <div class="small text-muted">Одобрено</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1 text-warning">{{ rework_count }}</div>
+          <div class="small text-muted">На доработке</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1">{{ balance }}</div>
+          <div class="small text-muted">Баланс (руб.)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Мои задания</h2>
+          <p class="text-muted small mb-3">Список назначенных задач. Отправляйте отчёты по каждому лиду.</p>
+          <a class="btn btn-outline-primary" href="{% url 'worker_tasks' %}">Перейти к заданиям</a>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Баланс и вывод</h2>
+          <p class="text-muted small mb-3">
+            Текущий баланс: <strong>{{ balance }} руб.</strong>
+            Минимальная сумма вывода: {{ withdrawal_min_balance }} руб.
+          </p>
+          {% if withdrawal_pending %}
+            <span class="badge bg-warning text-dark">Заявка на вывод на рассмотрении</span>
+          {% elif can_request_withdrawal %}
+            <a class="btn btn-success" href="{% url 'worker_request_withdrawal' %}">Вывести средства</a>
+          {% else %}
+            <span class="text-muted small">Вывод доступен при балансе от {{ withdrawal_min_balance }} руб.</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

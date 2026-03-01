@@ -3,6 +3,7 @@ from django.urls import path
 
 from . import views
 from . import views_support_admin
+from . import views_worker
 
 
 urlpatterns = [
@@ -11,6 +12,14 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("account/updates/", views.account_updates_api, name="account_updates_api"),
     path("register/", views.register, name="register"),
+    path("ref/<str:code>/", views.ref_register, name="ref_register"),
+    # Worker sub-system
+    path("worker/", views_worker.worker_dashboard, name="worker_dashboard"),
+    path("worker/tasks/", views_worker.worker_tasks, name="worker_tasks"),
+    path("worker/tasks/<int:assignment_id>/", views_worker.worker_task_detail, name="worker_task_detail"),
+    path("worker/tasks/<int:assignment_id>/report/redo/", views_worker.worker_report_redo, name="worker_report_redo"),
+    path("worker/tasks/<int:assignment_id>/attachment/", views_worker.worker_report_attachment, name="worker_report_attachment"),
+    path("worker/balance/withdraw/", views_worker.worker_request_withdrawal, name="worker_request_withdrawal"),
     path(
         "login/",
         auth_views.LoginView.as_view(template_name="auth/login.html"),
@@ -79,6 +88,51 @@ urlpatterns = [
         "staff/standalone/ss-leads/",
         views_support_admin.standalone_admin_ss_leads,
         name="standalone_admin_ss_leads",
+    ),
+    path(
+        "staff/standalone/ref-links/",
+        views_support_admin.standalone_admin_ref_links,
+        name="standalone_admin_ref_links",
+    ),
+    path(
+        "staff/standalone/workers/",
+        views_support_admin.standalone_admin_workers,
+        name="standalone_admin_workers",
+    ),
+    path(
+        "staff/standalone/leads/<int:lead_id>/assign/",
+        views_support_admin.standalone_admin_assign_lead,
+        name="standalone_admin_assign_lead",
+    ),
+    path(
+        "staff/standalone/reports/",
+        views_support_admin.standalone_admin_worker_reports,
+        name="standalone_admin_worker_reports",
+    ),
+    path(
+        "staff/standalone/reports/<int:report_id>/approve/",
+        views_support_admin.standalone_admin_report_approve,
+        name="standalone_admin_report_approve",
+    ),
+    path(
+        "staff/standalone/reports/<int:report_id>/reject/",
+        views_support_admin.standalone_admin_report_reject,
+        name="standalone_admin_report_reject",
+    ),
+    path(
+        "staff/standalone/reports/<int:report_id>/rework/",
+        views_support_admin.standalone_admin_report_rework,
+        name="standalone_admin_report_rework",
+    ),
+    path(
+        "staff/standalone/reports/<int:report_id>/attachment/",
+        views_support_admin.standalone_admin_worker_report_attachment,
+        name="standalone_admin_worker_report_attachment",
+    ),
+    path(
+        "staff/standalone/worker-withdrawals/",
+        views_support_admin.standalone_admin_worker_withdrawal_requests,
+        name="standalone_admin_worker_withdrawal_requests",
     ),
     path(
         "staff/standalone/leads/<int:lead_id>/attachment/",

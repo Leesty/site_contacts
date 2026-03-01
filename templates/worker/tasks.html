@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% load support_extras %}
+
+{% block title %}Мои задания{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Мои задания</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'worker_dashboard' %}">← Кабинет</a>
+  </div>
+
+  {% if assignments %}
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Задание</th>
+                <th>Лид #</th>
+                <th>Тип</th>
+                <th>Назначено</th>
+                <th>Статус отчёта</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for assignment in assignments %}
+                <tr>
+                  <td>#{{ assignment.id }}</td>
+                  <td>#{{ assignment.lead.id }}</td>
+                  <td>{{ assignment.lead.lead_type.name|default:"—" }}</td>
+                  <td>{{ assignment.created_at|date:"d.m.Y" }}</td>
+                  <td>
+                    {% with report=assignment._report %}
+                      {% if report %}
+                        {% if report.status == 'pending' %}
+                          <span class="badge bg-secondary">На проверке</span>
+                        {% elif report.status == 'approved' %}
+                          <span class="badge bg-success">Одобрен</span>
+                        {% elif report.status == 'rejected' %}
+                          <span class="badge bg-danger">Отклонён</span>
+                        {% elif report.status == 'rework' %}
+                          <span class="badge bg-warning text-dark">На доработке</span>
+                        {% endif %}
+                      {% else %}
+                        <span class="badge bg-primary">Новое</span>
+                      {% endif %}
+                    {% endwith %}
+                  </td>
+                  <td>
+                    {% with report=assignment._report %}
+                      {% if report and report.status == 'rework' %}
+                        <a href="{% url 'worker_report_redo' assignment.id %}" class="btn btn-warning btn-sm">Доработать</a>
+                      {% elif not report %}
+                        <a href="{% url 'worker_task_detail' assignment.id %}" class="btn btn-primary btn-sm">Открыть</a>
+                      {% else %}
+                        <a href="{% url 'worker_task_detail' assignment.id %}" class="btn btn-outline-secondary btn-sm">Детали</a>
+                      {% endif %}
+                    {% endwith %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="card shadow-sm">
+      <div class="card-body text-center text-muted py-5">
+        Заданий пока нет. Ожидайте назначения от администратора.
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

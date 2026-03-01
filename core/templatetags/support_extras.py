@@ -41,3 +41,12 @@ def lead_attachment_is_video(attachment) -> bool:
         return False
     ext = (attachment.name or "").rsplit(".", 1)[-1].lower()
     return ext in VIDEO_EXTENSIONS
+
+
+@register.filter
+def worker_report_attachment_is_video(attachment) -> bool:
+    """True, если вложение отчёта воркера — видео (по расширению)."""
+    if not attachment or not getattr(attachment, "name", None):
+        return False
+    ext = (attachment.name or "").rsplit(".", 1)[-1].lower()
+    return ext in VIDEO_EXTENSIONS

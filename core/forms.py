@@ -207,6 +207,75 @@ class LeadReworkForm(forms.Form):
     )
 
 
+class WorkerReportForm(forms.Form):
+    """Форма отправки отчёта исполнителем (воркером) по назначенному лиду."""
+
+    raw_contact = forms.CharField(
+        label="Контакт / результат",
+        help_text="Контакт, ссылка или описание результата работы.",
+        required=True,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Контакт / результат"}),
+    )
+    comment = forms.CharField(
+        label="Комментарий",
+        required=False,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 2, "placeholder": "Комментарий (необязательно)"}),
+    )
+    attachment = forms.FileField(
+        label="Скриншот или видео",
+        help_text="Прикрепите скриншот или видео (макс. 30 МБ). Необязательно.",
+        required=False,
+        widget=forms.FileInput(attrs={"class": "form-control", "accept": "image/*,.mp4,.mov,.webm,.m4v,.3gp"}),
+    )
+
+    def clean_attachment(self):
+        data = self.cleaned_data.get("attachment")
+        if not data:
+            return data
+        name = getattr(data, "name", None) or ""
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in LEAD_ATTACHMENT_ALLOWED_EXTENSIONS:
+            raise forms.ValidationError("Разрешены только изображения и видео: jpg, png, gif, webp, mp4, mov и т.д.")
+        size = getattr(data, "size", None)
+        if size is not None and size > LEAD_ATTACHMENT_MAX_SIZE:
+            raise forms.ValidationError("Размер файла не должен превышать 30 МБ.")
+        return data
+
+
+class WorkerReportReworkForm(forms.Form):
+    """Форма доработки отчёта исполнителем (обновить контакт, комментарий и вложение)."""
+
+    raw_contact = forms.CharField(
+        label="Контакт / результат",
+        required=True,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Контакт / результат"}),
+    )
+    comment = forms.CharField(
+        label="Комментарий",
+        required=False,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 2, "placeholder": "Комментарий (необязательно)"}),
+    )
+    attachment = forms.FileField(
+        label="Скриншот или видео",
+        help_text="Загрузите новое или оставьте текущее (макс. 30 МБ).",
+        required=False,
+        widget=forms.FileInput(attrs={"class": "form-control", "accept": "image/*,.mp4,.mov,.webm,.m4v,.3gp"}),
+    )
+
+    def clean_attachment(self):
+        data = self.cleaned_data.get("attachment")
+        if not data:
+            return data
+        name = getattr(data, "name", None) or ""
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in LEAD_ATTACHMENT_ALLOWED_EXTENSIONS:
+            raise forms.ValidationError("Разрешены только изображения и видео: jpg, png, gif, webp, mp4, mov и т.д.")
+        size = getattr(data, "size", None)
+        if size is not None and size > LEAD_ATTACHMENT_MAX_SIZE:
+            raise forms.ValidationError("Размер файла не должен превышать 30 МБ.")
+        return data
+
+
 class LeadReworkUserForm(forms.Form):
     """Форма доработки лида пользователем: контакт/ссылка, комментарий, новое вложение."""
 

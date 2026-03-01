@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Исполнители{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Исполнители</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Все исполнители, зарегистрированные по вашим реферальным ссылкам.
+    <a href="{% url 'standalone_admin_ref_links' %}">Управление ссылками →</a>
+  </p>
+
+  {% if workers %}
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Исполнитель</th>
+                <th>Баланс</th>
+                <th>Всего отчётов</th>
+                <th>Одобрено</th>
+                <th>На проверке</th>
+                <th>Зарегистрирован</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for worker in workers %}
+                <tr>
+                  <td>@{{ worker.username }}</td>
+                  <td>{{ worker.balance|default:0 }} руб.</td>
+                  <td>{{ worker.reports_total }}</td>
+                  <td>{{ worker.reports_approved }}</td>
+                  <td>{{ worker.reports_pending }}</td>
+                  <td>{{ worker.date_joined|date:"d.m.Y" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="card shadow-sm">
+      <div class="card-body text-center text-muted py-5">
+        Исполнителей пока нет. Создайте реферальную ссылку и отправьте её будущему исполнителю.
+        <div class="mt-3">
+          <a href="{% url 'standalone_admin_ref_links' %}" class="btn btn-primary btn-sm">Создать ссылку</a>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

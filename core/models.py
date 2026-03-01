@@ -11,9 +11,11 @@ class User(AbstractUser):
     """Кастомный пользователь с ролью и статусом модерации.
 
     Роли:
-      - user     — обычный пользователь, работает с базами и лидами;
-      - support  — сотрудник поддержки;
-      - admin    — администратор, управляет базами и пользователями.
+      - user             — обычный пользователь, работает с базами и лидами;
+      - support          — сотрудник поддержки;
+      - admin            — администратор, управляет базами и пользователями;
+      - standalone_admin — самостоятельный админ (СС лиды);
+      - worker           — исполнитель (работает с задачами самостоятельного админа).
 
     Статусы:
       - pending  — ожидает одобрения;
@@ -27,6 +29,7 @@ class User(AbstractUser):
         ADMIN = "admin", "Администратор"
         STANDALONE_ADMIN = "standalone_admin", "Самостоятельный админ"
         BALANCE_ADMIN = "balance_admin", "Баланс‑админ"
+        WORKER = "worker", "Исполнитель"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Ожидает одобрения"
@@ -54,6 +57,15 @@ class User(AbstractUser):
     balance = models.IntegerField(
         default=0,
         help_text="Баланс пользователя (руб.). Начисляется вручную админом.",
+    )
+    standalone_admin_owner = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="workers",
+        limit_choices_to={"role": "standalone_admin"},
+        help_text="Самостоятельный админ, к которому привязан исполнитель (воркер).",
     )
 
     def is_approved(self) -> bool:
@@ -519,6 +531,162 @@ class MediaStorageConfig(models.Model):
 
     def __str__(self) -> str:
         return f"S3: {self.bucket_name or 'не задано'}" + (" (вкл.)" if self.enabled else " (выкл.)")
+
+
+def worker_report_upload_to(instance: "WorkerReport", filename: str) -> str:
+    """Путь для загрузки файлов по отчётам исполнителей."""
+    ext = filename.split(".")[-1] if "." in filename else "bin"
+    return f"worker_reports/worker_{instance.worker_id}/{uuid4().hex}.{ext}"
+
+
+class ReferralLink(TimeStampedModel):
+    """Реферальная ссылка для регистрации исполнителей (воркеров) через самостоятельного админа."""
+
+    standalone_admin = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="referral_links",
+        limit_choices_to={"role": "standalone_admin"},
+    )
+    code = models.CharField(max_length=32, unique=True, help_text="Уникальный код ссылки (случайный).")
+    is_active = models.BooleanField(default=True, help_text="Активна ли ссылка для регистрации.")
+    note = models.CharField(max_length=100, blank=True, help_text="Заметка для идентификации ссылки.")
+
+    class Meta:
+        verbose_name = "Реферальная ссылка"
+        verbose_name_plural = "Реферальные ссылки"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Ref:{self.code} ({self.standalone_admin})"
+
+
+class LeadAssignment(TimeStampedModel):
+    """Назначение лида исполнителю (воркеру) самостоятельным админом."""
+
+    lead = models.ForeignKey(
+        Lead,
+        on_delete=models.CASCADE,
+        related_name="assignments",
+    )
+    worker = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="lead_assignments",
+        limit_choices_to={"role": "worker"},
+    )
+    assigned_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="assigned_leads_by",
+    )
+    task_description = models.TextField(blank=True, help_text="Описание задачи для исполнителя.")
+
+    class Meta:
+        unique_together = ("lead", "worker")
+        verbose_name = "Назначение лида"
+        verbose_name_plural = "Назначения лидов"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Лид #{self.lead_id} → @{self.worker.username}"
+
+
+class WorkerReport(TimeStampedModel):
+    """Отчёт исполнителя (воркера) по назначенному лиду."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "На проверке"
+        APPROVED = "approved", "Одобрен"
+        REJECTED = "rejected", "Отклонён"
+        REWORK = "rework", "На доработке"
+
+    assignment = models.OneToOneField(
+        LeadAssignment,
+        on_delete=models.CASCADE,
+        related_name="report",
+    )
+    worker = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="worker_reports",
+    )
+    standalone_admin = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="received_worker_reports",
+    )
+    raw_contact = models.CharField(max_length=255, help_text="Контакт / результат работы.")
+    comment = models.TextField(blank=True)
+    attachment = models.FileField(
+        upload_to=worker_report_upload_to,
+        blank=True,
+        null=True,
+        help_text="Скриншот/видео подтверждения.",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    rework_comment = models.TextField(blank=True, help_text="Что исправить (при статусе «На доработке»).")
+    rejection_reason = models.TextField(blank=True)
+    reward = models.PositiveIntegerField(default=150, help_text="Вознаграждение за одобренный отчёт (руб.).")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_worker_reports",
+    )
+
+    class Meta:
+        verbose_name = "Отчёт исполнителя"
+        verbose_name_plural = "Отчёты исполнителей"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Отчёт @{self.worker.username} по лиду #{self.assignment.lead_id} ({self.get_status_display()})"
+
+
+class WorkerWithdrawalRequest(TimeStampedModel):
+    """Заявка исполнителя (воркера) на вывод средств — обрабатывается самостоятельным админом."""
+
+    worker = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="worker_withdrawal_requests",
+    )
+    standalone_admin = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="worker_withdrawals_to_process",
+    )
+    amount = models.PositiveIntegerField(help_text="Сумма к выводу (руб.)")
+    payout_details = models.TextField(help_text="Реквизиты для вывода.")
+    status = models.CharField(
+        max_length=20,
+        choices=[("pending", "На рассмотрении"), ("approved", "Выплачено"), ("rejected", "Отклонено")],
+        default="pending",
+    )
+    processed_at = models.DateTimeField(null=True, blank=True)
+    processed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="processed_worker_withdrawals",
+    )
+
+    class Meta:
+        verbose_name = "Заявка воркера на вывод"
+        verbose_name_plural = "Заявки воркеров на вывод"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Вывод {self.amount} руб. от @{self.worker.username} ({self.get_status_display()})"
 
 
 def site_settings_upload_to(instance, filename: str) -> str:

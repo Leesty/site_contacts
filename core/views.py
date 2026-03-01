@@ -91,6 +91,11 @@ def register(request: HttpRequest) -> HttpResponse:
     return render(request, "auth/register.html", {"form": form})
 
 
+def _is_worker(user) -> bool:
+    """Пользователь — исполнитель (воркер)."""
+    return getattr(user, "role", None) == "worker"
+
+
 def _is_admin(user) -> bool:
     """Пользователь — сотрудник поддержки или администратор (без спец‑кабинетов)."""
     if not getattr(user, "is_authenticated", False):
@@ -118,11 +123,14 @@ def _is_balance_admin(user) -> bool:
 def dashboard(request: HttpRequest) -> HttpResponse:
     """Главная страница кабинета:
     - для баланс‑админа — отдельный кабинет баланса;
+    - для воркера — перенаправление в кабинет исполнителя;
     - для админов — админ-дашборд;
     - для standalone‑админа — кабинет СС-лидов;
     - для пользователей — обычный кабинет.
     """
     user = request.user
+    if _is_worker(user):
+        return redirect("worker_dashboard")
     if _is_balance_admin(user):
         from django.db.models import Sum
         from .models import LeadReviewLog
@@ -157,7 +165,20 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             },
         )
     if _is_standalone_admin(user):
-        return render(request, "core/dashboard_standalone_admin.html", {"user": user})
+        from .models import WorkerReport, WorkerWithdrawalRequest
+        pending_worker_reports_count = WorkerReport.objects.filter(
+            standalone_admin=user, status=WorkerReport.Status.PENDING
+        ).count()
+        workers_count = User.objects.filter(standalone_admin_owner=user, role=User.Role.WORKER).count()
+        pending_worker_withdrawals_count = WorkerWithdrawalRequest.objects.filter(
+            standalone_admin=user, status="pending"
+        ).count()
+        return render(request, "core/dashboard_standalone_admin.html", {
+            "user": user,
+            "pending_worker_reports_count": pending_worker_reports_count,
+            "workers_count": workers_count,
+            "pending_worker_withdrawals_count": pending_worker_withdrawals_count,
+        })
     if _is_admin(user):
         pending_count = User.objects.filter(status=User.Status.PENDING).count()
         unread_threads_count = SupportThread.objects.filter(
@@ -262,8 +283,11 @@ def logout_view(request: HttpRequest) -> HttpResponse:
 
 
 def _ensure_user_approved(request: HttpRequest) -> bool:
-    """Проверяет, одобрен ли пользователь. Если нет — показывает сообщение и возвращает False."""
+    """Проверяет, одобрен ли пользователь. Если нет — показывает сообщение и возвращает False.
+    Воркеры всегда перенаправляются на свой дашборд."""
     user = request.user
+    if _is_worker(user):
+        return False
     if getattr(user, "status", None) != "approved":
         messages.warning(
             request,
@@ -982,4 +1006,37 @@ def support_widget(request: HttpRequest) -> HttpResponse:
         "core/partials/support_widget_panel.html",
         {"thread": thread, "support_messages": messages_qs},
     )
+
+
+def ref_register(request: HttpRequest, code: str) -> HttpResponse:
+    """Регистрация через реферальную ссылку: пользователь получает роль воркера и сразу одобряется."""
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+
+    from .models import ReferralLink
+
+    try:
+        ref_link = ReferralLink.objects.select_related("standalone_admin").get(code=code, is_active=True)
+    except ReferralLink.DoesNotExist:
+        return render(request, "auth/ref_register.html", {"error": "Реферальная ссылка недействительна или устарела.", "code": code})
+
+    if request.method == "POST":
+        from .forms import UserRegistrationForm
+        form = UserRegistrationForm(request.POST)
+        try:
+            if form.is_valid():
+                user = form.save(commit=False)
+                user.role = User.Role.WORKER
+                user.status = User.Status.APPROVED
+                user.standalone_admin_owner = ref_link.standalone_admin
+                user.save()
+                messages.success(request, "Регистрация прошла успешно. Войдите в личный кабинет.")
+                return redirect("login")
+        except Exception as e:
+            logger.exception("Ошибка при регистрации воркера: %s", e)
+            messages.error(request, "Не удалось завершить регистрацию. Возможно, логин уже занят.")
+    else:
+        form = UserRegistrationForm()
+
+    return render(request, "auth/ref_register.html", {"form": form, "code": code, "standalone_admin": ref_link.standalone_admin})
 

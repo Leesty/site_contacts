@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% load support_extras %}
+
+{% block title %}Задание #{{ assignment.id }}{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Задание #{{ assignment.id }}</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'worker_tasks' %}">← Мои задания</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-header py-2">
+          <strong>Информация о задании</strong>
+        </div>
+        <div class="card-body">
+          <dl class="mb-0">
+            <dt>Лид #{{ lead.id }}</dt>
+            <dd>Тип: {{ lead.lead_type.name|default:"—" }}</dd>
+            {% if assignment.task_description %}
+              <dt>Задача</dt>
+              <dd>{{ assignment.task_description|linebreaksbr }}</dd>
+            {% endif %}
+          </dl>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-header py-2">
+          <strong>Контакт для работы</strong>
+        </div>
+        <div class="card-body">
+          {% if lead.raw_contact %}
+            <p class="mb-1"><strong>{{ lead.raw_contact }}</strong></p>
+          {% elif lead.contact %}
+            <p class="mb-1"><strong>{{ lead.contact.value }}</strong></p>
+          {% else %}
+            <p class="text-muted">Контакт не указан.</p>
+          {% endif %}
+          {% if lead.comment %}
+            <p class="small text-muted mt-2 mb-0">{{ lead.comment }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if existing_report %}
+    <div class="card shadow-sm mb-4">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <strong>Ваш отчёт</strong>
+        {% if existing_report.status == 'pending' %}
+          <span class="badge bg-secondary">На проверке</span>
+        {% elif existing_report.status == 'approved' %}
+          <span class="badge bg-success">Одобрен</span>
+        {% elif existing_report.status == 'rejected' %}
+          <span class="badge bg-danger">Отклонён</span>
+        {% elif existing_report.status == 'rework' %}
+          <span class="badge bg-warning text-dark">На доработке</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <dl class="mb-0">
+          <dt>Контакт / результат</dt>
+          <dd>{{ existing_report.raw_contact }}</dd>
+          {% if existing_report.comment %}
+            <dt>Комментарий</dt>
+            <dd>{{ existing_report.comment }}</dd>
+          {% endif %}
+          {% if existing_report.attachment %}
+            <dt>Вложение</dt>
+            <dd>
+              {% if existing_report.attachment|worker_report_attachment_is_video %}
+                <a href="{% url 'worker_report_attachment' assignment.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Видео</a>
+              {% else %}
+                <a href="{% url 'worker_report_attachment' assignment.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Открыть</a>
+              {% endif %}
+            </dd>
+          {% endif %}
+          {% if existing_report.status == 'rework' and existing_report.rework_comment %}
+            <dt class="text-warning">Комментарий к доработке</dt>
+            <dd class="text-warning">{{ existing_report.rework_comment }}</dd>
+          {% endif %}
+          {% if existing_report.status == 'rejected' and existing_report.rejection_reason %}
+            <dt class="text-danger">Причина отклонения</dt>
+            <dd class="text-danger">{{ existing_report.rejection_reason }}</dd>
+          {% endif %}
+        </dl>
+        {% if existing_report.status == 'rework' %}
+          <a href="{% url 'worker_report_redo' assignment.id %}" class="btn btn-warning mt-3">Доработать отчёт</a>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <div class="card shadow-sm">
+      <div class="card-header py-2">
+        <strong>Отправить отчёт</strong>
+      </div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          {% for field in form %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}
+                <div class="form-text text-muted">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-primary">Отправить отчёт</button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

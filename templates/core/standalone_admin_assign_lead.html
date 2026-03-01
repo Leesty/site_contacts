@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Назначить лид #{{ lead.id }}{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Назначить лид #{{ lead.id }}</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'standalone_admin_ss_leads' %}">← СС Лиды</a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header py-2"><strong>Лид #{{ lead.id }}</strong></div>
+        <div class="card-body">
+          <dl class="mb-0">
+            <dt>Контакт</dt>
+            <dd>{% if lead.raw_contact %}{{ lead.raw_contact }}{% elif lead.contact %}{{ lead.contact.value }}{% else %}—{% endif %}</dd>
+            <dt>Тип</dt>
+            <dd>{{ lead.lead_type.name|default:"—" }}</dd>
+            <dt>Одобрен</dt>
+            <dd>{{ lead.reviewed_at|date:"d.m.Y H:i"|default:"—" }}</dd>
+          </dl>
+        </div>
+      </div>
+
+      {% if existing_assignments %}
+        <div class="card shadow-sm mb-3">
+          <div class="card-header py-2"><strong>Текущие назначения</strong></div>
+          <ul class="list-group list-group-flush">
+            {% for a in existing_assignments %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                @{{ a.worker.username }}
+                {% if a._report_status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                {% elif a._report_status == 'pending' %}<span class="badge bg-secondary">На проверке</span>
+                {% elif a._report_status == 'rework' %}<span class="badge bg-warning text-dark">Доработка</span>
+                {% elif a._report_status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>
+                {% else %}<span class="badge bg-light text-dark">Нет отчёта</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="col-md-6">
+      {% if workers %}
+        <div class="card shadow-sm">
+          <div class="card-header py-2"><strong>Назначить исполнителя</strong></div>
+          <div class="card-body">
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{% url 'standalone_admin_ss_leads' %}">
+              <div class="mb-3">
+                <label class="form-label" for="worker_id">Исполнитель</label>
+                <select class="form-select" id="worker_id" name="worker_id" required>
+                  <option value="">— Выберите исполнителя —</option>
+                  {% for worker in workers %}
+                    <option value="{{ worker.id }}">@{{ worker.username }} (баланс: {{ worker.balance|default:0 }} руб.)</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="task_description">Задача (необязательно)</label>
+                <textarea class="form-control" id="task_description" name="task_description" rows="3"
+                          placeholder="Опишите, что нужно сделать с этим контактом"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary">Назначить</button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <div class="card shadow-sm">
+          <div class="card-body text-center text-muted py-4">
+            Нет доступных исполнителей. Сначала создайте реферальную ссылку и пригласите исполнителей.
+            <div class="mt-2">
+              <a href="{% url 'standalone_admin_ref_links' %}" class="btn btn-primary btn-sm">Создать ссылку</a>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

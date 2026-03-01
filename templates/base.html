@@ -27,7 +27,11 @@
               <li class="nav-item">
                 <a class="nav-link" href="{% url 'dashboard' %}">Кабинет</a>
               </li>
-              {% if not user.is_staff and not user.is_superuser and user.role != 'support' and user.role != 'admin' and user.role != 'standalone_admin' and user.role != 'balance_admin' %}
+              {% if user.role == 'worker' %}
+              <li class="nav-item">
+                <a class="nav-link" href="{% url 'worker_tasks' %}">Мои задания</a>
+              </li>
+              {% elif not user.is_staff and not user.is_superuser and user.role != 'support' and user.role != 'admin' and user.role != 'standalone_admin' and user.role != 'balance_admin' %}
               <li class="nav-item">
                 <a class="nav-link" href="{% url 'contacts' %}">Списки контактов</a>
               </li>

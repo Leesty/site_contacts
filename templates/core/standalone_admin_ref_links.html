@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Реферальные ссылки{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Реферальные ссылки</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Создайте ссылку и отправьте её будущему исполнителю. Зарегистрировавшись по ссылке, он сразу получит роль исполнителя и будет привязан к вам.
+  </p>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header py-2"><strong>Создать новую ссылку</strong></div>
+    <div class="card-body">
+      <form method="post" class="d-flex gap-2 align-items-end flex-wrap">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <div>
+          <label class="form-label mb-1 small" for="note">Заметка (необязательно)</label>
+          <input type="text" class="form-control form-control-sm" id="note" name="note" maxlength="100" placeholder="Например: Иван Петров">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Создать ссылку</button>
+      </form>
+    </div>
+  </div>
+
+  {% if links %}
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Код</th>
+                <th>Ссылка</th>
+                <th>Заметка</th>
+                <th>Создана</th>
+                <th>Статус</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for link in links %}
+                <tr>
+                  <td><code>{{ link.code }}</code></td>
+                  <td class="text-break small">
+                    <a href="{{ request.scheme }}://{{ request.get_host }}{% url 'ref_register' link.code %}" target="_blank" rel="noopener">
+                      /ref/{{ link.code }}/
+                    </a>
+                  </td>
+                  <td>{{ link.note|default:"—" }}</td>
+                  <td>{{ link.created_at|date:"d.m.Y" }}</td>
+                  <td>
+                    {% if link.is_active %}
+                      <span class="badge bg-success">Активна</span>
+                    {% else %}
+                      <span class="badge bg-secondary">Неактивна</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <form method="post" class="d-inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="link_id" value="{{ link.id }}">
+                      {% if link.is_active %}
+                        <input type="hidden" name="action" value="deactivate">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm py-0">Деактивировать</button>
+                      {% else %}
+                        <input type="hidden" name="action" value="activate">
+                        <button type="submit" class="btn btn-outline-success btn-sm py-0">Активировать</button>
+                      {% endif %}
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <p class="text-muted">Ссылок пока нет. Создайте первую выше.</p>
+  {% endif %}
+{% endblock %}
