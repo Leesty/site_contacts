@@ -64,9 +64,9 @@ def worker_tasks(request: HttpRequest) -> HttpResponse:
     # Annotate each assignment with a safe report status to avoid RelatedObjectDoesNotExist in templates
     for a in assignments:
         try:
-            a._report = a.report
+            a.report_obj = a.report
         except WorkerReport.DoesNotExist:
-            a._report = None
+            a.report_obj = None
     return render(request, "worker/tasks.html", {"assignments": assignments})
 
 

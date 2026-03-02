@@ -1620,9 +1620,9 @@ def standalone_admin_assign_lead(request: HttpRequest, lead_id: int) -> HttpResp
     # Annotate each assignment with safe report status (None if no report yet)
     for a in existing_assignments:
         try:
-            a._report_status = a.report.status
+            a.report_status = a.report.status
         except Exception:
-            a._report_status = None
+            a.report_status = None
     return render(request, "core/standalone_admin_assign_lead.html", {
         "lead": lead,
         "workers": workers,

@@ -31,10 +31,10 @@
             {% for a in existing_assignments %}
               <li class="list-group-item d-flex justify-content-between align-items-center">
                 @{{ a.worker.username }}
-                {% if a._report_status == 'approved' %}<span class="badge bg-success">Одобрен</span>
-                {% elif a._report_status == 'pending' %}<span class="badge bg-secondary">На проверке</span>
-                {% elif a._report_status == 'rework' %}<span class="badge bg-warning text-dark">Доработка</span>
-                {% elif a._report_status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>
+                {% if a.report_status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                {% elif a.report_status == 'pending' %}<span class="badge bg-secondary">На проверке</span>
+                {% elif a.report_status == 'rework' %}<span class="badge bg-warning text-dark">Доработка</span>
+                {% elif a.report_status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>
                 {% else %}<span class="badge bg-light text-dark">Нет отчёта</span>
                 {% endif %}
               </li>

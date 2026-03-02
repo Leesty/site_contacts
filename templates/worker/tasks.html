@@ -32,7 +32,7 @@
                   <td>{{ assignment.lead.lead_type.name|default:"—" }}</td>
                   <td>{{ assignment.created_at|date:"d.m.Y" }}</td>
                   <td>
-                    {% with report=assignment._report %}
+                    {% with report=assignment.report_obj %}
                       {% if report %}
                         {% if report.status == 'pending' %}
                           <span class="badge bg-secondary">На проверке</span>
@@ -49,7 +49,7 @@
                     {% endwith %}
                   </td>
                   <td>
-                    {% with report=assignment._report %}
+                    {% with report=assignment.report_obj %}
                       {% if report and report.status == 'rework' %}
                         <a href="{% url 'worker_report_redo' assignment.id %}" class="btn btn-warning btn-sm">Доработать</a>
                       {% elif not report %}
