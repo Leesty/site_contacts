@@ -219,6 +219,19 @@ def worker_request_withdrawal(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def worker_lead_attachment(request: HttpRequest, assignment_id: int) -> HttpResponse:
+    """Отдаёт вложение лида исполнителю (только если лид назначен этому воркеру)."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    assignment = get_object_or_404(LeadAssignment, pk=assignment_id, worker=request.user)
+    lead = assignment.lead
+    if not lead.attachment:
+        return HttpResponseForbidden("У этого лида нет вложения.")
+    from .views_support_admin import _serve_lead_attachment as _serve
+    return _serve(lead)
+
+
+@login_required
 def worker_report_attachment(request: HttpRequest, assignment_id: int) -> HttpResponse:
     """Отдаёт вложение к отчёту воркера (только для владельца отчёта)."""
     if not _require_worker(request):

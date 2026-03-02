@@ -43,6 +43,26 @@
           {% if lead.comment %}
             <p class="small text-muted mt-2 mb-0">{{ lead.comment }}</p>
           {% endif %}
+          {% if lead.attachment %}
+            <div class="mt-3">
+              <strong class="small">Вложение лида:</strong><br>
+              {% if lead.attachment|lead_attachment_is_video %}
+                <button type="button"
+                        class="btn btn-outline-primary btn-sm mt-1 js-video-preview"
+                        data-video-url="{% url 'worker_lead_attachment' assignment.id %}"
+                        data-lead-id="{{ lead.id }}">
+                  ▶ Смотреть видео
+                </button>
+              {% else %}
+                <a href="{% url 'worker_lead_attachment' assignment.id %}"
+                   target="_blank"
+                   rel="noopener"
+                   class="btn btn-outline-primary btn-sm mt-1">
+                  Открыть вложение
+                </a>
+              {% endif %}
+            </div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -118,5 +138,47 @@
         </form>
       </div>
     </div>
+  {% endif %}
+
+  {% if lead.attachment %}
+  <div class="modal fade" id="videoPreviewModal" tabindex="-1" aria-labelledby="videoPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark">
+        <div class="modal-header border-secondary py-2">
+          <h6 class="modal-title" id="videoPreviewModalLabel">Видео лида #{{ lead.id }}</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body p-0">
+          <video id="videoPreviewPlayer" controls preload="none" style="width: 100%; max-height: 70vh;">
+            Ваш браузер не поддерживает видео.
+          </video>
+        </div>
+        <div class="modal-footer border-secondary py-2">
+          <a id="videoDownloadLink" href="{% url 'worker_lead_attachment' assignment.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Открыть в новой вкладке</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function() {
+    var modal = document.getElementById('videoPreviewModal');
+    var video = document.getElementById('videoPreviewPlayer');
+    document.querySelectorAll('.js-video-preview').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var url = btn.getAttribute('data-video-url');
+        if (video && url) {
+          video.src = url;
+          var bsModal = new bootstrap.Modal(modal);
+          bsModal.show();
+        }
+      });
+    });
+    if (modal) {
+      modal.addEventListener('hidden.bs.modal', function() {
+        if (video) { video.pause(); video.src = ''; }
+      });
+    }
+  })();
+  </script>
   {% endif %}
 {% endblock %}

@@ -19,6 +19,7 @@ urlpatterns = [
     path("worker/tasks/<int:assignment_id>/", views_worker.worker_task_detail, name="worker_task_detail"),
     path("worker/tasks/<int:assignment_id>/report/redo/", views_worker.worker_report_redo, name="worker_report_redo"),
     path("worker/tasks/<int:assignment_id>/attachment/", views_worker.worker_report_attachment, name="worker_report_attachment"),
+    path("worker/tasks/<int:assignment_id>/lead-attachment/", views_worker.worker_lead_attachment, name="worker_lead_attachment"),
     path("worker/balance/withdraw/", views_worker.worker_request_withdrawal, name="worker_request_withdrawal"),
     path(
         "login/",
