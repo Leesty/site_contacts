@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Отправить лид{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Отправить лид</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'worker_self_leads' %}">← Мои лиды</a>
+  </div>
+
+  <div class="card shadow-sm" style="max-width: 600px;">
+    <div class="card-body">
+      <p class="text-muted small mb-3">
+        Укажите контакт и дату лида. Приложите скриншот или видео подтверждение.
+        После проверки администратором вам будет начислено <strong>150 руб.</strong>
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {% for field in form %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+              <div class="form-text text-muted">{{ field.help_text }}</div>
+            {% endif %}
+            {% for error in field.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-primary">Отправить на проверку</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

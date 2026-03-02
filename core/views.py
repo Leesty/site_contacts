@@ -165,7 +165,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             },
         )
     if _is_standalone_admin(user):
-        from .models import WorkerReport, WorkerWithdrawalRequest
+        from .models import WorkerReport, WorkerSelfLead, WorkerWithdrawalRequest
         pending_worker_reports_count = WorkerReport.objects.filter(
             standalone_admin=user, status=WorkerReport.Status.PENDING
         ).count()
@@ -173,11 +173,15 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         pending_worker_withdrawals_count = WorkerWithdrawalRequest.objects.filter(
             standalone_admin=user, status="pending"
         ).count()
+        pending_worker_self_leads_count = WorkerSelfLead.objects.filter(
+            standalone_admin=user, status=WorkerSelfLead.Status.PENDING
+        ).count()
         return render(request, "core/dashboard_standalone_admin.html", {
             "user": user,
             "pending_worker_reports_count": pending_worker_reports_count,
             "workers_count": workers_count,
             "pending_worker_withdrawals_count": pending_worker_withdrawals_count,
+            "pending_worker_self_leads_count": pending_worker_self_leads_count,
         })
     if _is_admin(user):
         pending_count = User.objects.filter(status=User.Status.PENDING).count()

@@ -12,8 +12,8 @@ from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from .forms import WorkerReportForm, WorkerReportReworkForm
-from .models import LeadAssignment, User, WithdrawalRequest, WorkerReport, WorkerWithdrawalRequest
+from .forms import WorkerReportForm, WorkerReportReworkForm, WorkerSelfLeadForm, WorkerSelfLeadReworkForm
+from .models import LeadAssignment, User, WithdrawalRequest, WorkerReport, WorkerSelfLead, WorkerWithdrawalRequest
 
 logger = logging.getLogger(__name__)
 
@@ -252,3 +252,101 @@ def worker_report_attachment(request: HttpRequest, assignment_id: int) -> HttpRe
     obj.user = request.user
     obj.pk = report.pk
     return _serve(obj)
+
+
+# ──────────────────────────────────────────────────────────────
+# Worker Self-Leads (самостоятельные лиды исполнителя)
+# ──────────────────────────────────────────────────────────────
+
+@login_required
+def worker_self_leads(request: HttpRequest) -> HttpResponse:
+    """Список самостоятельно отправленных лидов исполнителя."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    leads = WorkerSelfLead.objects.filter(worker=request.user).order_by("-created_at")
+    return render(request, "worker/self_leads.html", {"self_leads": leads})
+
+
+@login_required
+def worker_self_lead_create(request: HttpRequest) -> HttpResponse:
+    """Форма отправки нового самостоятельного лида."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    user = request.user
+    standalone_admin = user.standalone_admin_owner
+    if not standalone_admin:
+        messages.error(request, "Ошибка: не найден ваш самостоятельный админ. Обратитесь за помощью.")
+        return redirect("worker_self_leads")
+
+    if request.method == "POST":
+        form = WorkerSelfLeadForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                self_lead = WorkerSelfLead(
+                    worker=user,
+                    standalone_admin=standalone_admin,
+                    raw_contact=form.cleaned_data["raw_contact"].strip(),
+                    lead_date=form.cleaned_data["lead_date"],
+                    comment=form.cleaned_data.get("comment") or "",
+                    status=WorkerSelfLead.Status.PENDING,
+                )
+                if form.cleaned_data.get("attachment"):
+                    self_lead.attachment = form.cleaned_data["attachment"]
+                self_lead.save()
+                messages.success(request, "Лид отправлен на проверку.")
+                return redirect("worker_self_leads")
+            except Exception as e:
+                logger.exception("Ошибка при сохранении самостоятельного лида: %s", e)
+                messages.error(request, "Не удалось сохранить лид. Попробуйте ещё раз.")
+    else:
+        form = WorkerSelfLeadForm()
+
+    return render(request, "worker/self_lead_create.html", {"form": form})
+
+
+@login_required
+def worker_self_lead_redo(request: HttpRequest, self_lead_id: int) -> HttpResponse:
+    """Доработка самостоятельного лида исполнителем."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, worker=request.user)
+
+    if self_lead.status != WorkerSelfLead.Status.REWORK:
+        messages.warning(request, "Этот лид не требует доработки.")
+        return redirect("worker_self_leads")
+
+    if request.method == "POST":
+        form = WorkerSelfLeadReworkForm(request.POST, request.FILES)
+        if form.is_valid():
+            self_lead.raw_contact = form.cleaned_data["raw_contact"].strip()
+            self_lead.lead_date = form.cleaned_data["lead_date"]
+            self_lead.comment = form.cleaned_data.get("comment") or ""
+            self_lead.status = WorkerSelfLead.Status.PENDING
+            self_lead.rework_comment = ""
+            update_fields = ["raw_contact", "lead_date", "comment", "status", "rework_comment", "updated_at"]
+            if form.cleaned_data.get("attachment"):
+                self_lead.attachment = form.cleaned_data["attachment"]
+                update_fields.append("attachment")
+            self_lead.save(update_fields=update_fields)
+            messages.success(request, "Лид отправлен на повторную проверку.")
+            return redirect("worker_self_leads")
+    else:
+        form = WorkerSelfLeadReworkForm(initial={
+            "raw_contact": self_lead.raw_contact,
+            "lead_date": self_lead.lead_date,
+            "comment": self_lead.comment,
+        })
+
+    return render(request, "worker/self_lead_redo.html", {"form": form, "self_lead": self_lead})
+
+
+@login_required
+def worker_self_lead_attachment(request: HttpRequest, self_lead_id: int) -> HttpResponse:
+    """Отдаёт вложение самостоятельного лида исполнителю (только владельцу)."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, worker=request.user)
+    if not self_lead.attachment:
+        return HttpResponseForbidden("Вложение отсутствует.")
+    from .views_support_admin import _serve_lead_attachment as _serve
+    return _serve(self_lead)

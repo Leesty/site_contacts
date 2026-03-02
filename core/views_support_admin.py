@@ -34,6 +34,7 @@ from .models import (
     User,
     UserBaseLimit,
     WithdrawalRequest,
+    WorkerSelfLead,
 )
 
 
@@ -1840,4 +1841,129 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
         "pending_requests": pending,
         "history_requests": history,
     })
+
+
+# ──────────────────────────────────────────────────────────────
+# SS Admin: Worker Self-Leads
+# ──────────────────────────────────────────────────────────────
+
+@login_required
+def standalone_admin_worker_self_leads(request: HttpRequest) -> HttpResponse:
+    """Список самостоятельных лидов от исполнителей для проверки СС-админом."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    tab = request.GET.get("tab", "pending")
+    valid_tabs = ("pending", "approved", "rejected", "rework")
+    if tab not in valid_tabs:
+        tab = "pending"
+
+    base_qs = WorkerSelfLead.objects.filter(standalone_admin=request.user).select_related("worker")
+    leads = base_qs.filter(status=tab).order_by("-created_at")
+
+    from django.core.paginator import Paginator
+    paginator = Paginator(leads, 30)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    counts = {t: base_qs.filter(status=t).count() for t in valid_tabs}
+
+    return render(request, "core/standalone_admin_worker_self_leads.html", {
+        "tab": tab,
+        "page_obj": page_obj,
+        "counts": counts,
+    })
+
+
+@login_required
+def standalone_admin_worker_self_lead_approve(request: HttpRequest, self_lead_id: int) -> HttpResponse:
+    """Одобрить самостоятельный лид исполнителя и начислить вознаграждение."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    if request.method != "POST":
+        return HttpResponseForbidden("Только POST.")
+    self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
+    if self_lead.status not in (WorkerSelfLead.Status.PENDING, WorkerSelfLead.Status.REWORK):
+        from django.contrib import messages
+        messages.warning(request, "Лид уже обработан.")
+        return redirect("standalone_admin_worker_self_leads")
+
+    from django.db import transaction
+    from django.utils import timezone
+    with transaction.atomic():
+        self_lead.status = WorkerSelfLead.Status.APPROVED
+        self_lead.rejection_reason = ""
+        self_lead.rework_comment = ""
+        self_lead.reviewed_at = timezone.now()
+        self_lead.reviewed_by = request.user
+        self_lead.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by_id", "updated_at"])
+
+        worker = User.objects.select_for_update().get(pk=self_lead.worker_id)
+        worker.balance = (worker.balance or 0) + self_lead.reward
+        worker.save(update_fields=["balance"])
+
+    from django.contrib import messages
+    messages.success(request, f"Лид одобрен. Исполнителю @{self_lead.worker.username} начислено {self_lead.reward} руб.")
+    return redirect("standalone_admin_worker_self_leads")
+
+
+@login_required
+def standalone_admin_worker_self_lead_reject(request: HttpRequest, self_lead_id: int) -> HttpResponse:
+    """Отклонить самостоятельный лид исполнителя."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    if request.method != "POST":
+        return HttpResponseForbidden("Только POST.")
+    self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
+    if self_lead.status not in (WorkerSelfLead.Status.PENDING, WorkerSelfLead.Status.REWORK):
+        from django.contrib import messages
+        messages.warning(request, "Лид уже обработан.")
+        return redirect("standalone_admin_worker_self_leads")
+
+    rejection_reason = (request.POST.get("rejection_reason") or "").strip()
+    from django.utils import timezone
+    self_lead.status = WorkerSelfLead.Status.REJECTED
+    self_lead.rejection_reason = rejection_reason
+    self_lead.reviewed_at = timezone.now()
+    self_lead.reviewed_by = request.user
+    self_lead.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by_id", "updated_at"])
+
+    from django.contrib import messages
+    messages.success(request, "Лид отклонён.")
+    return redirect("standalone_admin_worker_self_leads")
+
+
+@login_required
+def standalone_admin_worker_self_lead_rework(request: HttpRequest, self_lead_id: int) -> HttpResponse:
+    """Отправить самостоятельный лид исполнителя на доработку."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    if request.method != "POST":
+        return HttpResponseForbidden("Только POST.")
+    self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
+    if self_lead.status not in (WorkerSelfLead.Status.PENDING, WorkerSelfLead.Status.REWORK):
+        from django.contrib import messages
+        messages.warning(request, "Лид уже обработан.")
+        return redirect("standalone_admin_worker_self_leads")
+
+    rework_comment = (request.POST.get("rework_comment") or "").strip()
+    from django.utils import timezone
+    self_lead.status = WorkerSelfLead.Status.REWORK
+    self_lead.rework_comment = rework_comment
+    self_lead.reviewed_at = timezone.now()
+    self_lead.reviewed_by = request.user
+    self_lead.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by_id", "updated_at"])
+
+    from django.contrib import messages
+    messages.success(request, "Лид отправлен на доработку.")
+    return redirect("standalone_admin_worker_self_leads")
+
+
+@login_required
+def standalone_admin_worker_self_lead_attachment(request: HttpRequest, self_lead_id: int) -> HttpResponse:
+    """Отдаёт вложение самостоятельного лида для СС-админа."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
+    if not self_lead.attachment:
+        return HttpResponseForbidden("Вложение отсутствует.")
+    return _serve_lead_attachment(self_lead)
 

@@ -689,6 +689,69 @@ class WorkerWithdrawalRequest(TimeStampedModel):
         return f"Вывод {self.amount} руб. от @{self.worker.username} ({self.get_status_display()})"
 
 
+def worker_self_lead_upload_to(instance: "WorkerSelfLead", filename: str) -> str:
+    """Путь для загрузки вложений к самостоятельным лидам исполнителей."""
+    ext = filename.split(".")[-1] if "." in filename else "bin"
+    return f"worker_self_leads/worker_{instance.worker_id}/{uuid4().hex}.{ext}"
+
+
+class WorkerSelfLead(TimeStampedModel):
+    """Лид, самостоятельно отправленный исполнителем (воркером) своему СС-админу на проверку."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "На проверке"
+        APPROVED = "approved", "Одобрен"
+        REJECTED = "rejected", "Отклонён"
+        REWORK = "rework", "На доработке"
+
+    worker = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="self_leads",
+        limit_choices_to={"role": "worker"},
+    )
+    standalone_admin = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="received_worker_self_leads",
+        limit_choices_to={"role": "standalone_admin"},
+    )
+    raw_contact = models.CharField(max_length=500, help_text="Контакт / ссылка (юзернейм, телефон и т.д.).")
+    lead_date = models.DateField(help_text="Дата лида.")
+    attachment = models.FileField(
+        upload_to=worker_self_lead_upload_to,
+        blank=True,
+        null=True,
+        help_text="Скриншот или видео подтверждения.",
+    )
+    comment = models.TextField(blank=True, help_text="Комментарий к лиду.")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    rework_comment = models.TextField(blank=True, help_text="Что исправить (при статусе «На доработке»).")
+    rejection_reason = models.TextField(blank=True)
+    reward = models.PositiveIntegerField(default=150, help_text="Вознаграждение за одобренный лид (руб.).")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_worker_self_leads",
+    )
+
+    class Meta:
+        verbose_name = "Лид от исполнителя"
+        verbose_name_plural = "Лиды от исполнителей"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Лид от @{self.worker.username}: {self.raw_contact} ({self.get_status_display()})"
+
+
 def site_settings_upload_to(instance, filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "mp4"
     return f"site/{uuid4().hex[:12]}.{ext}"

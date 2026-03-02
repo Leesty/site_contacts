@@ -21,6 +21,11 @@ urlpatterns = [
     path("worker/tasks/<int:assignment_id>/attachment/", views_worker.worker_report_attachment, name="worker_report_attachment"),
     path("worker/tasks/<int:assignment_id>/lead-attachment/", views_worker.worker_lead_attachment, name="worker_lead_attachment"),
     path("worker/balance/withdraw/", views_worker.worker_request_withdrawal, name="worker_request_withdrawal"),
+    # Worker self-leads
+    path("worker/my-leads/", views_worker.worker_self_leads, name="worker_self_leads"),
+    path("worker/my-leads/new/", views_worker.worker_self_lead_create, name="worker_self_lead_create"),
+    path("worker/my-leads/<int:self_lead_id>/redo/", views_worker.worker_self_lead_redo, name="worker_self_lead_redo"),
+    path("worker/my-leads/<int:self_lead_id>/attachment/", views_worker.worker_self_lead_attachment, name="worker_self_lead_attachment"),
     path(
         "login/",
         auth_views.LoginView.as_view(template_name="auth/login.html"),
@@ -134,6 +139,31 @@ urlpatterns = [
         "staff/standalone/worker-withdrawals/",
         views_support_admin.standalone_admin_worker_withdrawal_requests,
         name="standalone_admin_worker_withdrawal_requests",
+    ),
+    path(
+        "staff/standalone/worker-self-leads/",
+        views_support_admin.standalone_admin_worker_self_leads,
+        name="standalone_admin_worker_self_leads",
+    ),
+    path(
+        "staff/standalone/worker-self-leads/<int:self_lead_id>/approve/",
+        views_support_admin.standalone_admin_worker_self_lead_approve,
+        name="standalone_admin_worker_self_lead_approve",
+    ),
+    path(
+        "staff/standalone/worker-self-leads/<int:self_lead_id>/reject/",
+        views_support_admin.standalone_admin_worker_self_lead_reject,
+        name="standalone_admin_worker_self_lead_reject",
+    ),
+    path(
+        "staff/standalone/worker-self-leads/<int:self_lead_id>/rework/",
+        views_support_admin.standalone_admin_worker_self_lead_rework,
+        name="standalone_admin_worker_self_lead_rework",
+    ),
+    path(
+        "staff/standalone/worker-self-leads/<int:self_lead_id>/attachment/",
+        views_support_admin.standalone_admin_worker_self_lead_attachment,
+        name="standalone_admin_worker_self_lead_attachment",
     ),
     path(
         "staff/standalone/leads/<int:lead_id>/attachment/",

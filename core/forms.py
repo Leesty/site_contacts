@@ -3,7 +3,7 @@ from __future__ import annotations
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 
-from .models import BaseType, Lead, LeadType, User
+from .models import BaseType, Lead, LeadType, User, WorkerSelfLead
 
 
 class UserRegistrationForm(UserCreationForm):
@@ -195,6 +195,89 @@ class LeadRejectForm(forms.Form):
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3, "placeholder": "Укажите причину отклонения лида"}),
         required=True,
     )
+
+
+class WorkerSelfLeadForm(forms.ModelForm):
+    """Форма отправки лида исполнителем (самостоятельный лид)."""
+
+    raw_contact = forms.CharField(
+        label="Контакт / ссылка",
+        help_text="Юзернейм, телефон, ссылка на объявление или другой идентификатор.",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "@username / +7..."}),
+    )
+
+    class Meta:
+        model = WorkerSelfLead
+        fields = ("raw_contact", "lead_date", "attachment", "comment")
+        labels = {
+            "lead_date": "Дата лида",
+            "attachment": "Скриншот / видео",
+            "comment": "Комментарий (необязательно)",
+        }
+        widgets = {
+            "lead_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "attachment": forms.ClearableFileInput(attrs={"class": "form-control"}),
+            "comment": forms.Textarea(attrs={"class": "form-control", "rows": 3, "placeholder": "Дополнительная информация о лиде"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["lead_date"].required = True
+        self.fields["attachment"].required = False
+        if not self.instance or not self.instance.pk:
+            from django.utils import timezone
+            self.fields["lead_date"].initial = timezone.now().date()
+
+    def clean_attachment(self):
+        data = self.cleaned_data.get("attachment")
+        if not data:
+            return data
+        name = getattr(data, "name", None) or ""
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in LEAD_ATTACHMENT_ALLOWED_EXTENSIONS:
+            raise forms.ValidationError(
+                "Разрешены только изображения и видео: jpg, png, gif, webp, mp4, mov и т.д."
+            )
+        size = getattr(data, "size", None)
+        if size is not None and size > LEAD_ATTACHMENT_MAX_SIZE:
+            raise forms.ValidationError("Размер файла не должен превышать 30 МБ.")
+        return data
+
+
+class WorkerSelfLeadReworkForm(forms.Form):
+    """Форма доработки лида исполнителем."""
+
+    raw_contact = forms.CharField(
+        label="Контакт / ссылка",
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    lead_date = forms.DateField(
+        label="Дата лида",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+    attachment = forms.FileField(
+        label="Скриншот / видео (необязательно)",
+        required=False,
+        widget=forms.ClearableFileInput(attrs={"class": "form-control"}),
+    )
+    comment = forms.CharField(
+        label="Комментарий",
+        required=False,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+    )
+
+    def clean_attachment(self):
+        data = self.cleaned_data.get("attachment")
+        if not data:
+            return data
+        name = getattr(data, "name", None) or ""
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in LEAD_ATTACHMENT_ALLOWED_EXTENSIONS:
+            raise forms.ValidationError("Разрешены только изображения и видео.")
+        size = getattr(data, "size", None)
+        if size is not None and size > LEAD_ATTACHMENT_MAX_SIZE:
+            raise forms.ValidationError("Размер файла не должен превышать 30 МБ.")
+        return data
 
 
 class LeadReworkForm(forms.Form):
