@@ -120,7 +120,7 @@
         <strong>Отправить отчёт</strong>
       </div>
       <div class="card-body">
-        <form method="post" enctype="multipart/form-data">
+        <form method="post" enctype="multipart/form-data" id="reportForm">
           {% csrf_token %}
           {% for field in form %}
             <div class="mb-3">
@@ -134,8 +134,30 @@
               {% endfor %}
             </div>
           {% endfor %}
-          <button type="submit" class="btn btn-primary">Отправить отчёт</button>
+          <div id="attachmentSizeError" class="alert alert-danger d-none mb-2 py-2 small">
+            ⚠ Файл слишком большой (макс. 30 МБ). Сожмите видео или приложите скриншот вместо видео.
+          </div>
+          <button type="submit" class="btn btn-primary" id="reportSubmitBtn">Отправить отчёт</button>
         </form>
+        <script>
+        (function() {
+          var MAX = 30 * 1024 * 1024;
+          var errDiv = document.getElementById('attachmentSizeError');
+          var submitBtn = document.getElementById('reportSubmitBtn');
+          document.querySelectorAll('#reportForm input[type="file"]').forEach(function(inp) {
+            inp.addEventListener('change', function() {
+              var file = inp.files && inp.files[0];
+              if (file && file.size > MAX) {
+                errDiv.classList.remove('d-none');
+                submitBtn.disabled = true;
+              } else {
+                errDiv.classList.add('d-none');
+                submitBtn.disabled = false;
+              }
+            });
+          });
+        })();
+        </script>
       </div>
     </div>
   {% endif %}

@@ -54,10 +54,12 @@ class BaseRequestForm(forms.Form):
 
 # Расширения вложений лида: изображения и видео (запись экрана iPhone/Android)
 LEAD_ATTACHMENT_IMAGE_EXTENSIONS = frozenset(("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic"))
-LEAD_ATTACHMENT_VIDEO_EXTENSIONS = frozenset(("mp4", "mov", "webm", "m4v", "3gp"))
+LEAD_ATTACHMENT_VIDEO_EXTENSIONS = frozenset(("mp4", "mov", "webm", "m4v", "3gp", "mkv", "avi", "hevc"))
 LEAD_ATTACHMENT_ALLOWED_EXTENSIONS = LEAD_ATTACHMENT_IMAGE_EXTENSIONS | LEAD_ATTACHMENT_VIDEO_EXTENSIONS
 # Максимальный размер вложения (30 МБ), чтобы тяжёлые видео не ломали загрузку
 LEAD_ATTACHMENT_MAX_SIZE = 30 * 1024 * 1024
+# Единый атрибут accept для всех file input с вложениями лидов/отчётов
+_ATTACHMENT_ACCEPT = "image/*,video/*,.mp4,.mov,.webm,.m4v,.3gp,.mkv,.avi,.hevc,.heic"
 
 
 class LeadReportForm(forms.ModelForm):
@@ -109,7 +111,7 @@ class LeadReportForm(forms.ModelForm):
                 attrs={
                     "class": "form-control",
                     "style": "background-color: rgba(15, 23, 42, 0.95); border-color: rgba(55, 65, 81, 0.9); color: #e5e7eb;",
-                    "accept": "image/*,.mp4,.mov,.webm,.m4v,.3gp",
+                    "accept": _ATTACHMENT_ACCEPT,
                 }
             ),
             "comment": forms.Textarea(
@@ -216,7 +218,7 @@ class WorkerSelfLeadForm(forms.ModelForm):
         }
         widgets = {
             "lead_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
-            "attachment": forms.ClearableFileInput(attrs={"class": "form-control"}),
+            "attachment": forms.ClearableFileInput(attrs={"class": "form-control", "accept": _ATTACHMENT_ACCEPT}),
             "comment": forms.Textarea(attrs={"class": "form-control", "rows": 3, "placeholder": "Дополнительная информация о лиде"}),
         }
 
@@ -258,7 +260,7 @@ class WorkerSelfLeadReworkForm(forms.Form):
     attachment = forms.FileField(
         label="Скриншот / видео (необязательно)",
         required=False,
-        widget=forms.ClearableFileInput(attrs={"class": "form-control"}),
+        widget=forms.ClearableFileInput(attrs={"class": "form-control", "accept": _ATTACHMENT_ACCEPT}),
     )
     comment = forms.CharField(
         label="Комментарий",
@@ -306,9 +308,9 @@ class WorkerReportForm(forms.Form):
     )
     attachment = forms.FileField(
         label="Скриншот или видео",
-        help_text="Прикрепите скриншот или видео (макс. 30 МБ). Необязательно.",
+        help_text="Фото или видео (MP4, MOV, WEBM, JPG, PNG, MKV и др.). Макс. 30 МБ. Если видео тяжелее — сожмите или сделайте скриншот.",
         required=False,
-        widget=forms.FileInput(attrs={"class": "form-control", "accept": "image/*,.mp4,.mov,.webm,.m4v,.3gp"}),
+        widget=forms.FileInput(attrs={"class": "form-control", "accept": _ATTACHMENT_ACCEPT}),
     )
 
     def clean_attachment(self):
@@ -318,10 +320,10 @@ class WorkerReportForm(forms.Form):
         name = getattr(data, "name", None) or ""
         ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
         if ext not in LEAD_ATTACHMENT_ALLOWED_EXTENSIONS:
-            raise forms.ValidationError("Разрешены только изображения и видео: jpg, png, gif, webp, mp4, mov и т.д.")
+            raise forms.ValidationError("Разрешены только изображения и видео: jpg, png, gif, webp, mp4, mov, mkv и т.д.")
         size = getattr(data, "size", None)
         if size is not None and size > LEAD_ATTACHMENT_MAX_SIZE:
-            raise forms.ValidationError("Размер файла не должен превышать 30 МБ.")
+            raise forms.ValidationError("Размер файла не должен превышать 30 МБ. Сожмите видео или прикрепите скриншот.")
         return data
 
 
@@ -340,9 +342,9 @@ class WorkerReportReworkForm(forms.Form):
     )
     attachment = forms.FileField(
         label="Скриншот или видео",
-        help_text="Загрузите новое или оставьте текущее (макс. 30 МБ).",
+        help_text="Загрузите новое или оставьте текущее. Макс. 30 МБ. Если видео тяжелее — сожмите или сделайте скриншот.",
         required=False,
-        widget=forms.FileInput(attrs={"class": "form-control", "accept": "image/*,.mp4,.mov,.webm,.m4v,.3gp"}),
+        widget=forms.FileInput(attrs={"class": "form-control", "accept": _ATTACHMENT_ACCEPT}),
     )
 
     def clean_attachment(self):
@@ -352,10 +354,10 @@ class WorkerReportReworkForm(forms.Form):
         name = getattr(data, "name", None) or ""
         ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
         if ext not in LEAD_ATTACHMENT_ALLOWED_EXTENSIONS:
-            raise forms.ValidationError("Разрешены только изображения и видео: jpg, png, gif, webp, mp4, mov и т.д.")
+            raise forms.ValidationError("Разрешены только изображения и видео: jpg, png, gif, webp, mp4, mov, mkv и т.д.")
         size = getattr(data, "size", None)
         if size is not None and size > LEAD_ATTACHMENT_MAX_SIZE:
-            raise forms.ValidationError("Размер файла не должен превышать 30 МБ.")
+            raise forms.ValidationError("Размер файла не должен превышать 30 МБ. Сожмите видео или прикрепите скриншот.")
         return data
 
 

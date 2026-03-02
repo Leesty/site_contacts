@@ -16,7 +16,7 @@
 
   <div class="card shadow-sm">
     <div class="card-body">
-      <form method="post" enctype="multipart/form-data">
+      <form method="post" enctype="multipart/form-data" id="redoForm">
         {% csrf_token %}
         {% for field in form %}
           <div class="mb-3">
@@ -33,9 +33,31 @@
         {% if report.attachment %}
           <p class="small text-muted">Текущее вложение уже прикреплено. Загрузите новое только при необходимости.</p>
         {% endif %}
-        <button type="submit" class="btn btn-warning">Отправить на повторную проверку</button>
+        <div id="redoSizeError" class="alert alert-danger d-none mb-2 py-2 small">
+          ⚠ Файл слишком большой (макс. 30 МБ). Сожмите видео или приложите скриншот.
+        </div>
+        <button type="submit" class="btn btn-warning" id="redoSubmitBtn">Отправить на повторную проверку</button>
         <a href="{% url 'worker_tasks' %}" class="btn btn-outline-secondary ms-2">Отмена</a>
       </form>
+      <script>
+      (function() {
+        var MAX = 30 * 1024 * 1024;
+        var errDiv = document.getElementById('redoSizeError');
+        var submitBtn = document.getElementById('redoSubmitBtn');
+        document.querySelectorAll('#redoForm input[type="file"]').forEach(function(inp) {
+          inp.addEventListener('change', function() {
+            var file = inp.files && inp.files[0];
+            if (file && file.size > MAX) {
+              errDiv.classList.remove('d-none');
+              submitBtn.disabled = true;
+            } else {
+              errDiv.classList.add('d-none');
+              submitBtn.disabled = false;
+            }
+          });
+        });
+      })();
+      </script>
     </div>
   </div>
 {% endblock %}
