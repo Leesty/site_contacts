@@ -26,6 +26,12 @@
     <li class="nav-item">
       <a class="nav-link {% if tab == 'meeting' %}active{% endif %}" href="?tab=meeting">Встреча ({{ counts.meeting|default:0 }})</a>
     </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'assigned' %}active{% endif %}" href="?tab=assigned">
+        Назначены
+        {% if counts.assigned %}<span class="badge bg-success ms-1">{{ counts.assigned }}</span>{% endif %}
+      </a>
+    </li>
   </ul>
 
   <div class="card shadow-sm">
@@ -41,6 +47,7 @@
                 <th>Тип</th>
                 <th>Одобрен</th>
                 <th>Вложение</th>
+                {% if tab == 'assigned' %}<th>Исполнители</th>{% endif %}
                 <th style="width: 220px;">Статус / Переместить</th>
               </tr>
             </thead>
@@ -73,6 +80,26 @@
                       <span class="text-muted">—</span>
                     {% endif %}
                   </td>
+                  {% if tab == 'assigned' %}
+                  <td class="small">
+                    {% for a in lead.assignments.all %}
+                      <div class="mb-1">
+                        <span class="fw-semibold">@{{ a.worker.username }}</span>
+                        {% if a.report_status == 'approved' %}
+                          <span class="badge bg-success ms-1">Одобрен</span>
+                        {% elif a.report_status == 'pending' %}
+                          <span class="badge bg-secondary ms-1">На проверке</span>
+                        {% elif a.report_status == 'rework' %}
+                          <span class="badge bg-warning text-dark ms-1">Доработка</span>
+                        {% elif a.report_status == 'rejected' %}
+                          <span class="badge bg-danger ms-1">Отклонён</span>
+                        {% else %}
+                          <span class="badge bg-primary ms-1">Нет отчёта</span>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  </td>
+                  {% endif %}
                   <td>
                     <div class="d-flex align-items-center gap-1 flex-wrap">
                       <form method="post" class="d-flex align-items-center gap-1">
@@ -115,7 +142,7 @@
         {% endif %}
       {% else %}
         <p class="text-muted p-4 mb-0 text-center">
-          {% if tab == 'new' %}Нет новых СС-лидов.{% elif tab == 'rejected' %}Нет лидов в «Отказ».{% elif tab == 'in_progress' %}Нет лидов «В работе».{% else %}Нет лидов «Встреча».{% endif %}
+          {% if tab == 'new' %}Нет новых СС-лидов.{% elif tab == 'rejected' %}Нет лидов в «Отказ».{% elif tab == 'in_progress' %}Нет лидов «В работе».{% elif tab == 'assigned' %}Нет назначенных лидов.{% else %}Нет лидов «Встреча».{% endif %}
         </p>
       {% endif %}
     </div>

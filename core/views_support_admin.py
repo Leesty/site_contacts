@@ -128,7 +128,7 @@ def standalone_admin_ss_leads(request: HttpRequest) -> HttpResponse:
 
 def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
     tab = request.GET.get("tab", "new")
-    if tab not in ("new", "rejected", "in_progress", "meeting"):
+    if tab not in ("new", "rejected", "in_progress", "meeting", "assigned"):
         tab = "new"
 
     base_qs = Lead.objects.filter(
@@ -136,7 +136,24 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
         needs_team_contact=True,
     ).select_related("user", "lead_type", "base_type")
 
-    if tab == "new":
+    if tab == "assigned":
+        from django.db.models import Prefetch
+        from .models import LeadAssignment as _LA
+        leads = (
+            base_qs
+            .filter(assignments__worker__standalone_admin_owner=request.user)
+            .distinct()
+            .prefetch_related(
+                Prefetch(
+                    "assignments",
+                    queryset=_LA.objects.filter(
+                        worker__standalone_admin_owner=request.user
+                    ).select_related("worker").order_by("-created_at"),
+                )
+            )
+            .order_by("-updated_at", "-id")
+        )
+    elif tab == "new":
         leads = base_qs.filter(ss_admin_status__isnull=True).order_by("-reviewed_at", "-id")
     else:
         leads = base_qs.filter(ss_admin_status=tab).order_by("-updated_at", "-id")
@@ -157,6 +174,9 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
         "rejected": base_qs.filter(ss_admin_status="rejected").count(),
         "in_progress": base_qs.filter(ss_admin_status="in_progress").count(),
         "meeting": base_qs.filter(ss_admin_status="meeting").count(),
+        "assigned": base_qs.filter(
+            assignments__worker__standalone_admin_owner=request.user
+        ).distinct().count(),
     }
     paginator = Paginator(leads, 30)
     try:
@@ -164,6 +184,16 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
     except (TypeError, ValueError):
         page_num = 1
     page_obj = paginator.get_page(page_num)
+
+    # Для вкладки «Назначены» — аннотируем статус отчёта на каждом назначении
+    if tab == "assigned":
+        from .models import WorkerReport
+        for lead in page_obj:
+            for a in lead.assignments.all():
+                try:
+                    a.report_status = a.report.status
+                except WorkerReport.DoesNotExist:
+                    a.report_status = None
 
     return render(
         request,
