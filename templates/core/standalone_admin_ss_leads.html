@@ -53,7 +53,7 @@
             </thead>
             <tbody>
               {% for lead in page_obj %}
-                <tr>
+                <tr{% if tab == 'assigned' and lead.all_assignments_approved %} class="opacity-50"{% endif %}>
                   <td>#{{ lead.id }}</td>
                   <td>@{{ lead.user.username }}</td>
                   <td class="text-break small">{% if lead.raw_contact %}{{ lead.raw_contact }}{% elif lead.contact %}{{ lead.contact.value }}{% else %}—{% endif %}</td>
@@ -101,24 +101,28 @@
                   </td>
                   {% endif %}
                   <td>
-                    <div class="d-flex align-items-center gap-1 flex-wrap">
-                      <form method="post" class="d-flex align-items-center gap-1">
-                        {% csrf_token %}
-                        <input type="hidden" name="lead_id" value="{{ lead.id }}">
-                        <select name="ss_admin_status" class="form-select form-select-sm" style="width: auto;">
-                          <option value="" {% if not lead.ss_admin_status %}selected{% endif %}>Новые</option>
-                          <option value="rejected" {% if lead.ss_admin_status == 'rejected' %}selected{% endif %}>Отказ</option>
-                          <option value="in_progress" {% if lead.ss_admin_status == 'in_progress' %}selected{% endif %}>В работе</option>
-                          <option value="meeting" {% if lead.ss_admin_status == 'meeting' %}selected{% endif %}>Встреча</option>
-                        </select>
-                        <button type="submit" class="btn btn-outline-primary btn-sm py-0 px-1">→</button>
-                      </form>
-                      <a href="{% url 'standalone_admin_assign_lead' lead.id %}"
-                         class="btn btn-outline-success btn-sm py-0 px-1"
-                         title="Назначить исполнителю">
-                        {% with cnt=lead.assignments.count %}{% if cnt %}✓({{ cnt }}){% else %}+👷{% endif %}{% endwith %}
-                      </a>
-                    </div>
+                    {% if tab == 'assigned' and lead.all_assignments_approved %}
+                      <span class="badge bg-success">✓ Завершён</span>
+                    {% else %}
+                      <div class="d-flex align-items-center gap-1 flex-wrap">
+                        <form method="post" class="d-flex align-items-center gap-1">
+                          {% csrf_token %}
+                          <input type="hidden" name="lead_id" value="{{ lead.id }}">
+                          <select name="ss_admin_status" class="form-select form-select-sm" style="width: auto;">
+                            <option value="" {% if not lead.ss_admin_status %}selected{% endif %}>Новые</option>
+                            <option value="rejected" {% if lead.ss_admin_status == 'rejected' %}selected{% endif %}>Отказ</option>
+                            <option value="in_progress" {% if lead.ss_admin_status == 'in_progress' %}selected{% endif %}>В работе</option>
+                            <option value="meeting" {% if lead.ss_admin_status == 'meeting' %}selected{% endif %}>Встреча</option>
+                          </select>
+                          <button type="submit" class="btn btn-outline-primary btn-sm py-0 px-1">→</button>
+                        </form>
+                        <a href="{% url 'standalone_admin_assign_lead' lead.id %}"
+                           class="btn btn-outline-success btn-sm py-0 px-1"
+                           title="Назначить исполнителю">
+                          {% with cnt=lead.assignments.count %}{% if cnt %}✓({{ cnt }}){% else %}+👷{% endif %}{% endwith %}
+                        </a>
+                      </div>
+                    {% endif %}
                   </td>
                 </tr>
               {% endfor %}

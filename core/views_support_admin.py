@@ -185,15 +185,21 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
         page_num = 1
     page_obj = paginator.get_page(page_num)
 
-    # Для вкладки «Назначены» — аннотируем статус отчёта на каждом назначении
+    # Для вкладки «Назначены» — аннотируем статус отчёта и флаг «все одобрены»
     if tab == "assigned":
         from .models import WorkerReport
         for lead in page_obj:
+            all_approved = True
+            has_any = False
             for a in lead.assignments.all():
+                has_any = True
                 try:
                     a.report_status = a.report.status
                 except WorkerReport.DoesNotExist:
                     a.report_status = None
+                if a.report_status != "approved":
+                    all_approved = False
+            lead.all_assignments_approved = has_any and all_approved
 
     return render(
         request,
