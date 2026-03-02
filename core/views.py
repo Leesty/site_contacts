@@ -1020,8 +1020,8 @@ def ref_register(request: HttpRequest, code: str) -> HttpResponse:
     except ReferralLink.DoesNotExist:
         return render(request, "auth/ref_register.html", {"error": "Реферальная ссылка недействительна или устарела.", "code": code})
 
+    from .forms import UserRegistrationForm
     if request.method == "POST":
-        from .forms import UserRegistrationForm
         form = UserRegistrationForm(request.POST)
         try:
             if form.is_valid():
