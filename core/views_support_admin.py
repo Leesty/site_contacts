@@ -1907,53 +1907,78 @@ def standalone_admin_worker_self_lead_approve(request: HttpRequest, self_lead_id
 
 @login_required
 def standalone_admin_worker_self_lead_reject(request: HttpRequest, self_lead_id: int) -> HttpResponse:
-    """Отклонить самостоятельный лид исполнителя."""
+    """Отклонить самостоятельный лид исполнителя (включая уже одобренные — с возвратом вознаграждения)."""
     if not _require_standalone_admin(request):
         return HttpResponseForbidden("Недостаточно прав.")
     if request.method != "POST":
         return HttpResponseForbidden("Только POST.")
     self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
-    if self_lead.status not in (WorkerSelfLead.Status.PENDING, WorkerSelfLead.Status.REWORK):
+    if self_lead.status == WorkerSelfLead.Status.REJECTED:
         from django.contrib import messages
-        messages.warning(request, "Лид уже обработан.")
+        messages.warning(request, "Лид уже отклонён.")
         return redirect("standalone_admin_worker_self_leads")
 
     rejection_reason = (request.POST.get("rejection_reason") or "").strip()
+    was_approved = self_lead.status == WorkerSelfLead.Status.APPROVED
+
+    from django.db import transaction
     from django.utils import timezone
-    self_lead.status = WorkerSelfLead.Status.REJECTED
-    self_lead.rejection_reason = rejection_reason
-    self_lead.reviewed_at = timezone.now()
-    self_lead.reviewed_by = request.user
-    self_lead.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by_id", "updated_at"])
+    with transaction.atomic():
+        self_lead.status = WorkerSelfLead.Status.REJECTED
+        self_lead.rejection_reason = rejection_reason
+        self_lead.reviewed_at = timezone.now()
+        self_lead.reviewed_by = request.user
+        self_lead.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by_id", "updated_at"])
+
+        if was_approved:
+            worker = User.objects.select_for_update().get(pk=self_lead.worker_id)
+            worker.balance = max(0, (worker.balance or 0) - self_lead.reward)
+            worker.save(update_fields=["balance"])
 
     from django.contrib import messages
+    from django.urls import reverse
+    if was_approved:
+        messages.success(request, f"Лид отклонён. С баланса @{self_lead.worker.username} списано {self_lead.reward} руб.")
+        return redirect(reverse("standalone_admin_worker_self_leads") + "?tab=approved")
     messages.success(request, "Лид отклонён.")
     return redirect("standalone_admin_worker_self_leads")
 
 
 @login_required
 def standalone_admin_worker_self_lead_rework(request: HttpRequest, self_lead_id: int) -> HttpResponse:
-    """Отправить самостоятельный лид исполнителя на доработку."""
+    """Отправить самостоятельный лид исполнителя на доработку (включая уже одобренные — с возвратом вознаграждения)."""
     if not _require_standalone_admin(request):
         return HttpResponseForbidden("Недостаточно прав.")
     if request.method != "POST":
         return HttpResponseForbidden("Только POST.")
     self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
-    if self_lead.status not in (WorkerSelfLead.Status.PENDING, WorkerSelfLead.Status.REWORK):
+    if self_lead.status == WorkerSelfLead.Status.REWORK:
         from django.contrib import messages
-        messages.warning(request, "Лид уже обработан.")
+        messages.warning(request, "Лид уже на доработке.")
         return redirect("standalone_admin_worker_self_leads")
 
     rework_comment = (request.POST.get("rework_comment") or "").strip()
+    was_approved = self_lead.status == WorkerSelfLead.Status.APPROVED
+
+    from django.db import transaction
     from django.utils import timezone
-    self_lead.status = WorkerSelfLead.Status.REWORK
-    self_lead.rework_comment = rework_comment
-    self_lead.reviewed_at = timezone.now()
-    self_lead.reviewed_by = request.user
-    self_lead.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by_id", "updated_at"])
+    with transaction.atomic():
+        self_lead.status = WorkerSelfLead.Status.REWORK
+        self_lead.rework_comment = rework_comment
+        self_lead.reviewed_at = timezone.now()
+        self_lead.reviewed_by = request.user
+        self_lead.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by_id", "updated_at"])
+
+        if was_approved:
+            worker = User.objects.select_for_update().get(pk=self_lead.worker_id)
+            worker.balance = max(0, (worker.balance or 0) - self_lead.reward)
+            worker.save(update_fields=["balance"])
 
     from django.contrib import messages
-    messages.success(request, "Лид отправлен на доработку.")
+    if was_approved:
+        messages.success(request, f"Лид отправлен на доработку. С баланса @{self_lead.worker.username} списано {self_lead.reward} руб.")
+    else:
+        messages.success(request, "Лид отправлен на доработку.")
     return redirect("standalone_admin_worker_self_leads")
 
 

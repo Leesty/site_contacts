@@ -90,6 +90,20 @@
                                 data-lead-id="{{ lead.id }}"
                                 title="Отклонить">✗</button>
                       </div>
+                    {% elif tab == 'approved' %}
+                      <div class="d-flex gap-1 flex-wrap align-items-center">
+                        <span class="text-success fw-semibold me-1">+{{ lead.reward }} руб.</span>
+                        <button type="button"
+                                class="btn btn-outline-warning btn-sm py-0 js-rework-btn"
+                                data-lead-id="{{ lead.id }}"
+                                data-approved="1"
+                                title="На доработку (баланс будет уменьшен)">↺</button>
+                        <button type="button"
+                                class="btn btn-outline-danger btn-sm py-0 js-reject-btn"
+                                data-lead-id="{{ lead.id }}"
+                                data-approved="1"
+                                title="Отменить одобрение (баланс будет уменьшен)">✗</button>
+                      </div>
                     {% else %}
                       <span class="text-muted small">—</span>
                     {% endif %}
@@ -98,9 +112,6 @@
                     {% endif %}
                     {% if tab == 'rejected' and lead.rejection_reason %}
                       <div class="small text-danger mt-1">{{ lead.rejection_reason }}</div>
-                    {% endif %}
-                    {% if tab == 'approved' %}
-                      <span class="text-success fw-semibold">+{{ lead.reward }} руб.</span>
                     {% endif %}
                   </td>
                 </tr>
@@ -145,6 +156,9 @@
         <form id="reworkForm" method="post" action="">
           {% csrf_token %}
           <div class="modal-body">
+            <div id="reworkApprovedWarning" class="alert alert-warning py-2 small d-none">
+              ⚠ Лид был одобрен. Вознаграждение будет списано с баланса исполнителя.
+            </div>
             <label class="form-label">Комментарий к доработке (необязательно)</label>
             <textarea name="rework_comment" class="form-control" rows="3"
                       placeholder="Что нужно исправить или дополнить"></textarea>
@@ -169,6 +183,9 @@
         <form id="rejectForm" method="post" action="">
           {% csrf_token %}
           <div class="modal-body">
+            <div id="rejectApprovedWarning" class="alert alert-warning py-2 small d-none">
+              ⚠ Лид был одобрен. Вознаграждение будет списано с баланса исполнителя.
+            </div>
             <label class="form-label">Причина отклонения (необязательно)</label>
             <textarea name="rejection_reason" class="form-control" rows="3"
                       placeholder="Укажите причину отклонения"></textarea>
@@ -205,7 +222,10 @@
     document.querySelectorAll('.js-rework-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-lead-id');
+        var isApproved = btn.getAttribute('data-approved') === '1';
         document.getElementById('reworkForm').action = '/staff/standalone/worker-self-leads/' + id + '/rework/';
+        var warn = document.getElementById('reworkApprovedWarning');
+        if (warn) { isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none'); }
         new bootstrap.Modal(document.getElementById('reworkModal')).show();
       });
     });
@@ -213,7 +233,10 @@
     document.querySelectorAll('.js-reject-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-lead-id');
+        var isApproved = btn.getAttribute('data-approved') === '1';
         document.getElementById('rejectForm').action = '/staff/standalone/worker-self-leads/' + id + '/reject/';
+        var warn = document.getElementById('rejectApprovedWarning');
+        if (warn) { isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none'); }
         new bootstrap.Modal(document.getElementById('rejectModal')).show();
       });
     });
