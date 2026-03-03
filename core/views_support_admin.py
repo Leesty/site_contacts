@@ -1605,9 +1605,11 @@ def standalone_admin_workers(request: HttpRequest) -> HttpResponse:
     workers = (
         User.objects.filter(standalone_admin_owner=request.user, role="worker")
         .annotate(
-            reports_total=Count("worker_reports"),
-            reports_approved=Count("worker_reports", filter=Q(worker_reports__status="approved")),
-            reports_pending=Count("worker_reports", filter=Q(worker_reports__status="pending")),
+            reports_total=Count("worker_reports", distinct=True),
+            reports_approved=Count("worker_reports", filter=Q(worker_reports__status="approved"), distinct=True),
+            reports_pending=Count("worker_reports", filter=Q(worker_reports__status="pending"), distinct=True),
+            self_leads_total=Count("self_leads", distinct=True),
+            self_leads_approved=Count("self_leads", filter=Q(self_leads__status="approved"), distinct=True),
         )
         .order_by("-date_joined")
     )

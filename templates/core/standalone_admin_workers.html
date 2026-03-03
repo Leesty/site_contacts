@@ -22,9 +22,8 @@
               <tr>
                 <th>Исполнитель</th>
                 <th>Баланс</th>
-                <th>Всего отчётов</th>
-                <th>Одобрено</th>
-                <th>На проверке</th>
+                <th>Отчёты (одобрено/всего)</th>
+                <th>Само-лиды (одобрено/всего)</th>
                 <th>Зарегистрирован</th>
               </tr>
             </thead>
@@ -32,10 +31,20 @@
               {% for worker in workers %}
                 <tr>
                   <td>@{{ worker.username }}</td>
-                  <td>{{ worker.balance|default:0 }} руб.</td>
-                  <td>{{ worker.reports_total }}</td>
-                  <td>{{ worker.reports_approved }}</td>
-                  <td>{{ worker.reports_pending }}</td>
+                  <td>
+                    <strong>{{ worker.balance|default:0 }} руб.</strong>
+                  </td>
+                  <td>
+                    <span class="text-success">{{ worker.reports_approved }}</span>
+                    <span class="text-muted">/{{ worker.reports_total }}</span>
+                    {% if worker.reports_pending %}
+                      <span class="badge bg-warning text-dark ms-1">{{ worker.reports_pending }} пров.</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <span class="text-success">{{ worker.self_leads_approved }}</span>
+                    <span class="text-muted">/{{ worker.self_leads_total }}</span>
+                  </td>
                   <td>{{ worker.date_joined|date:"d.m.Y" }}</td>
                 </tr>
               {% endfor %}
