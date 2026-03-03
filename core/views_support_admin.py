@@ -1881,7 +1881,7 @@ def standalone_admin_worker_self_lead_approve(request: HttpRequest, self_lead_id
     if request.method != "POST":
         return HttpResponseForbidden("Только POST.")
     self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
-    if self_lead.status not in (WorkerSelfLead.Status.PENDING, WorkerSelfLead.Status.REWORK):
+    if self_lead.status not in (WorkerSelfLead.Status.PENDING, WorkerSelfLead.Status.REWORK, WorkerSelfLead.Status.REJECTED):
         from django.contrib import messages
         messages.warning(request, "Лид уже обработан.")
         return redirect("standalone_admin_worker_self_leads")
@@ -1954,8 +1954,9 @@ def standalone_admin_worker_self_lead_rework(request: HttpRequest, self_lead_id:
     self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
     if self_lead.status == WorkerSelfLead.Status.REWORK:
         from django.contrib import messages
+        from django.urls import reverse
         messages.warning(request, "Лид уже на доработке.")
-        return redirect("standalone_admin_worker_self_leads")
+        return redirect(reverse("standalone_admin_worker_self_leads") + "?tab=rework")
 
     rework_comment = (request.POST.get("rework_comment") or "").strip()
     was_approved = self_lead.status == WorkerSelfLead.Status.APPROVED

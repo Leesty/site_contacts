@@ -104,6 +104,17 @@
                                 data-approved="1"
                                 title="Отменить одобрение (баланс будет уменьшен)">✗</button>
                       </div>
+                    {% elif tab == 'rejected' %}
+                      <div class="d-flex gap-1 flex-wrap">
+                        <form method="post" action="{% url 'standalone_admin_worker_self_lead_approve' lead.id %}" class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-success btn-sm py-0" title="Одобрить">✓</button>
+                        </form>
+                        <button type="button"
+                                class="btn btn-warning btn-sm py-0 js-rework-btn"
+                                data-lead-id="{{ lead.id }}"
+                                title="На доработку">↺</button>
+                      </div>
                     {% else %}
                       <span class="text-muted small">—</span>
                     {% endif %}
