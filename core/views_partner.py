@@ -40,7 +40,12 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         .select_related("lead", "lead__user")
         .order_by("-created_at")[:100]
     )
-    links = PartnerLink.objects.filter(partner=user).order_by("-created_at")
+    # Автоматически создаём единственную реф-ссылку, если её ещё нет
+    link = PartnerLink.objects.filter(partner=user).first()
+    if not link:
+        from uuid import uuid4
+        link = PartnerLink.objects.create(partner=user, code=uuid4().hex[:24])
+
     withdrawals = WithdrawalRequest.objects.filter(user=user).order_by("-created_at")
     withdrawal_pending = withdrawals.filter(status="pending").exists()
     can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending
@@ -51,7 +56,7 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         "total_earned": total_earned,
         "users_count": users_count,
         "earnings": earnings,
-        "links": links,
+        "link": link,
         "withdrawals": withdrawals,
         "withdrawal_pending": withdrawal_pending,
         "can_request_withdrawal": can_request_withdrawal,

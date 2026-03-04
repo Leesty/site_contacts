@@ -137,6 +137,9 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
         needs_team_contact=True,
     ).select_related("user", "lead_type", "base_type")
 
+    # Поиск
+    search_q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
+
     if tab == "assigned":
         from django.db.models import Prefetch
         from .models import LeadAssignment as _LA
@@ -158,6 +161,21 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
         leads = base_qs.filter(ss_admin_status__isnull=True).order_by("-reviewed_at", "-id")
     else:
         leads = base_qs.filter(ss_admin_status=tab).order_by("-updated_at", "-id")
+
+    if search_q:
+        from django.db.models.functions import Cast
+        from django.db.models import CharField as _CharField
+        leads = leads.annotate(_id_str=Cast("id", _CharField()))
+        words = [w.strip() for w in search_q.split() if w.strip()]
+        for word in words:
+            leads = leads.filter(
+                Q(user__username__icontains=word)
+                | Q(raw_contact__icontains=word)
+                | Q(normalized_contact__icontains=word)
+                | Q(lead_type__name__icontains=word)
+                | Q(comment__icontains=word)
+                | Q(_id_str__icontains=word)
+            )
 
     if request.method == "POST":
         lead_id = request.POST.get("lead_id")
@@ -209,6 +227,7 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
             "page_obj": page_obj,
             "tab": tab,
             "counts": counts,
+            "search_q": search_q,
         },
     )
 

@@ -89,65 +89,34 @@
 
     {# Правая колонка: ссылки и заявки на вывод #}
     <div class="col-md-5 d-flex flex-column gap-3">
-      {# Реферальные ссылки #}
+      {# Реферальная ссылка #}
       <div class="card shadow-sm">
-        <div class="card-header bg-transparent border-secondary py-2 d-flex justify-content-between align-items-center">
-          <strong>Реферальные ссылки</strong>
+        <div class="card-header bg-transparent border-secondary py-2">
+          <strong>Реферальная ссылка</strong>
         </div>
-        <div class="card-body p-0">
-          {% if links %}
-            <div class="table-responsive">
-              <table class="table table-sm mb-0 align-middle table-dark-site">
-                <thead>
-                  <tr>
-                    <th>Ссылка</th>
-                    <th>Заметка</th>
-                    <th>Статус</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for link in links %}
-                    <tr>
-                      <td>
-                        <small>
-                          <a href="{{ request.scheme }}://{{ request.get_host }}{% url 'partner_ref_register' link.code %}"
-                             target="_blank" class="text-break">
-                            /p/{{ link.code }}
-                          </a>
-                        </small>
-                      </td>
-                      <td class="text-muted small">{{ link.note|default:"—" }}</td>
-                      <td>
-                        {% if link.is_active %}
-                          <span class="badge bg-success">Активна</span>
-                        {% else %}
-                          <span class="badge bg-secondary">Выкл.</span>
-                        {% endif %}
-                      </td>
-                      <td>
-                        <form method="post" action="{% url 'partner_toggle_link' link.id %}" class="d-inline">
-                          {% csrf_token %}
-                          <button type="submit" class="btn btn-outline-secondary btn-sm py-0">
-                            {% if link.is_active %}Выкл.{% else %}Вкл.{% endif %}
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <p class="text-muted small p-3 mb-0">Ссылок пока нет.</p>
-          {% endif %}
-        </div>
-        <div class="card-footer border-secondary py-2">
-          <form method="post" action="{% url 'partner_create_link' %}" class="d-flex gap-2">
-            {% csrf_token %}
-            <input type="text" name="note" class="form-control form-control-sm" placeholder="Заметка (необязательно)" maxlength="100">
-            <button type="submit" class="btn btn-primary btn-sm">+ Создать</button>
-          </form>
+        <div class="card-body">
+          <p class="small text-muted mb-2">Отправьте эту ссылку пользователям. За каждый их одобренный лид вы получаете +10 руб.</p>
+          {% with full_url=request.scheme|add:"://"|add:request.get_host|add:link_url %}
+          <div class="input-group input-group-sm">
+            <input type="text" id="partner-ref-url" class="form-control font-monospace"
+                   value="{{ request.scheme }}://{{ request.get_host }}{% url 'partner_ref_register' link.code %}"
+                   readonly>
+            <button class="btn btn-outline-secondary" type="button" onclick="copyPartnerLink()">Копировать</button>
+          </div>
+          {% endwith %}
+          <div class="mt-2 d-flex align-items-center gap-2">
+            {% if link.is_active %}
+              <span class="badge bg-success">Активна</span>
+            {% else %}
+              <span class="badge bg-secondary">Отключена</span>
+            {% endif %}
+            <form method="post" action="{% url 'partner_toggle_link' link.id %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-secondary btn-sm py-0">
+                {% if link.is_active %}Отключить{% else %}Включить{% endif %}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -193,4 +162,13 @@
       </div>
     </div>
   </div>
+<script>
+function copyPartnerLink() {
+  var inp = document.getElementById('partner-ref-url');
+  if (!inp) return;
+  inp.select();
+  inp.setSelectionRange(0, 99999);
+  navigator.clipboard ? navigator.clipboard.writeText(inp.value) : document.execCommand('copy');
+}
+</script>
 {% endblock %}
