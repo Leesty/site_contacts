@@ -1710,11 +1710,20 @@ def standalone_admin_worker_reports(request: HttpRequest) -> HttpResponse:
         "rework": WorkerReport.Status.REWORK,
     }
     status = tab_map.get(tab, WorkerReport.Status.PENDING)
+    search_q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
     reports_qs = (
         WorkerReport.objects.filter(standalone_admin=request.user, status=status)
         .select_related("worker", "assignment__lead", "assignment__lead__lead_type")
         .order_by("-created_at")
     )
+    if search_q:
+        words = [w.strip() for w in search_q.split() if w.strip()]
+        for word in words:
+            reports_qs = reports_qs.filter(
+                Q(worker__username__icontains=word)
+                | Q(raw_contact__icontains=word)
+                | Q(comment__icontains=word)
+            )
     paginator = Paginator(reports_qs, 30)
     try:
         page_number = int(request.GET.get("page", 1))
@@ -1729,6 +1738,7 @@ def standalone_admin_worker_reports(request: HttpRequest) -> HttpResponse:
         "page_obj": page_obj,
         "tab": tab,
         "counts": counts,
+        "search_q": search_q,
     })
 
 
@@ -1887,7 +1897,16 @@ def standalone_admin_worker_self_leads(request: HttpRequest) -> HttpResponse:
         tab = "pending"
 
     base_qs = WorkerSelfLead.objects.filter(standalone_admin=request.user).select_related("worker")
+    search_q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
     leads = base_qs.filter(status=tab).order_by("-created_at")
+    if search_q:
+        words = [w.strip() for w in search_q.split() if w.strip()]
+        for word in words:
+            leads = leads.filter(
+                Q(worker__username__icontains=word)
+                | Q(raw_contact__icontains=word)
+                | Q(comment__icontains=word)
+            )
 
     from django.core.paginator import Paginator
     paginator = Paginator(leads, 30)
@@ -1899,6 +1918,7 @@ def standalone_admin_worker_self_leads(request: HttpRequest) -> HttpResponse:
         "tab": tab,
         "page_obj": page_obj,
         "counts": counts,
+        "search_q": search_q,
     })
 
 

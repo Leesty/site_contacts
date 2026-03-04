@@ -9,18 +9,27 @@
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
   </div>
 
+  <form method="get" class="mb-3 d-flex gap-2 align-items-center flex-wrap">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="text" name="q" class="form-control form-control-sm"
+           placeholder="Поиск по исполнителю, контакту, комментарию…"
+           value="{{ search_q }}" style="max-width:380px;">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Найти</button>
+    {% if search_q %}<a href="?tab={{ tab }}" class="btn btn-outline-danger btn-sm">✕</a>{% endif %}
+  </form>
+
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">На проверке ({{ counts.pending|default:0 }})</a>
+      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending{% if search_q %}&q={{ search_q|urlencode }}{% endif %}">На проверке ({{ counts.pending|default:0 }})</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">Доработка ({{ counts.rework|default:0 }})</a>
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework{% if search_q %}&q={{ search_q|urlencode }}{% endif %}">Доработка ({{ counts.rework|default:0 }})</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобрены ({{ counts.approved|default:0 }})</a>
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved{% if search_q %}&q={{ search_q|urlencode }}{% endif %}">Одобрены ({{ counts.approved|default:0 }})</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонены ({{ counts.rejected|default:0 }})</a>
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected{% if search_q %}&q={{ search_q|urlencode }}{% endif %}">Отклонены ({{ counts.rejected|default:0 }})</a>
     </li>
   </ul>
 
@@ -91,11 +100,11 @@
             <nav>
               <ul class="pagination pagination-sm mb-0">
                 {% if page_obj.has_previous %}
-                  <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>
+                  <li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}&page={{ page_obj.previous_page_number }}">←</a></li>
                 {% endif %}
                 <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
                 {% if page_obj.has_next %}
-                  <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>
+                  <li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}&page={{ page_obj.next_page_number }}">→</a></li>
                 {% endif %}
               </ul>
             </nav>
