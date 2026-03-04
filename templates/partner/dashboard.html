@@ -96,14 +96,12 @@
         </div>
         <div class="card-body">
           <p class="small text-muted mb-2">Отправьте эту ссылку пользователям. За каждый их одобренный лид вы получаете +10 руб.</p>
-          {% with full_url=request.scheme|add:"://"|add:request.get_host|add:link_url %}
           <div class="input-group input-group-sm">
             <input type="text" id="partner-ref-url" class="form-control font-monospace"
                    value="{{ request.scheme }}://{{ request.get_host }}{% url 'partner_ref_register' link.code %}"
                    readonly>
             <button class="btn btn-outline-secondary" type="button" onclick="copyPartnerLink()">Копировать</button>
           </div>
-          {% endwith %}
           <div class="mt-2 d-flex align-items-center gap-2">
             {% if link.is_active %}
               <span class="badge bg-success">Активна</span>
