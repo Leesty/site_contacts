@@ -10,6 +10,8 @@ from django.db.models import Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 
+from django.core.paginator import Paginator
+
 from .models import PartnerEarning, PartnerLink, User, WithdrawalRequest
 
 logger = logging.getLogger(__name__)
@@ -188,4 +190,25 @@ def partner_ref_register(request: HttpRequest, code: str) -> HttpResponse:
         "form": form,
         "code": code,
         "partner": ref_link.partner,
+    })
+
+
+# ─── Рефералы партнёра ─────────────────────────────────────────────────────────
+
+@login_required
+def partner_referrals(request: HttpRequest) -> HttpResponse:
+    """Список пользователей, зарегистрированных по реферальной ссылке партнёра."""
+    if not _require_partner(request):
+        return HttpResponseForbidden("Только для партнёров.")
+
+    users_qs = (
+        User.objects.filter(partner_owner=request.user)
+        .order_by("-date_joined")
+    )
+    paginator = Paginator(users_qs, 50)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    return render(request, "partner/referrals.html", {
+        "page_obj": page_obj,
+        "total": users_qs.count(),
     })

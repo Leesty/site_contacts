@@ -16,6 +16,7 @@ urlpatterns = [
     path("ref/<str:code>/", views.ref_register, name="ref_register"),
     # Partner cabinet
     path("partner/", views_partner.partner_dashboard, name="partner_dashboard"),
+    path("partner/referrals/", views_partner.partner_referrals, name="partner_referrals"),
     path("partner/withdrawal/", views_partner.partner_withdrawal, name="partner_withdrawal"),
     path("partner/links/create/", views_partner.partner_create_link, name="partner_create_link"),
     path("partner/links/<int:link_id>/toggle/", views_partner.partner_toggle_link, name="partner_toggle_link"),
