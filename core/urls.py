@@ -2,6 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 
 from . import views
+from . import views_partner
 from . import views_support_admin
 from . import views_worker
 
@@ -13,6 +14,12 @@ urlpatterns = [
     path("account/updates/", views.account_updates_api, name="account_updates_api"),
     path("register/", views.register, name="register"),
     path("ref/<str:code>/", views.ref_register, name="ref_register"),
+    # Partner cabinet
+    path("partner/", views_partner.partner_dashboard, name="partner_dashboard"),
+    path("partner/withdrawal/", views_partner.partner_withdrawal, name="partner_withdrawal"),
+    path("partner/links/create/", views_partner.partner_create_link, name="partner_create_link"),
+    path("partner/links/<int:link_id>/toggle/", views_partner.partner_toggle_link, name="partner_toggle_link"),
+    path("p/<str:code>/", views_partner.partner_ref_register, name="partner_ref_register"),
     # Worker sub-system
     path("worker/", views_worker.worker_dashboard, name="worker_dashboard"),
     path("worker/tasks/", views_worker.worker_tasks, name="worker_tasks"),

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Запросить вывод — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Запросить вывод средств</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'partner_dashboard' %}">← Кабинет</a>
+  </div>
+
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <p class="mb-3">
+            Доступно к выводу: <strong>{{ balance }} руб.</strong>
+          </p>
+          <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+              <label class="form-label" for="payout_details">Реквизиты для вывода</label>
+              <textarea class="form-control" id="payout_details" name="payout_details" rows="3"
+                        placeholder="Номер карты / телефон + банк" required></textarea>
+              <div class="form-text text-muted">Укажите номер карты или телефон с названием банка.</div>
+            </div>
+            {% if messages %}
+              {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} mb-2">{{ message }}</div>
+              {% endfor %}
+            {% endif %}
+            <button type="submit" class="btn btn-success w-100">Подать заявку на вывод {{ balance }} руб.</button>
+          </form>
+          <p class="text-muted small mt-3 mb-0">
+            После подачи заявки баланс обнулится. Средства будут переведены после рассмотрения администратором.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

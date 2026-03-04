@@ -30,6 +30,7 @@ class User(AbstractUser):
         STANDALONE_ADMIN = "standalone_admin", "Самостоятельный админ"
         BALANCE_ADMIN = "balance_admin", "Баланс‑админ"
         WORKER = "worker", "Исполнитель"
+        PARTNER = "partner", "Партнёр"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Ожидает одобрения"
@@ -66,6 +67,15 @@ class User(AbstractUser):
         related_name="workers",
         limit_choices_to={"role": "standalone_admin"},
         help_text="Самостоятельный админ, к которому привязан исполнитель (воркер).",
+    )
+    partner_owner = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="partner_users",
+        limit_choices_to={"role": "partner"},
+        help_text="Партнёр, привлёкший этого пользователя.",
     )
 
     def is_approved(self) -> bool:
@@ -750,6 +760,60 @@ class WorkerSelfLead(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Лид от @{self.worker.username}: {self.raw_contact} ({self.get_status_display()})"
+
+
+def partner_link_code() -> str:
+    """Генерирует уникальный код для партнёрской реферальной ссылки."""
+    from uuid import uuid4
+    return uuid4().hex[:24]
+
+
+class PartnerLink(TimeStampedModel):
+    """Реферальная ссылка партнёрского админа для привлечения пользователей."""
+
+    partner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="partner_links",
+        limit_choices_to={"role": "partner"},
+    )
+    code = models.CharField(max_length=32, unique=True, default=partner_link_code)
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=100, blank=True, help_text="Заметка для идентификации ссылки.")
+
+    class Meta:
+        verbose_name = "Реферальная ссылка партнёра"
+        verbose_name_plural = "Реферальные ссылки партнёров"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"PartnerLink({self.code}) → @{self.partner.username}"
+
+
+class PartnerEarning(TimeStampedModel):
+    """Начисление партнёру за одобренный лид привлечённого пользователя."""
+
+    partner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="partner_earnings",
+    )
+    lead = models.OneToOneField(
+        "Lead",
+        on_delete=models.CASCADE,
+        related_name="partner_earning",
+        null=True,
+        blank=True,
+    )
+    amount = models.PositiveIntegerField(default=10)
+
+    class Meta:
+        verbose_name = "Начисление партнёру"
+        verbose_name_plural = "Начисления партнёрам"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"+{self.amount} руб. → @{self.partner.username}"
 
 
 def site_settings_upload_to(instance, filename: str) -> str:

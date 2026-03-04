@@ -119,6 +119,11 @@ def _is_balance_admin(user) -> bool:
     return getattr(user, "role", None) == "balance_admin"
 
 
+def _is_partner(user) -> bool:
+    """Пользователь — партнёр (кабинет с реф-ссылками и начислениями)."""
+    return getattr(user, "role", None) == "partner"
+
+
 @login_required
 def dashboard(request: HttpRequest) -> HttpResponse:
     """Главная страница кабинета:
@@ -131,12 +136,18 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     user = request.user
     if _is_worker(user):
         return redirect("worker_dashboard")
+    if _is_partner(user):
+        return redirect("partner_dashboard")
     if _is_balance_admin(user):
         from django.db.models import Sum
         from .models import LeadReviewLog
 
-        # Всего одобрений лидов (все админы, все времена)
-        total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
+        # Всего одобрений лидов (все админы, все времена), кроме лидов партнёрских пользователей
+        base_log_qs = LeadReviewLog.objects.filter(
+            action=LeadReviewLog.Action.APPROVED,
+            lead__user__partner_owner__isnull=True,
+        )
+        total_approved = base_log_qs.count()
         earned = total_approved * 5
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
@@ -146,7 +157,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         )
         available = max(0, earned - withdrawn)
         logs = (
-            LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED)
+            base_log_qs
             .select_related("lead", "admin", "lead__user")
             .order_by("-created_at")[:200]
         )
@@ -532,7 +543,10 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         from django.db.models import Sum
         from .models import LeadReviewLog
 
-        total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
+        total_approved = LeadReviewLog.objects.filter(
+            action=LeadReviewLog.Action.APPROVED,
+            lead__user__partner_owner__isnull=True,
+        ).count()
         earned = total_approved * 5
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
@@ -571,7 +585,10 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 from django.db.models import Sum
                 from .models import LeadReviewLog
 
-                total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
+                total_approved = LeadReviewLog.objects.filter(
+                    action=LeadReviewLog.Action.APPROVED,
+                    lead__user__partner_owner__isnull=True,
+                ).count()
                 earned = total_approved * 5
                 withdrawn = (
                     WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))

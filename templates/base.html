@@ -60,7 +60,7 @@
               {% endif %}
               <li class="nav-item me-2 text-white-50 align-self-center">
                 {{ user.username }}
-                {% if user.status == 'approved' %}
+                {% if user.status == 'approved' and user.role != 'balance_admin' and user.role != 'partner' %}
                   <span id="navbar-balance" class="badge bg-primary ms-2">Баланс: {{ user.balance|default:0 }} руб.</span>
                 {% endif %}
                 {% if user.status != 'approved' %}

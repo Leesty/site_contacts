@@ -551,6 +551,14 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         lead.user.balance = (getattr(lead.user, "balance", 0) or 0) + LEAD_APPROVE_REWARD
         lead.user.save(update_fields=["balance"])
         LeadReviewLog.objects.create(lead=lead, admin=request.user, action=LeadReviewLog.Action.APPROVED)
+        # Начислить партнёру +10 руб., если пользователь привлечён через партнёрскую ссылку
+        partner_owner_id = lead.user.partner_owner_id
+        if partner_owner_id:
+            from .models import PartnerEarning
+            partner = User.objects.select_for_update().get(pk=partner_owner_id)
+            PartnerEarning.objects.create(partner=partner, lead=lead, amount=10)
+            partner.balance = (partner.balance or 0) + 10
+            partner.save(update_fields=["balance"])
     msg = f"Лид #{lead_id} одобрен. Пользователю начислено {LEAD_APPROVE_REWARD} руб."
     messages.success(request, msg)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
