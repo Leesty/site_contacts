@@ -1074,8 +1074,9 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
     if request.method == "POST":
-        req_id = request.POST.get("request_id")
         action = request.POST.get("action")
+        # ── одиночное действие ──────────────────────────────────────────
+        req_id = request.POST.get("request_id")
         if req_id and action in ("approve", "reject"):
             with transaction.atomic():
                 wreq = (
@@ -1092,16 +1093,45 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                     wreq.status = "approved"
                     messages.success(
                         request,
-                        f"Вывод @{wreq.user.username} на {wreq.amount} руб. одобрен. Баланс пользователя уже был обнулён при подаче заявки.",
+                        f"Вывод @{wreq.user.username} на {wreq.amount} руб. одобрен.",
                     )
                 else:
                     wreq.user.balance = (wreq.user.balance or 0) + wreq.amount
                     wreq.user.save(update_fields=["balance"])
                     wreq.status = "rejected"
-                    messages.info(request, f"Заявка на вывод от @{wreq.user.username} отклонена. Баланс восстановлен.")
+                    messages.info(request, f"Заявка от @{wreq.user.username} отклонена. Баланс восстановлен.")
                 wreq.processed_at = now
                 wreq.processed_by = request.user
                 wreq.save(update_fields=["status", "processed_at", "processed_by"])
+            return redirect("admin_withdrawal_requests")
+        # ── массовое действие ───────────────────────────────────────────
+        bulk_ids = request.POST.getlist("bulk_ids")
+        if bulk_ids and action in ("bulk_approve", "bulk_reject"):
+            bulk_ids = [i for i in bulk_ids if i.isdigit()]
+            approved_count = rejected_count = 0
+            now = timezone.now()
+            with transaction.atomic():
+                wreqs = (
+                    WithdrawalRequest.objects.select_for_update()
+                    .select_related("user")
+                    .filter(pk__in=bulk_ids, status="pending")
+                )
+                for wreq in wreqs:
+                    if action == "bulk_approve":
+                        wreq.status = "approved"
+                        approved_count += 1
+                    else:
+                        wreq.user.balance = (wreq.user.balance or 0) + wreq.amount
+                        wreq.user.save(update_fields=["balance"])
+                        wreq.status = "rejected"
+                        rejected_count += 1
+                    wreq.processed_at = now
+                    wreq.processed_by = request.user
+                    wreq.save(update_fields=["status", "processed_at", "processed_by"])
+            if approved_count:
+                messages.success(request, f"Одобрено заявок: {approved_count}.")
+            if rejected_count:
+                messages.info(request, f"Отклонено заявок: {rejected_count}. Балансы восстановлены.")
             return redirect("admin_withdrawal_requests")
     pending = WithdrawalRequest.objects.filter(status="pending").select_related("user").order_by("created_at")
     history = (

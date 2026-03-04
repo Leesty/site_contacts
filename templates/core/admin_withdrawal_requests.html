@@ -13,55 +13,83 @@
     <br><strong>Всего выведено (одобрено): {{ total_approved_withdrawals|default:0 }} руб.</strong>
   </p>
 
-  <div class="card shadow-sm mb-4">
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-sm mb-0 align-middle table-dark-site">
-          <thead>
-            <tr>
-              <th>Пользователь</th>
-              <th>Сумма к выводу</th>
-              <th>Реквизиты</th>
-              <th>Дата заявки</th>
-              <th style="width: 1%; white-space: nowrap;">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for req in pending_requests %}
+  <form method="post" id="bulkForm">
+    {% csrf_token %}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
               <tr>
-                <td>
-                  <a href="{% url 'admin_user_leads_list' req.user.pk %}">@{{ req.user.username }}</a>
-                  <span class="text-muted small"> · </span>
-                  <a href="{% url 'admin_user_lead_stats' req.user.pk %}" class="small">Статистика</a>
-                </td>
-                <td>{{ req.amount }}</td>
-                <td style="max-width: 260px; white-space: pre-wrap;">{{ req.payout_details|default:"—" }}</td>
-                <td>{{ req.created_at|date:"d.m.Y H:i" }}</td>
-                <td>
-                  <form method="post" class="d-inline" onsubmit="return confirm('Одобрить вывод {{ req.amount }} рублей пользователю @{{ req.user.username }}?');">
-                    {% csrf_token %}
-                    <input type="hidden" name="request_id" value="{{ req.pk }}">
-                    <input type="hidden" name="action" value="approve">
-                    <button type="submit" class="btn btn-outline-success btn-sm">Одобрить</button>
-                  </form>
-                  <form method="post" class="d-inline" onsubmit="return confirm('Отклонить заявку на вывод от @{{ req.user.username }}?');">
-                    {% csrf_token %}
-                    <input type="hidden" name="request_id" value="{{ req.pk }}">
-                    <input type="hidden" name="action" value="reject">
-                    <button type="submit" class="btn btn-outline-danger btn-sm">Отклонить</button>
-                  </form>
-                </td>
+                <th style="width:36px;">
+                  <input type="checkbox" id="selectAll" title="Выбрать все" style="cursor:pointer;">
+                </th>
+                <th>Пользователь</th>
+                <th>Сумма к выводу</th>
+                <th>Реквизиты</th>
+                <th>Дата заявки</th>
+                <th style="width: 1%; white-space: nowrap;">Действия</th>
               </tr>
-            {% empty %}
-              <tr>
-                <td colspan="5" class="text-muted py-4 text-center">Нет заявок на вывод.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {% for req in pending_requests %}
+                <tr>
+                  <td>
+                    <input type="checkbox" name="bulk_ids" value="{{ req.pk }}" class="row-check" style="cursor:pointer;">
+                  </td>
+                  <td>
+                    <a href="{% url 'admin_user_leads_list' req.user.pk %}">@{{ req.user.username }}</a>
+                    <span class="text-muted small"> · </span>
+                    <a href="{% url 'admin_user_lead_stats' req.user.pk %}" class="small">Статистика</a>
+                  </td>
+                  <td>{{ req.amount }}</td>
+                  <td style="max-width: 260px; white-space: pre-wrap;">{{ req.payout_details|default:"—" }}</td>
+                  <td>{{ req.created_at|date:"d.m.Y H:i" }}</td>
+                  <td>
+                    <form method="post" class="d-inline" onsubmit="return confirm('Одобрить вывод {{ req.amount }} руб. пользователю @{{ req.user.username }}?');">
+                      {% csrf_token %}
+                      <input type="hidden" name="request_id" value="{{ req.pk }}">
+                      <input type="hidden" name="action" value="approve">
+                      <button type="submit" class="btn btn-outline-success btn-sm">Одобрить</button>
+                    </form>
+                    <form method="post" class="d-inline" onsubmit="return confirm('Отклонить заявку от @{{ req.user.username }}?');">
+                      {% csrf_token %}
+                      <input type="hidden" name="request_id" value="{{ req.pk }}">
+                      <input type="hidden" name="action" value="reject">
+                      <button type="submit" class="btn btn-outline-danger btn-sm">Отклонить</button>
+                    </form>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="6" class="text-muted py-4 text-center">Нет заявок на вывод.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
+      {% if pending_requests %}
+        <div class="card-footer border-secondary d-flex align-items-center gap-2 flex-wrap py-2" id="bulkActions">
+          <span class="text-muted small me-1" id="selectedCount">Выбрано: 0</span>
+          <button type="submit" name="action" value="bulk_approve"
+                  class="btn btn-success btn-sm"
+                  id="btnBulkApprove"
+                  disabled
+                  onclick="return confirmBulk('approve')">
+            ✓ Одобрить выбранные
+          </button>
+          <button type="submit" name="action" value="bulk_reject"
+                  class="btn btn-danger btn-sm"
+                  id="btnBulkReject"
+                  disabled
+                  onclick="return confirmBulk('reject')">
+            ✗ Отклонить выбранные
+          </button>
+        </div>
+      {% endif %}
     </div>
-  </div>
+  </form>
 
   <h2 class="h6 mt-3 mb-2">История заявок</h2>
   <div class="card shadow-sm">
@@ -112,4 +140,43 @@
       </div>
     </div>
   </div>
+
+  <script>
+  (function () {
+    var selectAll = document.getElementById('selectAll');
+    var checkboxes = document.querySelectorAll('.row-check');
+    var btnApprove = document.getElementById('btnBulkApprove');
+    var btnReject  = document.getElementById('btnBulkReject');
+    var countLabel = document.getElementById('selectedCount');
+
+    function updateBulkState() {
+      var checked = document.querySelectorAll('.row-check:checked').length;
+      if (countLabel) countLabel.textContent = 'Выбрано: ' + checked;
+      var disabled = checked === 0;
+      if (btnApprove) btnApprove.disabled = disabled;
+      if (btnReject)  btnReject.disabled  = disabled;
+      if (selectAll)  selectAll.indeterminate = checked > 0 && checked < checkboxes.length;
+      if (selectAll && checked === checkboxes.length && checkboxes.length > 0) selectAll.checked = true;
+      if (selectAll && checked === 0) selectAll.checked = false;
+    }
+
+    if (selectAll) {
+      selectAll.addEventListener('change', function () {
+        checkboxes.forEach(function (cb) { cb.checked = selectAll.checked; });
+        updateBulkState();
+      });
+    }
+
+    checkboxes.forEach(function (cb) {
+      cb.addEventListener('change', updateBulkState);
+    });
+
+    window.confirmBulk = function (type) {
+      var checked = document.querySelectorAll('.row-check:checked').length;
+      if (checked === 0) return false;
+      if (type === 'approve') return confirm('Одобрить ' + checked + ' заявок(у)?');
+      return confirm('Отклонить ' + checked + ' заявок(у)? Балансы пользователей будут восстановлены.');
+    };
+  })();
+  </script>
 {% endblock %}
