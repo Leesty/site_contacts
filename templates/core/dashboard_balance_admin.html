@@ -3,11 +3,16 @@
 {% block title %}Баланс‑админ — Партнёрка{% endblock %}
 
 {% block content %}
-  <div class="mb-3">
-    <h1 class="h4 mb-1">Баланс‑кабинет</h1>
-    <p class="text-muted small mb-0">
-      Добро пожаловать, {{ user.username }}. Здесь только баланс, история начислений и заявки на вывод.
-    </p>
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h4 mb-1">Баланс‑кабинет</h1>
+      <p class="text-muted small mb-0">
+        Добро пожаловать, {{ user.username }}. Здесь баланс, история начислений, заявки на вывод и выдача контактов.
+      </p>
+    </div>
+    <a href="{% url 'balance_admin_contact_requests' %}" class="btn btn-outline-primary btn-sm">
+      Выдача контактов
+    </a>
   </div>
 
   <div class="row g-3 mb-4">

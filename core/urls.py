@@ -64,6 +64,11 @@ urlpatterns = [
         name="admin_contact_requests",
     ),
     path(
+        "balance-admin/contact-requests/",
+        views_support_admin.balance_admin_contact_requests,
+        name="balance_admin_contact_requests",
+    ),
+    path(
         "staff/withdrawal-requests/",
         views_support_admin.admin_withdrawal_requests,
         name="admin_withdrawal_requests",

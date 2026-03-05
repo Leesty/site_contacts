@@ -1069,6 +1069,43 @@ def admin_contact_requests(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def balance_admin_contact_requests(request: HttpRequest) -> HttpResponse:
+    """Выдача контактов баланс-админом — та же логика, что у обычных админов."""
+    from .views import _is_balance_admin
+    if not _is_balance_admin(request.user):
+        return HttpResponseForbidden("Недостаточно прав.")
+    if request.method == "POST" and request.POST.get("action") == "refresh":
+        return redirect("balance_admin_contact_requests")
+    if request.method == "POST":
+        req_id = request.POST.get("request_id")
+        if req_id:
+            req = get_object_or_404(ContactRequest, pk=req_id, status="pending")
+            target_user = req.user
+            bases_to_give = [req.base_type] if req.base_type else list(BaseType.objects.all().order_by("order"))
+            for base in bases_to_give:
+                obj, _ = UserBaseLimit.objects.get_or_create(
+                    user=target_user, base_type=base, defaults={"extra_daily_limit": 0}
+                )
+                obj.extra_daily_limit += base.default_daily_limit
+                obj.save(update_fields=["extra_daily_limit"])
+            req.status = "resolved"
+            req.resolved_at = timezone.now()
+            req.resolved_by = request.user
+            req.save(update_fields=["status", "resolved_at", "resolved_by", "updated_at"])
+            messages.success(
+                request,
+                f"@{target_user.username}: добавлен доп. лимит. Пользователь может нажать «Получить контакты».",
+            )
+            return redirect("balance_admin_contact_requests")
+    pending = ContactRequest.objects.filter(status="pending").select_related("user", "base_type").order_by("-created_at")
+    return render(
+        request,
+        "core/balance_admin_contact_requests.html",
+        {"pending_requests": pending},
+    )
+
+
+@login_required
 def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
     """Список заявок на вывод. Одобрить — подтвердить вывод (баланс уже обнулён). Отклонить — вернуть сумму на баланс."""
     if not _require_support(request):
