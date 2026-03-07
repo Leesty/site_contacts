@@ -520,4 +520,154 @@ input[type="radio"] {
   }
 }
 
+/* ============================================================
+   MOBILE (< 768px)
+   ============================================================ */
+@media (max-width: 767.98px) {
+  /* Меньше горизонтальных отступов у контейнера */
+  main.container {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  /* Навбар: компактнее */
+  .navbar { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+  .navbar .container { padding-left: 0.75rem; padding-right: 0.75rem; }
+
+  /* Юзернейм в навбаре — не слишком длинный */
+  .navbar-nav .nav-item.me-2 {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.85rem;
+  }
+
+  /* Карточки: меньше внутренних отступов */
+  .card-body { padding: 0.75rem; }
+  .card-header { padding: 0.5rem 0.75rem; }
+  .card-footer { padding: 0.5rem 0.75rem; }
+
+  /* Заголовки поменьше */
+  h1.h4, .h4 { font-size: 1.15rem; }
+  h2.h6, .h6 { font-size: 0.9rem; }
+
+  /* Вкладки (tabs) — горизонтальный скролл вместо переноса */
+  .nav-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav-tabs::-webkit-scrollbar { display: none; }
+  .nav-tabs .nav-item { flex-shrink: 0; }
+  .nav-tabs .nav-link {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.65rem;
+    white-space: nowrap;
+  }
+
+  /* Таблицы — компактнее */
+  .table-dark-site thead th,
+  .table-dark-site tbody td,
+  .support-threads-table thead th,
+  .support-threads-table tbody td {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.8rem;
+  }
+  .table-dark-site thead th:first-child,
+  .table-dark-site tbody td:first-child {
+    padding-left: 0.65rem;
+  }
+
+  /* Кнопки действий в таблицах — минимальная высота для тач */
+  .table-dark-site .btn-sm,
+  .table .btn-sm {
+    min-height: 32px;
+    min-width: 32px;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  /* Поисковая строка — на всю ширину */
+  form.d-flex input[name="q"] {
+    max-width: 100% !important;
+    flex: 1;
+  }
+
+  /* Общие d-flex обёртки — на мобильном стакаем */
+  .d-flex.justify-content-between.align-items-center.mb-3 {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 0.5rem;
+  }
+
+  /* Статистика-карточки с числами — компактнее */
+  .fs-4 { font-size: 1.25rem !important; }
+
+  /* Пагинация — компактнее */
+  .pagination-sm .page-link {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+    min-width: 36px;
+    text-align: center;
+  }
+
+  /* Виджет поддержки — на всю ширину */
+  .support-panel {
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    right: 0.5rem;
+  }
+
+  /* Бейджи — чуть меньше */
+  .badge {
+    font-size: 0.68rem;
+    padding: 0.2em 0.5em;
+  }
+
+  /* row g-3 — уменьшить гаттер */
+  .row.g-3 { --bs-gutter-x: 0.75rem; --bs-gutter-y: 0.75rem; }
+
+  /* Алерты — компактнее */
+  .alert { padding: 0.5rem 0.75rem; font-size: 0.85rem; }
+
+  /* Футер */
+  footer .d-flex { gap: 0.75rem !important; }
+  footer .small { font-size: 0.72rem; }
+}
+
+/* ============================================================
+   SMALL MOBILE (< 576px)
+   ============================================================ */
+@media (max-width: 575.98px) {
+  /* Ещё компактнее */
+  main.container {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .card-body { padding: 0.6rem; }
+
+  /* Таблицы совсем компактные */
+  .table-dark-site thead th,
+  .table-dark-site tbody td {
+    padding: 0.3rem 0.35rem;
+    font-size: 0.75rem;
+  }
+
+  /* Убираем лишние колонки, если помечены как скрываемые */
+  .hide-xs { display: none !important; }
+
+  /* Формы поиска — стакаем */
+  form.mb-3.d-flex.gap-2 {
+    flex-wrap: wrap;
+  }
+  form.mb-3.d-flex.gap-2 input[name="q"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-basis: 100%;
+  }
+}
+
 
