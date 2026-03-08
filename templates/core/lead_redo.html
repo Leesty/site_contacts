@@ -27,6 +27,11 @@
       {% if form.raw_contact.errors %}<div class="text-danger small">{% for error in form.raw_contact.errors %}{{ error }}{% endfor %}</div>{% endif %}
     </div>
     <div class="mb-3">
+      <label class="form-label" for="id_lead_date">{{ form.lead_date.label }}</label>
+      {{ form.lead_date }}
+      {% if form.lead_date.errors %}<div class="text-danger small">{% for error in form.lead_date.errors %}{{ error }}{% endfor %}</div>{% endif %}
+    </div>
+    <div class="mb-3">
       <label class="form-label" for="id_comment">{{ form.comment.label }}</label>
       {{ form.comment }}
       {% if form.comment.errors %}<div class="text-danger small">{% for error in form.comment.errors %}{{ error }}{% endfor %}</div>{% endif %}

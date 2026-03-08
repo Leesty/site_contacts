@@ -362,13 +362,18 @@ class WorkerReportReworkForm(forms.Form):
 
 
 class LeadReworkUserForm(forms.Form):
-    """Форма доработки лида пользователем: контакт/ссылка, комментарий, новое вложение."""
+    """Форма доработки лида пользователем: контакт/ссылка, дата, комментарий, новое вложение."""
 
     raw_contact = forms.CharField(
         label="Контакт / ссылка",
         help_text="Юзернейм, телефон, ссылка на объявление или другой идентификатор.",
         required=True,
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Контакт / ссылка"}),
+    )
+    lead_date = forms.DateField(
+        label="Дата лида",
+        required=True,
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
     comment = forms.CharField(
         label="Комментарий",

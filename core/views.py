@@ -857,7 +857,8 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                         lead.source = lead.raw_contact or ""
                         lead.normalized_contact = normalize_lead_contact(lead.raw_contact)
                         lead.comment = form.cleaned_data.get("comment") or ""
-                        update_fields = ["raw_contact", "source", "normalized_contact", "comment", "status", "rework_comment", "updated_at"]
+                        lead.lead_date = form.cleaned_data["lead_date"]
+                        update_fields = ["raw_contact", "source", "normalized_contact", "comment", "lead_date", "status", "rework_comment", "updated_at"]
                         if form.cleaned_data.get("attachment"):
                             lead.attachment = form.cleaned_data["attachment"]
                             update_fields.append("attachment")
@@ -891,6 +892,7 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
         form = LeadReworkUserForm(
             initial={
                 "raw_contact": lead.raw_contact,
+                "lead_date": lead.lead_date,
                 "comment": lead.comment,
             }
         )
