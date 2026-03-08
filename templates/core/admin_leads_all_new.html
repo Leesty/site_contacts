@@ -125,7 +125,21 @@
                 {% endif %}
                 {% if tab == 'rework' or tab == 'rejected' %}
                 <td class="text-break small">
-                  {% if tab == 'rework' %}{{ lead.rework_comment|default:"—"|truncatechars:80 }}{% else %}{{ lead.rejection_reason|default:"—"|truncatechars:80 }}{% endif %}
+                  {% if tab == 'rework' %}
+                    {% if lead.rework_comment and lead.rework_comment|length > 80 %}
+                      <span class="js-truncated">{{ lead.rework_comment|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none" title="Развернуть">▸</a></span>
+                      <span class="js-full d-none">{{ lead.rework_comment }} <a href="#" class="js-collapse-btn text-decoration-none" title="Свернуть">◂</a></span>
+                    {% else %}
+                      {{ lead.rework_comment|default:"—" }}
+                    {% endif %}
+                  {% else %}
+                    {% if lead.rejection_reason and lead.rejection_reason|length > 80 %}
+                      <span class="js-truncated">{{ lead.rejection_reason|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none" title="Развернуть">▸</a></span>
+                      <span class="js-full d-none">{{ lead.rejection_reason }} <a href="#" class="js-collapse-btn text-decoration-none" title="Свернуть">◂</a></span>
+                    {% else %}
+                      {{ lead.rejection_reason|default:"—" }}
+                    {% endif %}
+                  {% endif %}
                 </td>
                 {% endif %}
                 <td class="text-break small">
@@ -140,7 +154,14 @@
                   {% endif %}
                 </td>
                 <td class="contact-cell text-break small">{{ lead.raw_contact|default:"—"|contact_link }}</td>
-                <td class="comment-cell text-break small">{{ lead.comment|default:"—"|truncatechars:40 }}</td>
+                <td class="comment-cell text-break small">
+                  {% if lead.comment and lead.comment|length > 40 %}
+                    <span class="js-truncated">{{ lead.comment|truncatechars:40 }} <a href="#" class="js-expand-btn text-decoration-none" title="Развернуть">▸</a></span>
+                    <span class="js-full d-none">{{ lead.comment }} <a href="#" class="js-collapse-btn text-decoration-none" title="Свернуть">◂</a></span>
+                  {% else %}
+                    {{ lead.comment|default:"—" }}
+                  {% endif %}
+                </td>
                 {% if tab != 'rejected' or tab == 'all' %}
                 <td>
                   <div class="d-flex flex-wrap gap-1">
@@ -306,6 +327,23 @@
         }
       });
     }
+  // Expand/collapse long comments
+  document.querySelectorAll('.js-expand-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var td = btn.closest('td') || btn.closest('span').parentElement;
+      td.querySelector('.js-truncated').classList.add('d-none');
+      td.querySelector('.js-full').classList.remove('d-none');
+    });
+  });
+  document.querySelectorAll('.js-collapse-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var td = btn.closest('td') || btn.closest('span').parentElement;
+      td.querySelector('.js-full').classList.add('d-none');
+      td.querySelector('.js-truncated').classList.remove('d-none');
+    });
+  });
   })();
   </script>
 {% endblock %}

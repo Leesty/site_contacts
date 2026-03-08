@@ -113,7 +113,19 @@
                   </div>
                 </td>
                 {% if tab == 'rework' or tab == 'rejected' %}
-                <td class="text-break small">{% if tab == 'rework' %}{{ lead.rework_comment|default:"—"|truncatechars:80 }}{% else %}{{ lead.rejection_reason|default:"—"|truncatechars:80 }}{% endif %}</td>
+                <td class="text-break small">
+                  {% if tab == 'rework' %}
+                    {% if lead.rework_comment and lead.rework_comment|length > 80 %}
+                      <span class="js-truncated">{{ lead.rework_comment|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
+                      <span class="js-full d-none">{{ lead.rework_comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
+                    {% else %}{{ lead.rework_comment|default:"—" }}{% endif %}
+                  {% else %}
+                    {% if lead.rejection_reason and lead.rejection_reason|length > 80 %}
+                      <span class="js-truncated">{{ lead.rejection_reason|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
+                      <span class="js-full d-none">{{ lead.rejection_reason }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
+                    {% else %}{{ lead.rejection_reason|default:"—" }}{% endif %}
+                  {% endif %}
+                </td>
                 {% endif %}
                 <td>
                   {% if lead.attachment %}
@@ -128,7 +140,12 @@
                 </td>
                 <td>{{ lead.raw_contact|default:"—"|contact_link }}</td>
                 <td>{{ lead.source|truncatechars:40|default:"—" }}</td>
-                <td>{{ lead.comment|truncatechars:60|default:"—" }}</td>
+                <td class="text-break small">
+                  {% if lead.comment and lead.comment|length > 60 %}
+                    <span class="js-truncated">{{ lead.comment|truncatechars:60 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
+                    <span class="js-full d-none">{{ lead.comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
+                  {% else %}{{ lead.comment|default:"—" }}{% endif %}
+                </td>
                 <td>{% if lead.reviewed_by %}@{{ lead.reviewed_by.username }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
               </tr>
             {% empty %}
@@ -212,6 +229,22 @@
         }
       });
     }
+  document.querySelectorAll('.js-expand-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var td = btn.closest('td');
+      td.querySelector('.js-truncated').classList.add('d-none');
+      td.querySelector('.js-full').classList.remove('d-none');
+    });
+  });
+  document.querySelectorAll('.js-collapse-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var td = btn.closest('td');
+      td.querySelector('.js-full').classList.add('d-none');
+      td.querySelector('.js-truncated').classList.remove('d-none');
+    });
+  });
   })();
   </script>
 {% endblock %}
