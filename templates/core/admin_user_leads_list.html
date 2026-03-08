@@ -67,7 +67,8 @@
           <thead>
             <tr>
               <th>ID</th>
-              <th>Создан</th>
+              <th>Дата лида</th>
+              <th>Отправлен</th>
               <th>Тип лида</th>
               <th>Статус</th>
               {% if tab == 'rework' %}<th>Причина доработки</th>{% elif tab == 'rejected' %}<th>Причина отклонения</th>{% endif %}
@@ -82,7 +83,8 @@
             {% for lead in page_obj %}
               <tr>
                 <td>{{ lead.id }}{% if lead.needs_team_contact %} <span class="badge bg-info text-dark" title="Связаться самим">СС</span>{% endif %}</td>
-                <td>{{ lead.created_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ lead.lead_date|date:"d.m.Y" }}</td>
+                <td class="small text-muted">{{ lead.created_at|date:"d.m.Y H:i" }}</td>
                 <td>{{ lead.lead_type.name|default:"—" }}</td>
                 <td>
                   <div class="d-flex flex-wrap align-items-center gap-1">
@@ -131,7 +133,7 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="{% if tab == 'rework' or tab == 'rejected' %}10{% else %}9{% endif %}" class="text-muted py-4 text-center">
+                <td colspan="{% if tab == 'rework' or tab == 'rejected' %}11{% else %}10{% endif %}" class="text-muted py-4 text-center">
                   {% if tab == 'all' %}Лидов пока нет.{% elif tab == 'new' %}Нет новых лидов.{% elif tab == 'rework' %}Нет лидов на доработке.{% elif tab == 'approved' %}Нет принятых лидов.{% else %}Нет отклонённых лидов.{% endif %}
                 </td>
               </tr>

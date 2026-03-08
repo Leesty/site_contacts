@@ -77,7 +77,8 @@
             <tr>
               <th>ID</th>
               <th>Пользователь</th>
-              <th>Создан</th>
+              <th>Дата лида</th>
+              <th>Отправлен</th>
               <th>Тип лида</th>
               {% if tab == 'all' %}
                 <th>Статус</th>
@@ -105,7 +106,8 @@
                 <td>
                   <a href="{% url 'admin_user_leads_list' lead.user_id %}">@{{ lead.user.username }}</a>
                 </td>
-                <td>{{ lead.created_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ lead.lead_date|date:"d.m.Y" }}</td>
+                <td class="small text-muted">{{ lead.created_at|date:"d.m.Y H:i" }}</td>
                 <td>{{ lead.lead_type.name|default:"—" }}</td>
                 <td>
                   {% if tab == 'all' %}
@@ -169,7 +171,7 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="{% if tab == 'all' %}10{% elif tab == 'rejected' %}9{% elif tab == 'rework' %}10{% else %}9{% endif %}" class="text-muted py-4 text-center">
+                <td colspan="{% if tab == 'all' %}11{% elif tab == 'rejected' %}10{% elif tab == 'rework' %}11{% else %}10{% endif %}" class="text-muted py-4 text-center">
                   {% if tab == 'all' %}Нет отчётов.{% elif tab == 'new' %}Нет новых отчётов.{% elif tab == 'rework' %}Нет отчётов на доработке.{% elif tab == 'approved' %}Нет принятых отчётов.{% else %}Нет отклонённых отчётов.{% endif %}
                 </td>
               </tr>
@@ -227,7 +229,7 @@
                 var tbody = document.querySelector('.table-responsive tbody');
                 if (tbody && tbody.querySelectorAll('tr').length === 0) {
                   var emptyRow = document.createElement('tr');
-                  emptyRow.innerHTML = '<td colspan="9" class="text-muted py-4 text-center">Нет отчётов.</td>';
+                  emptyRow.innerHTML = '<td colspan="11" class="text-muted py-4 text-center">Нет отчётов.</td>';
                   tbody.appendChild(emptyRow);
                 }
               }, 250);
