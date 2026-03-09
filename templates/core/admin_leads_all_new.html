@@ -77,9 +77,8 @@
             <tr>
               <th>ID</th>
               <th>Пользователь</th>
-              <th>Дата лида</th>
-              <th>Отправлен</th>
-              <th>Тип лида</th>
+              <th>Дата</th>
+              <th>Тип</th>
               {% if tab == 'all' %}
                 <th>Статус</th>
                 <th>Админ / Причина</th>
@@ -92,23 +91,25 @@
               {% else %}
                 <th>Отклонил</th>
               {% endif %}
-              {% if tab == 'rework' %}<th>Причина доработки</th>{% elif tab == 'rejected' %}<th>Причина отклонения</th>{% endif %}
-              <th>Вложение</th>
+              {% if tab == 'rework' %}<th>Причина</th>{% elif tab == 'rejected' %}<th>Причина</th>{% endif %}
+              <th>Файл</th>
               <th>Контакт</th>
-              <th>Комментарий</th>
-              {% if tab != 'rejected' %}<th>Действия</th>{% endif %}
+              <th>Коммент.</th>
+              {% if tab != 'rejected' %}<th></th>{% endif %}
             </tr>
           </thead>
           <tbody>
             {% for lead in page_obj %}
               <tr data-lead-id="{{ lead.id }}" data-search="{% if tab == 'all' %}{{ lead.id }} {{ lead.user.username|lower }} {{ lead.created_at|date:'Y-m-d' }} {{ lead.created_at|date:'d.m.Y' }} {{ lead.raw_contact|default:''|lower }} {{ lead.source|default:''|lower }} {{ lead.comment|default:''|lower }} {{ lead.lead_type.name|default:''|lower }} {{ lead.rework_comment|default:''|lower }} {{ lead.rejection_reason|default:''|lower }}{% endif %}">
-                <td>{{ lead.id }}{% if lead.needs_team_contact %} <span class="badge bg-info text-dark" title="Связаться самим">СС</span>{% endif %}</td>
+                <td>{{ lead.id }}{% if lead.needs_team_contact %} <span class="badge bg-info text-dark" title="СС">СС</span>{% endif %}</td>
                 <td>
                   <a href="{% url 'admin_user_leads_list' lead.user_id %}">@{{ lead.user.username }}</a>
                 </td>
-                <td>{{ lead.lead_date|date:"d.m.Y" }}</td>
-                <td class="small text-muted">{{ lead.created_at|date:"d.m.Y H:i" }}</td>
-                <td>{{ lead.lead_type.name|default:"—" }}</td>
+                <td class="small" style="white-space:nowrap;">
+                  {{ lead.lead_date|date:"d.m.Y" }}<br>
+                  <span class="text-muted" style="font-size:.7rem;">{{ lead.created_at|date:"d.m H:i" }}</span>
+                </td>
+                <td class="small">{{ lead.lead_type.name|default:"—" }}</td>
                 <td>
                   {% if tab == 'all' %}
                     {% if lead.status == 'approved' %}<span class="badge bg-success">Одобрен</span>{% elif lead.status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>{% elif lead.status == 'rework' %}<span class="badge bg-warning text-dark">На доработке</span>{% else %}<span class="badge bg-secondary">На проверке</span>{% endif %}
@@ -142,12 +143,12 @@
                   {% endif %}
                 </td>
                 {% endif %}
-                <td class="text-break small">
+                <td>
                   {% if lead.attachment %}
                     {% if lead.attachment|lead_attachment_is_video %}
-                      <button type="button" class="btn btn-outline-primary btn-sm js-video-preview" data-video-url="{% url 'admin_lead_attachment' lead.user_id lead.id %}" data-lead-id="{{ lead.id }}">Видео</button>
+                      <button type="button" class="btn btn-outline-primary btn-sm py-0 js-video-preview" data-video-url="{% url 'admin_lead_attachment' lead.user_id lead.id %}" data-lead-id="{{ lead.id }}">▶</button>
                     {% else %}
-                      <a href="{% url 'admin_lead_attachment' lead.user_id lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Открыть</a>
+                      <a href="{% url 'admin_lead_attachment' lead.user_id lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm py-0">📎</a>
                     {% endif %}
                   {% else %}
                     <span class="text-muted">—</span>
@@ -164,27 +165,27 @@
                 </td>
                 {% if tab != 'rejected' or tab == 'all' %}
                 <td>
-                  <div class="d-flex flex-wrap gap-1">
+                  <div class="d-flex flex-nowrap gap-1">
                     {% if lead.status == 'approved' or tab == 'approved' %}
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">Отменить</a>
-                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">На доработку</a>
+                      <a class="btn btn-outline-danger btn-sm py-0" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" title="Отменить">✗</a>
+                      <a class="btn btn-warning btn-sm py-0 text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" title="На доработку">↺</a>
                     {% elif lead.status == 'rework' or tab == 'rework' %}
                       <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" class="d-inline js-lead-approve-form">
                         {% csrf_token %}
                         <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab={{ tab }}">
-                        <button type="submit" class="btn btn-success btn-sm" title="Одобрить без доработки. +{{ lead_approve_reward }} руб. пользователю">Одобрить без доработки</button>
+                        <button type="submit" class="btn btn-success btn-sm py-0" title="Одобрить +{{ lead_approve_reward }} руб.">✓</button>
                       </form>
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">Отклонить</a>
+                      <a class="btn btn-outline-danger btn-sm py-0" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" title="Отклонить">✗</a>
                     {% elif lead.status == 'rejected' %}
                       <span class="text-muted small">—</span>
                     {% else %}
                       <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" class="d-inline js-lead-approve-form">
                         {% csrf_token %}
                         <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab={{ tab }}">
-                        <button type="submit" class="btn btn-success btn-sm" title="+{{ lead_approve_reward }} руб. пользователю">Одобрить</button>
+                        <button type="submit" class="btn btn-success btn-sm py-0" title="Одобрить +{{ lead_approve_reward }} руб.">✓</button>
                       </form>
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">Отклонить</a>
-                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">На доработку</a>
+                      <a class="btn btn-outline-danger btn-sm py-0" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" title="Отклонить">✗</a>
+                      <a class="btn btn-warning btn-sm py-0 text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" title="На доработку">↺</a>
                     {% endif %}
                   </div>
                 </td>
@@ -192,7 +193,7 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="{% if tab == 'all' %}11{% elif tab == 'rejected' %}10{% elif tab == 'rework' %}11{% else %}10{% endif %}" class="text-muted py-4 text-center">
+                <td colspan="{% if tab == 'all' %}10{% elif tab == 'rejected' %}9{% elif tab == 'rework' %}10{% else %}9{% endif %}" class="text-muted py-4 text-center">
                   {% if tab == 'all' %}Нет отчётов.{% elif tab == 'new' %}Нет новых отчётов.{% elif tab == 'rework' %}Нет отчётов на доработке.{% elif tab == 'approved' %}Нет принятых отчётов.{% else %}Нет отклонённых отчётов.{% endif %}
                 </td>
               </tr>
@@ -250,7 +251,7 @@
                 var tbody = document.querySelector('.table-responsive tbody');
                 if (tbody && tbody.querySelectorAll('tr').length === 0) {
                   var emptyRow = document.createElement('tr');
-                  emptyRow.innerHTML = '<td colspan="11" class="text-muted py-4 text-center">Нет отчётов.</td>';
+                  emptyRow.innerHTML = '<td colspan="10" class="text-muted py-4 text-center">Нет отчётов.</td>';
                   tbody.appendChild(emptyRow);
                 }
               }, 250);
