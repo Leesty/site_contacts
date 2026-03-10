@@ -645,6 +645,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@require_http_methods(["POST"])
 def request_contact_create(request: HttpRequest) -> HttpResponse:
     """Создать заявку на дополнительный лимит контактов (кнопка «Обратиться»)."""
     if not _ensure_user_approved(request):
@@ -652,7 +653,7 @@ def request_contact_create(request: HttpRequest) -> HttpResponse:
     if ContactRequest.objects.filter(user=request.user, status="pending").exists():
         messages.info(request, "У вас уже есть активная заявка. Ожидайте ответа менеджера.")
         return redirect("contacts")
-    base_type_id = request.GET.get("base_type") or request.POST.get("base_type")
+    base_type_id = request.POST.get("base_type")
     base_type = None
     if base_type_id:
         try:
@@ -666,6 +667,7 @@ def request_contact_create(request: HttpRequest) -> HttpResponse:
 
 def _lead_exists_globally(raw_contact: str, exclude_lead_id: int | None = None) -> bool:
     """Проверяет, есть ли в базе уже лид с таким контактом (любой пользователь). Комплексная нормализация: @user=user, ссылки и т.д."""
+    from .models import WorkerSelfLead
     normalized = normalize_lead_contact(raw_contact)
     if not normalized:
         return False
@@ -674,6 +676,9 @@ def _lead_exists_globally(raw_contact: str, exclude_lead_id: int | None = None) 
         if exclude_lead_id is not None:
             qs = qs.exclude(pk=exclude_lead_id)
         if qs.exists():
+            return True
+        # Проверка в таблице самостоятельных лидов воркеров (raw_contact, т.к. нет normalized_contact)
+        if WorkerSelfLead.objects.filter(raw_contact__iexact=raw_contact.strip()).exists():
             return True
         # Кросс-платформенная проверка: тот же username на другой платформе
         username = extract_username_from_contact(normalized)
@@ -956,7 +961,9 @@ def leads_stats_placeholder(request: HttpRequest) -> HttpResponse:
 def support_placeholder(request: HttpRequest) -> HttpResponse:
     """Страница чата с поддержкой: диалог и форма с текстом и вложением. Доступна и до одобрения аккаунта."""
     user = request.user
-    thread, _ = SupportThread.objects.get_or_create(user=user, is_closed=False)
+    thread = SupportThread.objects.filter(user=user, is_closed=False).order_by("-created_at").first()
+    if thread is None:
+        thread = SupportThread.objects.create(user=user, is_closed=False)
 
     # Пользователь открыл чат — помечаем сообщения от поддержки как прочитанные
     thread.user_last_read_at = timezone.now()
@@ -996,7 +1003,9 @@ def support_placeholder(request: HttpRequest) -> HttpResponse:
 def support_widget(request: HttpRequest) -> HttpResponse:
     """Виджет поддержки: плавающее окно чата. GET — панель, POST — сохранить и вернуть список сообщений. Доступен и до одобрения."""
     user = request.user
-    thread, _ = SupportThread.objects.get_or_create(user=user, is_closed=False)
+    thread = SupportThread.objects.filter(user=user, is_closed=False).order_by("-created_at").first()
+    if thread is None:
+        thread = SupportThread.objects.create(user=user, is_closed=False)
 
     # При открытии виджета (GET) помечаем сообщения от поддержки как прочитанные
     if request.method == "GET":

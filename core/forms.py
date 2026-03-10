@@ -67,6 +67,7 @@ class LeadReportForm(forms.ModelForm):
 
     raw_contact = forms.CharField(
         label="Контакт / ссылка",
+        max_length=255,
         help_text="Юзернейм, телефон, ссылка на объявление или другой идентификатор.",
     )
 
@@ -204,6 +205,7 @@ class WorkerSelfLeadForm(forms.ModelForm):
 
     raw_contact = forms.CharField(
         label="Контакт / ссылка",
+        max_length=500,
         help_text="Юзернейм, телефон, ссылка на объявление или другой идентификатор.",
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "@username / +7..."}),
     )
@@ -251,6 +253,7 @@ class WorkerSelfLeadReworkForm(forms.Form):
 
     raw_contact = forms.CharField(
         label="Контакт / ссылка",
+        max_length=500,
         widget=forms.TextInput(attrs={"class": "form-control"}),
     )
     lead_date = forms.DateField(
@@ -297,6 +300,7 @@ class WorkerReportForm(forms.Form):
 
     raw_contact = forms.CharField(
         label="Контакт / результат",
+        max_length=255,
         help_text="Контакт, ссылка или описание результата работы.",
         required=True,
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Контакт / результат"}),
@@ -332,6 +336,7 @@ class WorkerReportReworkForm(forms.Form):
 
     raw_contact = forms.CharField(
         label="Контакт / результат",
+        max_length=255,
         required=True,
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Контакт / результат"}),
     )
@@ -366,6 +371,7 @@ class LeadReworkUserForm(forms.Form):
 
     raw_contact = forms.CharField(
         label="Контакт / ссылка",
+        max_length=255,
         help_text="Юзернейм, телефон, ссылка на объявление или другой идентификатор.",
         required=True,
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Контакт / ссылка"}),

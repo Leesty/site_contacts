@@ -587,7 +587,8 @@ class LeadAssignment(TimeStampedModel):
     )
     assigned_by = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="assigned_leads_by",
     )
     task_description = models.TextField(blank=True, help_text="Описание задачи для исполнителя.")
@@ -618,12 +619,14 @@ class WorkerReport(TimeStampedModel):
     )
     worker = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="worker_reports",
     )
     standalone_admin = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="received_worker_reports",
     )
     raw_contact = models.CharField(max_length=255, help_text="Контакт / результат работы.")
@@ -666,12 +669,14 @@ class WorkerWithdrawalRequest(TimeStampedModel):
 
     worker = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="worker_withdrawal_requests",
     )
     standalone_admin = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="worker_withdrawals_to_process",
     )
     amount = models.PositiveIntegerField(help_text="Сумма к выводу (руб.)")
@@ -716,13 +721,15 @@ class WorkerSelfLead(TimeStampedModel):
 
     worker = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="self_leads",
         limit_choices_to={"role": "worker"},
     )
     standalone_admin = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="received_worker_self_leads",
         limit_choices_to={"role": "standalone_admin"},
     )
@@ -800,7 +807,7 @@ class PartnerEarning(TimeStampedModel):
     )
     lead = models.OneToOneField(
         "Lead",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="partner_earning",
         null=True,
         blank=True,

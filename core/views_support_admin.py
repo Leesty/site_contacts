@@ -88,7 +88,7 @@ def admin_users_pending(request: HttpRequest) -> HttpResponse:
         user_id = request.POST.get("user_id")
         action = request.POST.get("action")
         if user_id and action in {"approve", "ban"}:
-            user = get_object_or_404(User, pk=user_id)
+            user = get_object_or_404(User, pk=user_id, status=User.Status.PENDING)
             if action == "approve":
                 user.status = User.Status.APPROVED
                 messages.success(request, f"Пользователь @{user.username} одобрен.")
@@ -567,8 +567,9 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         lead.reviewed_at = timezone.now()
         lead.reviewed_by = request.user
         lead.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
-        lead.user.balance = (getattr(lead.user, "balance", 0) or 0) + LEAD_APPROVE_REWARD
-        lead.user.save(update_fields=["balance"])
+        lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
+        lead_owner.balance = (lead_owner.balance or 0) + LEAD_APPROVE_REWARD
+        lead_owner.save(update_fields=["balance"])
         LeadReviewLog.objects.create(lead=lead, admin=request.user, action=LeadReviewLog.Action.APPROVED)
         # Начислить партнёру +10 руб., если пользователь привлечён через партнёрскую ссылку
         partner_owner_id = lead.user.partner_owner_id
@@ -611,8 +612,17 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                 lead_refresh.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
                 if was_approved:
                     reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
-                    lead_refresh.user.balance = max(0, (lead_refresh.user.balance or 0) - reward)
-                    lead_refresh.user.save(update_fields=["balance"])
+                    lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
+                    lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
+                    lead_owner.save(update_fields=["balance"])
+                    # Откат партнёрского заработка
+                    from .models import PartnerEarning
+                    pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
+                    if pe:
+                        partner = User.objects.select_for_update().get(pk=pe.partner_id)
+                        partner.balance = max(0, (partner.balance or 0) - pe.amount)
+                        partner.save(update_fields=["balance"])
+                        pe.delete()
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REJECTED)
             messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
@@ -650,8 +660,17 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                 lead_refresh.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by"])
                 if was_approved:
                     reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
-                    lead_refresh.user.balance = max(0, (lead_refresh.user.balance or 0) - reward)
-                    lead_refresh.user.save(update_fields=["balance"])
+                    lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
+                    lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
+                    lead_owner.save(update_fields=["balance"])
+                    # Откат партнёрского заработка
+                    from .models import PartnerEarning
+                    pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
+                    if pe:
+                        partner = User.objects.select_for_update().get(pk=pe.partner_id)
+                        partner.balance = max(0, (partner.balance or 0) - pe.amount)
+                        partner.save(update_fields=["balance"])
+                        pe.delete()
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REWORK)
             messages.success(request, f"Лид #{lead_id} отправлен на доработку." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
@@ -695,18 +714,22 @@ def _serve_lead_attachment(lead):
     try:
         f = lead.attachment.open("rb")
     except Exception as e:
+        from django.utils.html import escape as html_escape
+        lead_pk = getattr(lead, "id", None) or getattr(lead, "pk", None)
+        # WorkerSelfLead has .worker, Lead has .user, fake objects may have .user
+        owner = getattr(lead, "user", None) or getattr(lead, "worker", None)
+        username = getattr(owner, "username", "unknown") if owner else "unknown"
         logging.getLogger(__name__).warning(
             "Lead attachment open failed: lead_id=%s path=%s err=%s",
-            lead.id, lead.attachment.name, e,
+            lead_pk, lead.attachment.name, e,
         )
-        username = getattr(lead.user, "username", "id:%s" % lead.user_id)
         html = (
             "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Файл недоступен</title></head><body style='font-family:sans-serif;padding:2rem;'>"
             "<h1>Файл не найден</h1>"
             "<p>Вложение этого отчёта в базе есть, но файл на сервере отсутствует.</p>"
             "<p><strong>Что сделать:</strong> попросите пользователя <strong>%s</strong> заново загрузить видео через «Мои лиды» → доработка отчёта.</p>"
             "<p><a href='javascript:history.back()'>← Назад</a></p></body></html>"
-        ) % (username,)
+        ) % (html_escape(username),)
         return HttpResponse(html, status=404, content_type="text/html; charset=utf-8")
     filename = name.split("/")[-1] if name else "attachment"
     response = FileResponse(f, content_type=content_type)
@@ -827,14 +850,16 @@ def admin_user_balance(request: HttpRequest, user_id: int) -> HttpResponse:
             amount = 0
             action = None
         if amount > 0 and action in ("add", "subtract"):
-            current = target_user.balance or 0
-            if action == "add":
-                target_user.balance = current + amount
-            else:
-                target_user.balance = max(0, current - amount)
-            target_user.save(update_fields=["balance"])
+            with transaction.atomic():
+                user_locked = User.objects.select_for_update().get(pk=user_id)
+                current = user_locked.balance or 0
+                if action == "add":
+                    user_locked.balance = current + amount
+                else:
+                    user_locked.balance = max(0, current - amount)
+                user_locked.save(update_fields=["balance"])
             msg = f"Начислено {amount} руб." if action == "add" else f"Списано {amount} руб."
-            messages.success(request, f"Баланс @{target_user.username}: {msg}. Текущий баланс: {target_user.balance} руб.")
+            messages.success(request, f"Баланс @{target_user.username}: {msg}. Текущий баланс: {user_locked.balance} руб.")
             return redirect("admin_all_users")
         messages.warning(request, "Укажите положительное число и действие (начислить / списать).")
     return render(
@@ -1822,7 +1847,7 @@ def standalone_admin_report_approve(request: HttpRequest, report_id: int) -> Htt
         messages.warning(request, "Отчёт уже обработан.")
         return redirect("standalone_admin_worker_reports")
     with transaction.atomic():
-        report_refresh = WorkerReport.objects.select_for_update().select_related("worker").get(pk=report_id)
+        report_refresh = WorkerReport.objects.select_for_update().get(pk=report_id, standalone_admin=request.user)
         report_refresh.status = WorkerReport.Status.APPROVED
         report_refresh.reviewed_at = timezone.now()
         report_refresh.reviewed_by = request.user
@@ -1830,8 +1855,9 @@ def standalone_admin_report_approve(request: HttpRequest, report_id: int) -> Htt
         report_refresh.rejection_reason = ""
         report_refresh.save(update_fields=["status", "reviewed_at", "reviewed_by", "rework_comment", "rejection_reason", "updated_at"])
         reward = report_refresh.reward or 150
-        report_refresh.worker.balance = (report_refresh.worker.balance or 0) + reward
-        report_refresh.worker.save(update_fields=["balance"])
+        worker = User.objects.select_for_update().get(pk=report_refresh.worker_id)
+        worker.balance = (worker.balance or 0) + reward
+        worker.save(update_fields=["balance"])
     messages.success(request, f"Отчёт одобрен. @{report_refresh.worker.username} +{reward} руб.")
     return redirect("standalone_admin_worker_reports")
 
