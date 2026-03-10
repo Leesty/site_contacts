@@ -8,12 +8,15 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import Q
+from django.db.utils import OperationalError, ProgrammingError
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from .forms import WorkerReportForm, WorkerReportReworkForm, WorkerSelfLeadForm, WorkerSelfLeadReworkForm
-from .models import LeadAssignment, User, WithdrawalRequest, WorkerReport, WorkerSelfLead, WorkerWithdrawalRequest
+from .lead_utils import extract_username_from_contact, normalize_lead_contact
+from .models import Lead, LeadAssignment, User, WithdrawalRequest, WorkerReport, WorkerSelfLead, WorkerWithdrawalRequest
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,34 @@ logger = logging.getLogger(__name__)
 def _require_worker(request: HttpRequest) -> bool:
     """Только роль «worker»."""
     return getattr(request.user, "role", None) == "worker"
+
+
+def _self_lead_duplicate_exists(raw_contact: str, exclude_self_lead_id: int | None = None) -> bool:
+    """Проверяет дубликат контакта среди обычных лидов (Lead) и самостоятельных лидов (WorkerSelfLead)."""
+    normalized = normalize_lead_contact(raw_contact)
+    if not normalized:
+        return False
+    try:
+        # Проверка в основной таблице лидов
+        if Lead.objects.filter(normalized_contact=normalized).exists():
+            return True
+        # Проверка в таблице самостоятельных лидов
+        sl_qs = WorkerSelfLead.objects.filter(raw_contact__iexact=raw_contact.strip())
+        if exclude_self_lead_id is not None:
+            sl_qs = sl_qs.exclude(pk=exclude_self_lead_id)
+        if sl_qs.exists():
+            return True
+        # Кросс-платформенная проверка (telegram/vk/ig/ok)
+        username = extract_username_from_contact(normalized)
+        if username and len(username) >= 3:
+            cross_q = Q()
+            for prefix in ("telegram:", "vk:", "ig:", "ok:"):
+                cross_q |= Q(normalized_contact=prefix + username)
+            if Lead.objects.filter(cross_q).exists():
+                return True
+        return False
+    except (OperationalError, ProgrammingError):
+        return False
 
 
 @login_required
@@ -281,23 +312,31 @@ def worker_self_lead_create(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         form = WorkerSelfLeadForm(request.POST, request.FILES)
         if form.is_valid():
-            try:
-                self_lead = WorkerSelfLead(
-                    worker=user,
-                    standalone_admin=standalone_admin,
-                    raw_contact=form.cleaned_data["raw_contact"].strip(),
-                    lead_date=form.cleaned_data["lead_date"],
-                    comment=form.cleaned_data.get("comment") or "",
-                    status=WorkerSelfLead.Status.PENDING,
+            raw = form.cleaned_data["raw_contact"].strip()
+            if _self_lead_duplicate_exists(raw):
+                messages.error(
+                    request,
+                    "Такой контакт уже есть в базе. Дубликаты не принимаются — "
+                    "один контакт можно отправить только один раз.",
                 )
-                if form.cleaned_data.get("attachment"):
-                    self_lead.attachment = form.cleaned_data["attachment"]
-                self_lead.save()
-                messages.success(request, "Лид отправлен на проверку.")
-                return redirect("worker_self_leads")
-            except Exception as e:
-                logger.exception("Ошибка при сохранении самостоятельного лида: %s", e)
-                messages.error(request, "Не удалось сохранить лид. Попробуйте ещё раз.")
+            else:
+                try:
+                    self_lead = WorkerSelfLead(
+                        worker=user,
+                        standalone_admin=standalone_admin,
+                        raw_contact=raw,
+                        lead_date=form.cleaned_data["lead_date"],
+                        comment=form.cleaned_data.get("comment") or "",
+                        status=WorkerSelfLead.Status.PENDING,
+                    )
+                    if form.cleaned_data.get("attachment"):
+                        self_lead.attachment = form.cleaned_data["attachment"]
+                    self_lead.save()
+                    messages.success(request, "Лид отправлен на проверку.")
+                    return redirect("worker_self_leads")
+                except Exception as e:
+                    logger.exception("Ошибка при сохранении самостоятельного лида: %s", e)
+                    messages.error(request, "Не удалось сохранить лид. Попробуйте ещё раз.")
     else:
         form = WorkerSelfLeadForm()
 
@@ -318,18 +357,25 @@ def worker_self_lead_redo(request: HttpRequest, self_lead_id: int) -> HttpRespon
     if request.method == "POST":
         form = WorkerSelfLeadReworkForm(request.POST, request.FILES)
         if form.is_valid():
-            self_lead.raw_contact = form.cleaned_data["raw_contact"].strip()
-            self_lead.lead_date = form.cleaned_data["lead_date"]
-            self_lead.comment = form.cleaned_data.get("comment") or ""
-            self_lead.status = WorkerSelfLead.Status.PENDING
-            self_lead.rework_comment = ""
-            update_fields = ["raw_contact", "lead_date", "comment", "status", "rework_comment", "updated_at"]
-            if form.cleaned_data.get("attachment"):
-                self_lead.attachment = form.cleaned_data["attachment"]
-                update_fields.append("attachment")
-            self_lead.save(update_fields=update_fields)
-            messages.success(request, "Лид отправлен на повторную проверку.")
-            return redirect("worker_self_leads")
+            new_contact = form.cleaned_data["raw_contact"].strip()
+            if _self_lead_duplicate_exists(new_contact, exclude_self_lead_id=self_lead.id):
+                messages.error(
+                    request,
+                    "Такой контакт уже есть в базе. Укажите другой контакт.",
+                )
+            else:
+                self_lead.raw_contact = new_contact
+                self_lead.lead_date = form.cleaned_data["lead_date"]
+                self_lead.comment = form.cleaned_data.get("comment") or ""
+                self_lead.status = WorkerSelfLead.Status.PENDING
+                self_lead.rework_comment = ""
+                update_fields = ["raw_contact", "lead_date", "comment", "status", "rework_comment", "updated_at"]
+                if form.cleaned_data.get("attachment"):
+                    self_lead.attachment = form.cleaned_data["attachment"]
+                    update_fields.append("attachment")
+                self_lead.save(update_fields=update_fields)
+                messages.success(request, "Лид отправлен на повторную проверку.")
+                return redirect("worker_self_leads")
     else:
         form = WorkerSelfLeadReworkForm(initial={
             "raw_contact": self_lead.raw_contact,
