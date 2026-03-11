@@ -397,9 +397,9 @@ def admin_user_leads_list(request: HttpRequest, user_id: int) -> HttpResponse:
     if tab == "all":
         qs = base.order_by("-created_at")
     elif tab == "new":
-        qs = base.filter(status=Lead.Status.PENDING).order_by("created_at")
+        qs = base.filter(status=Lead.Status.PENDING).order_by("lead_date", "created_at")
     elif tab == "rework":
-        qs = base.filter(status=Lead.Status.REWORK).order_by("reviewed_at")
+        qs = base.filter(status=Lead.Status.REWORK).order_by("lead_date", "created_at")
     elif tab == "approved":
         qs = base.filter(status=Lead.Status.APPROVED).order_by("-reviewed_at")
     else:
@@ -431,9 +431,9 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
     try:
         base = Lead.objects.select_related("user", "lead_type", "base_type", "reviewed_by")
         if tab == "new":
-            qs = base.filter(status=Lead.Status.PENDING).order_by("created_at")
+            qs = base.filter(status=Lead.Status.PENDING).order_by("lead_date", "created_at")
         elif tab == "rework":
-            qs = base.filter(status=Lead.Status.REWORK).order_by("reviewed_at")
+            qs = base.filter(status=Lead.Status.REWORK).order_by("lead_date", "created_at")
         elif tab == "approved":
             qs = base.filter(status=Lead.Status.APPROVED).order_by("-reviewed_at")
         elif tab == "rejected":
