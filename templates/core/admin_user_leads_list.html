@@ -212,15 +212,27 @@
         var url = btn.getAttribute('data-video-url');
         var leadId = btn.getAttribute('data-lead-id');
         if (video && url) {
-          video.src = url;
+          video.src = '';
+          video.poster = '';
           leadIdSpan.textContent = leadId;
           downloadLink.href = url;
-          var bsModal = new bootstrap.Modal(modal);
-          bsModal.show();
+          fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              video.src = data.url;
+              downloadLink.href = data.url;
+              var bsModal = new bootstrap.Modal(modal);
+              bsModal.show();
+            })
+            .catch(function() {
+              video.src = url;
+              var bsModal = new bootstrap.Modal(modal);
+              bsModal.show();
+            });
         }
       });
     });
-    
+
     if (modal) {
       modal.addEventListener('hidden.bs.modal', function() {
         if (video) {

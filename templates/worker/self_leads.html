@@ -123,8 +123,19 @@
     var video = document.getElementById('videoPreviewPlayer');
     document.querySelectorAll('.js-video-preview').forEach(function(btn) {
       btn.addEventListener('click', function() {
-        video.src = btn.getAttribute('data-video-url');
-        new bootstrap.Modal(modal).show();
+        var url = btn.getAttribute('data-video-url');
+        video.src = '';
+        video.poster = '';
+        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            video.src = data.url;
+            new bootstrap.Modal(modal).show();
+          })
+          .catch(function() {
+            video.src = url;
+            new bootstrap.Modal(modal).show();
+          });
       });
     });
     if (modal) {

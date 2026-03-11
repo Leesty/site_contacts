@@ -259,7 +259,7 @@ def worker_lead_attachment(request: HttpRequest, assignment_id: int) -> HttpResp
     if not lead.attachment:
         return HttpResponseForbidden("У этого лида нет вложения.")
     from .views_support_admin import _serve_lead_attachment as _serve
-    return _serve(lead)
+    return _serve(lead, request=request)
 
 
 @login_required
@@ -282,7 +282,7 @@ def worker_report_attachment(request: HttpRequest, assignment_id: int) -> HttpRe
     obj.attachment = report.attachment
     obj.user = request.user
     obj.pk = report.pk
-    return _serve(obj)
+    return _serve(obj, request=request)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -395,4 +395,4 @@ def worker_self_lead_attachment(request: HttpRequest, self_lead_id: int) -> Http
     if not self_lead.attachment:
         return HttpResponseForbidden("Вложение отсутствует.")
     from .views_support_admin import _serve_lead_attachment as _serve
-    return _serve(self_lead)
+    return _serve(self_lead, request=request)

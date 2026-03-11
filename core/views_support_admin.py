@@ -695,17 +695,21 @@ MIME_BY_EXT = {
 }
 
 
-def _serve_lead_attachment(lead):
-    """Отдаёт вложение лида: редирект на S3 URL или FileResponse с правильным Content‑Type."""
+def _serve_lead_attachment(lead, request=None):
+    """Отдаёт вложение лида: прямой S3 URL (JSON для AJAX) или FileResponse с правильным Content‑Type."""
     import logging
     name = lead.attachment.name or ""
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     content_type = MIME_BY_EXT.get(ext, "application/octet-stream")
 
-    # Если файл в S3 — отдаём редирект на прямую ссылку (быстрее, не тратим память/CPU сервера)
+    # Если файл в S3 — отдаём прямой URL
     try:
         url = lead.attachment.url
         if url and ("s3" in url or "twc" in url or "timeweb" in url or url.startswith("http")):
+            # AJAX-запрос (из видео-плеера) — вернуть JSON с прямым URL
+            if request and request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"url": url})
+            # Обычный запрос (открыть в новой вкладке / скачать) — redirect
             from django.shortcuts import redirect
             return redirect(url)
     except Exception:
@@ -745,7 +749,7 @@ def admin_lead_attachment(request: HttpRequest, user_id: int, lead_id: int) -> H
         return HttpResponseForbidden("У этого лида нет вложения.")
     if not _require_support(request) and request.user.id != lead.user_id:
         return HttpResponseForbidden("Нет доступа к этому файлу.")
-    return _serve_lead_attachment(lead)
+    return _serve_lead_attachment(lead, request=request)
 
 
 @login_required
@@ -761,7 +765,7 @@ def standalone_admin_lead_attachment(request: HttpRequest, lead_id: int) -> Http
     )
     if not lead.attachment:
         return HttpResponseForbidden("У этого лида нет вложения.")
-    return _serve_lead_attachment(lead)
+    return _serve_lead_attachment(lead, request=request)
 
 
 @login_required
@@ -1679,7 +1683,7 @@ def _serve_worker_report_attachment(report) -> HttpResponse:
     obj.attachment = report.attachment
     obj.user = report.worker
     obj.pk = report.pk
-    return _serve_lead_attachment(obj)
+    return _serve_lead_attachment(obj, request=request)
 
 
 @login_required
@@ -2133,5 +2137,5 @@ def standalone_admin_worker_self_lead_attachment(request: HttpRequest, self_lead
     self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
     if not self_lead.attachment:
         return HttpResponseForbidden("Вложение отсутствует.")
-    return _serve_lead_attachment(self_lead)
+    return _serve_lead_attachment(self_lead, request=request)
 

@@ -189,9 +189,20 @@
       btn.addEventListener('click', function() {
         var url = btn.getAttribute('data-video-url');
         if (video && url) {
-          video.src = url;
-          var bsModal = new bootstrap.Modal(modal);
-          bsModal.show();
+          video.src = '';
+          video.poster = '';
+          fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              video.src = data.url;
+              var bsModal = new bootstrap.Modal(modal);
+              bsModal.show();
+            })
+            .catch(function() {
+              video.src = url;
+              var bsModal = new bootstrap.Modal(modal);
+              bsModal.show();
+            });
         }
       });
     });
