@@ -193,38 +193,78 @@ def _get_ffmpeg_path() -> str | None:
     return shutil.which("ffmpeg")
 
 
-def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 180) -> bool:
-    """Сжимает видео через ffmpeg: H.264, CRF 30, макс. 720p. Мягкое сжатие (~3x)."""
+def _get_video_duration(ffmpeg_exe: str, path: str) -> float | None:
+    """Возвращает длительность видео в секундах или None при ошибке."""
+    cmd = [
+        ffmpeg_exe, "-i", path,
+        "-f", "null", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "format=duration",
+    ]
+    # Более надёжный способ: ffprobe или парсинг stderr ffmpeg
+    try:
+        result = subprocess.run(
+            [ffmpeg_exe, "-i", path],
+            capture_output=True, text=True, timeout=10,
+        )
+        # ffmpeg пишет Duration: HH:MM:SS.xx в stderr
+        for line in result.stderr.splitlines():
+            if "Duration:" in line:
+                part = line.split("Duration:")[1].split(",")[0].strip()
+                parts = part.split(":")
+                if len(parts) == 3:
+                    h, m, s = float(parts[0]), float(parts[1]), float(parts[2])
+                    return h * 3600 + m * 60 + s
+    except Exception:
+        pass
+    return None
+
+
+def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 300) -> bool:
+    """Сжимает видео через ffmpeg: H.264, CRF 26, макс. 720p. Мягкое сжатие."""
     ffmpeg_exe = _get_ffmpeg_path()
     if not ffmpeg_exe:
         logger.warning("ffmpeg не найден (imageio-ffmpeg или системный) — сжатие видео пропущено")
         return False
+
+    # Получаем длительность оригинала для валидации
+    orig_duration = _get_video_duration(ffmpeg_exe, input_path)
+
     cmd = [
         ffmpeg_exe,
         "-y",
         "-i",
         input_path,
         "-vf",
-        "scale='min(720,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+        "scale='min(720,iw)':-2",
         "-c:v",
         "libx264",
         "-crf",
-        "30",
+        "26",
         "-preset",
         "medium",
         "-c:a",
         "aac",
         "-b:a",
-        "96k",
-        "-ac",
-        "1",
+        "128k",
         "-movflags",
         "+faststart",
         output_path,
     ]
     try:
         subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
-        return os.path.exists(output_path) and os.path.getsize(output_path) > 0
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            return False
+        # Валидация: длительность сжатого видео не должна быть сильно короче оригинала
+        if orig_duration and orig_duration > 5:
+            out_duration = _get_video_duration(ffmpeg_exe, output_path)
+            if out_duration and out_duration < orig_duration * 0.8:
+                logger.warning(
+                    "Сжатое видео короче оригинала: %.1fs → %.1fs, отклоняем сжатие",
+                    orig_duration, out_duration,
+                )
+                return False
+        return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
         logger.warning("Ошибка ffmpeg при сжатии видео: %s", e)
         return False
