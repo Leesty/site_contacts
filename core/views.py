@@ -10,7 +10,7 @@ from django.db.models import F, Max, Q
 from django.db import transaction
 from django.db.utils import OperationalError, ProgrammingError
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.core.paginator import Paginator
+from django.core.paginator import InvalidPage, Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
@@ -421,7 +421,7 @@ def contacts_view(request: HttpRequest) -> HttpResponse:
     page = request.GET.get("page", 1)
     try:
         page_obj = paginator.page(int(page))
-    except (ValueError, paginator.InvalidPage):
+    except (ValueError, InvalidPage):
         page_obj = paginator.page(1)
 
     # Список баз для ссылок на страницу (все базы с выданными контактами)

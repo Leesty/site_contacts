@@ -16,12 +16,20 @@
   {% if reason == 'already_got' %}
     <div class="alert alert-info mb-3 d-flex flex-wrap align-items-center gap-2">
       <span class="flex-grow-1">Вы уже получили максимум контактов из этой базы. Обратитесь к менеджеру за дополнительным лимитом.</span>
-      <a class="btn btn-primary btn-sm" href="{% url 'request_contact_create' %}{% if selected_base %}?base_type={{ selected_base.pk }}{% endif %}">Обратиться</a>
+      <form method="post" action="{% url 'request_contact_create' %}" class="d-inline">
+        {% csrf_token %}
+        {% if selected_base %}<input type="hidden" name="base_type" value="{{ selected_base.pk }}">{% endif %}
+        <button type="submit" class="btn btn-primary btn-sm">Обратиться</button>
+      </form>
     </div>
   {% elif reason == 'not_enough' %}
     <div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2">
       <span class="flex-grow-1">К сожалению, в этой базе сейчас недостаточно свободных контактов. Обратитесь к менеджеру.</span>
-      <a class="btn btn-primary btn-sm" href="{% url 'request_contact_create' %}{% if selected_base %}?base_type={{ selected_base.pk }}{% endif %}">Обратиться</a>
+      <form method="post" action="{% url 'request_contact_create' %}" class="d-inline">
+        {% csrf_token %}
+        {% if selected_base %}<input type="hidden" name="base_type" value="{{ selected_base.pk }}">{% endif %}
+        <button type="submit" class="btn btn-primary btn-sm">Обратиться</button>
+      </form>
     </div>
   {% endif %}
 
