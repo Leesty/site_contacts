@@ -185,8 +185,21 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
             if lead:
                 lead.ss_admin_status = new_status or None
                 lead.save(update_fields=["ss_admin_status", "updated_at"])
+                # AJAX — JSON ответ без редиректа
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    status_labels = {"rejected": "Отказ", "in_progress": "В работе", "meeting": "Встреча", "": "Новые"}
+                    return JsonResponse({"success": True, "message": f"Лид #{lead_id} → {status_labels.get(new_status, new_status)}"})
                 messages.success(request, f"Лид #{lead_id} перемещён.")
-        return redirect(reverse("standalone_admin_ss_leads") + f"?tab={tab}")
+        # Сохраняем page и q при обычном POST
+        page_num_post = request.POST.get("page") or request.GET.get("page") or ""
+        search_q_post = request.POST.get("q") or request.GET.get("q") or ""
+        redir_url = reverse("standalone_admin_ss_leads") + f"?tab={tab}"
+        if page_num_post:
+            redir_url += f"&page={page_num_post}"
+        if search_q_post:
+            from urllib.parse import quote
+            redir_url += f"&q={quote(search_q_post)}"
+        return redirect(redir_url)
 
     counts = {
         "new": base_qs.filter(ss_admin_status__isnull=True).count(),

@@ -116,7 +116,7 @@
                       <span class="badge bg-success">✓ Завершён</span>
                     {% else %}
                       <div class="d-flex align-items-center gap-1 flex-wrap">
-                        <form method="post" class="d-flex align-items-center gap-1">
+                        <form method="post" class="js-ss-status-form d-flex align-items-center gap-1">
                           {% csrf_token %}
                           <input type="hidden" name="lead_id" value="{{ lead.id }}">
                           <select name="ss_admin_status" class="form-select form-select-sm" style="width: auto;">
@@ -222,6 +222,39 @@
         }
       });
     }
+
+    // AJAX для смены статуса СС-лида (без перезагрузки страницы)
+    document.querySelectorAll('.js-ss-status-form').forEach(function(form) {
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var formData = new FormData(form);
+        var btn = form.querySelector('button[type="submit"]');
+        var row = form.closest('tr');
+        btn.disabled = true;
+        btn.textContent = '…';
+        fetch(window.location.pathname + window.location.search, {
+          method: 'POST',
+          headers: {'X-Requested-With': 'XMLHttpRequest'},
+          body: formData
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.success && row) {
+            row.style.transition = 'opacity 0.3s';
+            row.style.opacity = '0';
+            setTimeout(function() { row.remove(); }, 300);
+          } else {
+            btn.disabled = false;
+            btn.textContent = '→';
+          }
+        })
+        .catch(function() {
+          btn.disabled = false;
+          btn.textContent = '→';
+          form.submit();
+        });
+      });
+    });
   })();
   </script>
 {% endblock %}
