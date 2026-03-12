@@ -297,7 +297,11 @@ def _compress_video_local(path: str) -> bool:
 
 
 def _compress_video_remote(lead) -> bool:
-    """Сжимает видео из S3/удалённого хранилища: скачать → ffmpeg → загрузить обратно."""
+    """Сжимает видео из S3/удалённого хранилища: скачать → ffmpeg → загрузить обратно.
+
+    Безопасная последовательность: сжатый файл загружается в S3 ДО удаления оригинала.
+    Если загрузка сжатого файла упадёт — оригинал останется цел.
+    """
     storage = lead.attachment.storage
     name = lead.attachment.name
     ext = _get_attachment_extension(lead.attachment)
@@ -319,12 +323,16 @@ def _compress_video_remote(lead) -> bool:
             compressed = f.read()
         if len(compressed) >= len(data):
             return False
-        try:
-            storage.delete(name)
-        except Exception:
-            pass
+        # Сначала загружаем сжатый (S3Storage с file_overwrite=True перезапишет оригинал).
+        # Если загрузка упадёт — оригинал останется цел, исключение поймает внешний except.
         new_name = storage.save(name, ContentFile(compressed))
+        # Если storage вернул другое имя (file_overwrite=False или гонка) —
+        # удаляем старый файл и обновляем запись в БД.
         if new_name != name:
+            try:
+                storage.delete(name)
+            except Exception:
+                pass
             lead.attachment.name = new_name
             lead.save(update_fields=["attachment"])
         return True
