@@ -127,7 +127,7 @@
                           </select>
                           <button type="submit" class="btn btn-outline-primary btn-sm py-0 px-1">→</button>
                         </form>
-                        <a href="{% url 'standalone_admin_assign_lead' lead.id %}"
+                        <a href="{% url 'standalone_admin_assign_lead' lead.id %}?next={% url 'standalone_admin_ss_leads' %}%3Ftab%3D{{ tab }}{% if page_obj.number > 1 %}%26page%3D{{ page_obj.number }}{% endif %}{% if search_q %}%26q%3D{{ search_q|urlencode }}{% endif %}"
                            class="btn btn-outline-success btn-sm py-0 px-1"
                            title="Назначить исполнителю">
                           {% with cnt=lead.assignments.count %}{% if cnt %}✓({{ cnt }}){% else %}+👷{% endif %}{% endwith %}

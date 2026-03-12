@@ -1798,10 +1798,12 @@ def standalone_admin_assign_lead(request: HttpRequest, lead_id: int) -> HttpResp
             a.report_status = a.report.status
         except Exception:
             a.report_status = None
+    next_url = request.GET.get("next", "")
     return render(request, "core/standalone_admin_assign_lead.html", {
         "lead": lead,
         "workers": workers,
         "existing_assignments": existing_assignments,
+        "next_url": next_url,
     })
 
 
