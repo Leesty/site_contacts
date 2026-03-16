@@ -1686,7 +1686,7 @@ def admin_site_settings(request: HttpRequest) -> HttpResponse:
 # SS Admin: Worker Sub-System
 # ──────────────────────────────────────────────────────────────
 
-def _serve_worker_report_attachment(report) -> HttpResponse:
+def _serve_worker_report_attachment(report, request=None) -> HttpResponse:
     """Отдаёт вложение к отчёту воркера (аналог _serve_lead_attachment)."""
 
     class _Proxy:
@@ -1938,7 +1938,7 @@ def standalone_admin_worker_report_attachment(request: HttpRequest, report_id: i
     report = get_object_or_404(WorkerReport, pk=report_id, standalone_admin=request.user)
     if not report.attachment:
         return HttpResponseForbidden("Вложение отсутствует.")
-    return _serve_worker_report_attachment(report)
+    return _serve_worker_report_attachment(report, request=request)
 
 
 @login_required

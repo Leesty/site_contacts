@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load support_extras %}
+{% load support_extras static %}
 
 {% block title %}Отчёты исполнителей{% endblock %}
 
@@ -59,7 +59,12 @@
                   <td>
                     {% if report.attachment %}
                       {% if report.attachment|worker_report_attachment_is_video %}
-                        <a href="{% url 'standalone_admin_worker_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Видео</a>
+                        <button type="button"
+                                class="btn btn-outline-primary btn-sm js-video-preview"
+                                data-video-url="{% url 'standalone_admin_worker_report_attachment' report.id %}"
+                                data-lead-id="{{ report.id }}">
+                          Видео
+                        </button>
                       {% else %}
                         <a href="{% url 'standalone_admin_worker_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Открыть</a>
                       {% endif %}
@@ -120,4 +125,25 @@
       {% endif %}
     </div>
   </div>
+
+  <!-- Video modal -->
+  <div class="modal fade" id="videoPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark">
+        <div class="modal-header border-secondary py-2">
+          <h6 class="modal-title">Просмотр видео</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <video id="videoPreviewPlayer" controls preload="none" style="width:100%;max-height:70vh;">
+            Ваш браузер не поддерживает видео.
+          </video>
+        </div>
+        <div class="modal-footer border-secondary py-2">
+          <a id="videoDownloadLink" href="#" target="_blank" class="btn btn-outline-primary btn-sm">Открыть в новой вкладке</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="{% static 'js/video-preview.js' %}"></script>
 {% endblock %}
