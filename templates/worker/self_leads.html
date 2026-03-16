@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load support_extras %}
+{% load support_extras static %}
 
 {% block title %}Мои лиды{% endblock %}
 
@@ -117,32 +117,5 @@
       </div>
     </div>
   </div>
-  <script>
-  (function() {
-    var modal = document.getElementById('videoPreviewModal');
-    var video = document.getElementById('videoPreviewPlayer');
-    document.querySelectorAll('.js-video-preview').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var url = btn.getAttribute('data-video-url');
-        video.src = '';
-        video.poster = '';
-        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
-            video.src = data.url;
-            new bootstrap.Modal(modal).show();
-          })
-          .catch(function() {
-            video.src = url;
-            new bootstrap.Modal(modal).show();
-          });
-      });
-    });
-    if (modal) {
-      modal.addEventListener('hidden.bs.modal', function() {
-        video.pause(); video.src = '';
-      });
-    }
-  })();
-  </script>
+  <script src="{% static 'js/video-preview.js' %}"></script>
 {% endblock %}

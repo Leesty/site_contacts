@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load support_extras %}
+{% load support_extras static %}
 
 {% block title %}СС лиды — Самостоятельный админ{% endblock %}
 
@@ -181,48 +181,9 @@
       </div>
     </div>
   </div>
+  <script src="{% static 'js/video-preview.js' %}"></script>
   <script>
   (function() {
-    var modal = document.getElementById('videoPreviewModal');
-    var video = document.getElementById('videoPreviewPlayer');
-    var leadIdSpan = document.getElementById('videoLeadId');
-    var downloadLink = document.getElementById('videoDownloadLink');
-
-    document.querySelectorAll('.js-video-preview').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var url = btn.getAttribute('data-video-url');
-        var leadId = btn.getAttribute('data-lead-id');
-        if (video && url) {
-          video.src = '';
-          video.poster = '';
-          leadIdSpan.textContent = leadId;
-          downloadLink.href = url;
-          fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-              video.src = data.url;
-              downloadLink.href = data.url;
-              var bsModal = new bootstrap.Modal(modal);
-              bsModal.show();
-            })
-            .catch(function() {
-              video.src = url;
-              var bsModal = new bootstrap.Modal(modal);
-              bsModal.show();
-            });
-        }
-      });
-    });
-
-    if (modal) {
-      modal.addEventListener('hidden.bs.modal', function() {
-        if (video) {
-          video.pause();
-          video.src = '';
-        }
-      });
-    }
-
     // AJAX для смены статуса СС-лида (без перезагрузки страницы)
     document.querySelectorAll('.js-ss-status-form').forEach(function(form) {
       form.addEventListener('submit', function(e) {

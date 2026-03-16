@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load support_extras %}
+{% load support_extras static %}
 
 {% block title %}Лиды от исполнителей{% endblock %}
 
@@ -236,6 +236,7 @@
     </div>
   </div>
 
+  <script src="{% static 'js/video-preview.js' %}"></script>
   <script>
   (function () {
     // Rework buttons
@@ -260,31 +261,6 @@
         new bootstrap.Modal(document.getElementById('rejectModal')).show();
       });
     });
-    // Video preview
-    var videoModal = document.getElementById('videoPreviewModal');
-    var video = document.getElementById('videoPreviewPlayer');
-    document.querySelectorAll('.js-video-preview').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var url = btn.getAttribute('data-video-url');
-        video.src = '';
-        video.poster = '';
-        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
-            video.src = data.url;
-            new bootstrap.Modal(videoModal).show();
-          })
-          .catch(function() {
-            video.src = url;
-            new bootstrap.Modal(videoModal).show();
-          });
-      });
-    });
-    if (videoModal) {
-      videoModal.addEventListener('hidden.bs.modal', function () {
-        video.pause(); video.src = '';
-      });
-    }
   })();
   </script>
 {% endblock %}
