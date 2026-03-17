@@ -750,7 +750,7 @@ class WorkerSelfLead(TimeStampedModel):
     )
     rework_comment = models.TextField(blank=True, help_text="Что исправить (при статусе «На доработке»).")
     rejection_reason = models.TextField(blank=True)
-    reward = models.PositiveIntegerField(default=50, help_text="Вознаграждение за одобренный лид (руб.).")
+    reward = models.PositiveIntegerField(default=150, help_text="Вознаграждение за одобренный лид (руб.).")
     reviewed_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(
         User,
