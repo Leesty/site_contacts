@@ -1218,8 +1218,12 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
         .select_related("user", "processed_by")
         .order_by("-created_at")[:200]
     )
-    total_approved_withdrawals = (
+    total_user_withdrawals = (
         WithdrawalRequest.objects.filter(status="approved").aggregate(s=Sum("amount"))["s"] or 0
+    )
+    from .models import WorkerWithdrawalRequest
+    total_worker_withdrawals = (
+        WorkerWithdrawalRequest.objects.filter(status="approved").aggregate(s=Sum("amount"))["s"] or 0
     )
     return render(
         request,
@@ -1227,7 +1231,9 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
         {
             "pending_requests": pending,
             "history_requests": history,
-            "total_approved_withdrawals": total_approved_withdrawals,
+            "total_user_withdrawals": total_user_withdrawals,
+            "total_worker_withdrawals": total_worker_withdrawals,
+            "total_approved_withdrawals": total_user_withdrawals + total_worker_withdrawals,
         },
     )
 
