@@ -8,6 +8,12 @@
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
   </div>
 
+  <div class="alert alert-secondary py-2 small mb-3">
+    Выплачено исполнителям: <strong>{{ total_worker_approved|default:0 }} руб.</strong>
+    &nbsp;|&nbsp; Выплачено пользователям (основная биржа): <strong>{{ total_user_approved|default:0 }} руб.</strong>
+    &nbsp;|&nbsp; Итого: <strong>{{ total_approved_all|default:0 }} руб.</strong>
+  </div>
+
   {% if pending_requests %}
     <h2 class="h6 mb-2">На рассмотрении</h2>
     <div class="card shadow-sm mb-4">

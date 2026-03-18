@@ -1951,28 +1951,35 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
         req_id = request.POST.get("request_id")
         action = request.POST.get("action")
         if req_id and action in ("approve", "reject"):
-            with transaction.atomic():
-                wreq = (
-                    WorkerWithdrawalRequest.objects.select_for_update()
-                    .select_related("worker")
-                    .filter(pk=req_id, standalone_admin=request.user, status="pending")
-                    .first()
-                )
-                if not wreq:
-                    messages.warning(request, "Заявка уже обработана или не найдена.")
-                    return redirect("standalone_admin_worker_withdrawal_requests")
-                now = timezone.now()
-                if action == "approve":
-                    wreq.status = "approved"
-                    messages.success(request, f"Вывод @{wreq.worker.username} на {wreq.amount} руб. одобрен.")
-                else:
-                    wreq.worker.balance = (wreq.worker.balance or 0) + wreq.amount
-                    wreq.worker.save(update_fields=["balance"])
-                    wreq.status = "rejected"
-                    messages.info(request, f"Заявка @{wreq.worker.username} отклонена. Баланс восстановлен.")
-                wreq.processed_at = now
-                wreq.processed_by = request.user
-                wreq.save(update_fields=["status", "processed_at", "processed_by"])
+            try:
+                with transaction.atomic():
+                    wreq = (
+                        WorkerWithdrawalRequest.objects.select_for_update()
+                        .select_related("worker")
+                        .filter(pk=req_id, standalone_admin=request.user, status="pending")
+                        .first()
+                    )
+                    if not wreq:
+                        messages.warning(request, "Заявка уже обработана или не найдена.")
+                        return redirect("standalone_admin_worker_withdrawal_requests")
+                    now = timezone.now()
+                    if action == "approve":
+                        wreq.status = "approved"
+                        wreq.processed_at = now
+                        wreq.processed_by = request.user
+                        wreq.save()
+                        messages.success(request, f"Вывод @{wreq.worker.username} на {wreq.amount} руб. одобрен.")
+                    else:
+                        wreq.worker.balance = (wreq.worker.balance or 0) + wreq.amount
+                        wreq.worker.save(update_fields=["balance"])
+                        wreq.status = "rejected"
+                        wreq.processed_at = now
+                        wreq.processed_by = request.user
+                        wreq.save()
+                        messages.info(request, f"Заявка @{wreq.worker.username} отклонена. Баланс восстановлен.")
+            except Exception:
+                logger.exception("Ошибка при обработке заявки на вывод #%s", req_id)
+                messages.error(request, "Произошла ошибка при обработке заявки. Попробуйте ещё раз.")
         return redirect("standalone_admin_worker_withdrawal_requests")
 
     pending = (
@@ -1988,9 +1995,22 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
         .select_related("worker", "processed_by")
         .order_by("-created_at")[:100]
     )
+    total_worker_approved = (
+        WorkerWithdrawalRequest.objects
+        .filter(standalone_admin=request.user, status="approved")
+        .aggregate(s=Sum("amount"))["s"] or 0
+    )
+    total_user_approved = (
+        WithdrawalRequest.objects
+        .filter(status="approved")
+        .aggregate(s=Sum("amount"))["s"] or 0
+    )
     return render(request, "core/standalone_admin_worker_withdrawal_requests.html", {
         "pending_requests": pending,
         "history_requests": history,
+        "total_worker_approved": total_worker_approved,
+        "total_user_approved": total_user_approved,
+        "total_approved_all": total_worker_approved + total_user_approved,
     })
 
 
