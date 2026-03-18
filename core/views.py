@@ -127,8 +127,12 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         from .models import LeadReviewLog
 
         # Всего одобрений лидов (все админы, все времена)
-        total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
-        earned = total_approved * 5
+        # До 18.03.2026 — 5 руб./лид, после — 2.5 руб./лид
+        from django.utils import timezone as tz
+        REWARD_CUTOFF = tz.datetime(2026, 3, 18, 0, 0, 0, tzinfo=tz.utc)
+        old_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, created_at__lt=REWARD_CUTOFF).count()
+        new_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, created_at__gte=REWARD_CUTOFF).count()
+        earned = old_approved * 5 + new_approved * 2.5
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -503,8 +507,11 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         from django.db.models import Sum
         from .models import LeadReviewLog
 
-        total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
-        earned = total_approved * 5
+        from django.utils import timezone as tz
+        REWARD_CUTOFF = tz.datetime(2026, 3, 18, 0, 0, 0, tzinfo=tz.utc)
+        old_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, created_at__lt=REWARD_CUTOFF).count()
+        new_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, created_at__gte=REWARD_CUTOFF).count()
+        earned = old_approved * 5 + new_approved * 2.5
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -542,8 +549,11 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 from django.db.models import Sum
                 from .models import LeadReviewLog
 
-                total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
-                earned = total_approved * 5
+                from django.utils import timezone as tz
+                REWARD_CUTOFF = tz.datetime(2026, 3, 18, 0, 0, 0, tzinfo=tz.utc)
+                old_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, created_at__lt=REWARD_CUTOFF).count()
+                new_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, created_at__gte=REWARD_CUTOFF).count()
+                earned = old_approved * 5 + new_approved * 2.5
                 withdrawn = (
                     WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
                     .aggregate(s=Sum("amount"))
