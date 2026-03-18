@@ -128,7 +128,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
 
         # Всего одобрений лидов (все админы, все времена)
         total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
-        earned = total_approved * 2.5
+        earned = total_approved * 5
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -504,7 +504,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         from .models import LeadReviewLog
 
         total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
-        earned = total_approved * 2.5
+        earned = total_approved * 5
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -543,7 +543,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 from .models import LeadReviewLog
 
                 total_approved = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED).count()
-                earned = total_approved * 2.5
+                earned = total_approved * 5
                 withdrawn = (
                     WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
                     .aggregate(s=Sum("amount"))
