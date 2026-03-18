@@ -148,7 +148,10 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             lead__user__partner_owner__isnull=True,
         )
         total_approved = base_log_qs.count()
-        earned = total_approved * 5
+        from decimal import Decimal
+        rate = getattr(user, "balance_admin_rate", None) or Decimal("5")
+        offset = getattr(user, "balance_admin_earnings_offset", None) or Decimal("0")
+        earned = int(total_approved * rate + offset)
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -547,7 +550,10 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             action=LeadReviewLog.Action.APPROVED,
             lead__user__partner_owner__isnull=True,
         ).count()
-        earned = total_approved * 5
+        from decimal import Decimal
+        rate = getattr(user, "balance_admin_rate", None) or Decimal("5")
+        offset = getattr(user, "balance_admin_earnings_offset", None) or Decimal("0")
+        earned = int(total_approved * rate + offset)
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -589,7 +595,10 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     action=LeadReviewLog.Action.APPROVED,
                     lead__user__partner_owner__isnull=True,
                 ).count()
-                earned = total_approved * 5
+                from decimal import Decimal
+                rate = getattr(user_refresh, "balance_admin_rate", None) or Decimal("5")
+                offset = getattr(user_refresh, "balance_admin_earnings_offset", None) or Decimal("0")
+                earned = int(total_approved * rate + offset)
                 withdrawn = (
                     WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
                     .aggregate(s=Sum("amount"))

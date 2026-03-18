@@ -59,6 +59,14 @@ class User(AbstractUser):
         default=0,
         help_text="Баланс пользователя (руб.). Начисляется вручную админом.",
     )
+    balance_admin_rate = models.DecimalField(
+        max_digits=6, decimal_places=2, default=5,
+        help_text="Ставка баланс-админа за одобренный лид (руб.).",
+    )
+    balance_admin_earnings_offset = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Коррекция заработка при смене ставки (руб.).",
+    )
     standalone_admin_owner = models.ForeignKey(
         "self",
         null=True,
