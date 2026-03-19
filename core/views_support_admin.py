@@ -1472,10 +1472,6 @@ def _process_excel_single_sheet(wb, base_type: BaseType) -> tuple[int, int]:
         )
     count_after = Contact.objects.filter(base_type=base_type).count()
     created = count_after - count_before
-    # Репликация телефонных номеров во все телефонные базы
-    replicated = _replicate_to_phone_bases(free_values, base_type.slug)
-    for rcount in replicated.values():
-        created += rcount
     return created, len(free_values) - (count_after - count_before)
 
 
@@ -1528,18 +1524,33 @@ def bases_excel(request: HttpRequest) -> HttpResponse:
                 file = form_category.cleaned_data["file"]
                 if not (file and file.name and file.name.lower().endswith(".xlsx")):
                     messages.error(request, "Нужен файл в формате .xlsx")
+                elif base_type == BaseCategoryUploadForm.PHONE_BASES_VALUE:
+                    # Загрузка номеров сразу во все телефонные базы
+                    try:
+                        wb = load_workbook(file, read_only=True)
+                        total_created = 0
+                        total_skipped = 0
+                        for slug in PHONE_BASE_SLUGS:
+                            bt = BaseType.objects.get(slug=slug)
+                            created, skipped = _process_excel_single_sheet(wb, bt)
+                            total_created += created
+                            total_skipped += skipped
+                        wb.close()
+                        messages.success(
+                            request,
+                            f"Номера загружены в WhatsApp, Max, Viber: добавлено {total_created}, дубликатов {total_skipped}.",
+                        )
+                        return redirect("bases_excel")
+                    except Exception as e:
+                        messages.error(request, f"Ошибка при обработке файла: {e}")
                 else:
                     try:
                         wb = load_workbook(file, read_only=True)
                         created, skipped = _process_excel_single_sheet(wb, base_type)
                         wb.close()
-                        phone_note = ""
-                        if base_type.slug in PHONE_BASE_SLUGS:
-                            others = [s for s in PHONE_BASE_SLUGS if s != base_type.slug]
-                            phone_note = f" Номера также добавлены в: {', '.join(others)}."
                         messages.success(
                             request,
-                            f"База «{base_type.name}»: добавлено {created} контактов, пропущено (дубликаты) {skipped}.{phone_note}",
+                            f"База «{base_type.name}»: добавлено {created} контактов, пропущено (дубликаты) {skipped}.",
                         )
                         return redirect("bases_excel")
                     except Exception as e:

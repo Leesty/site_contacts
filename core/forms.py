@@ -175,13 +175,32 @@ class BaseExcelUploadForm(forms.Form):
 class BaseCategoryUploadForm(forms.Form):
     """Загрузка базы контактов в одну выбранную категорию."""
 
-    base_type = forms.ModelChoiceField(
+    PHONE_BASES_VALUE = "phone_all"
+
+    base_type = forms.CharField(
         label="Категория базы",
-        queryset=BaseType.objects.all().order_by("order"),
-        empty_label="— Выберите категорию —",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
     file = forms.FileField(label="Файл Excel (.xlsx)", widget=forms.FileInput(attrs={"class": "form-control"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = [("", "— Выберите категорию —")]
+        choices.append((self.PHONE_BASES_VALUE, "Номера (WhatsApp / Max / Viber)"))
+        for bt in BaseType.objects.all().order_by("order"):
+            if bt.slug in ("whatsapp", "max", "viber"):
+                continue
+            choices.append((str(bt.pk), bt.name))
+        self.fields["base_type"].widget.choices = choices
+
+    def clean_base_type(self):
+        val = self.cleaned_data["base_type"]
+        if val == self.PHONE_BASES_VALUE:
+            return val
+        try:
+            return BaseType.objects.get(pk=int(val))
+        except (ValueError, BaseType.DoesNotExist):
+            raise forms.ValidationError("Выберите категорию.")
 
 
 class LeadsExcelUploadForm(forms.Form):

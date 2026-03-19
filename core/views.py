@@ -329,6 +329,9 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
     selected_base: BaseType | None = None
     reason: str | None = None
 
+    # Телефонные базы: при выдаче исключаем номера, уже выданные в другой телефонной базе
+    PHONE_BASE_SLUGS = ("whatsapp", "max", "viber")
+
     if request.method == "POST" and form.is_valid():
         selected_base = form.cleaned_data["base_type"]
 
@@ -352,6 +355,17 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
                     .filter(base_type=selected_base, assigned_to__isnull=True, is_active=True)
                     .order_by("id")
                 )
+                # Для телефонных баз — исключаем номера, уже выданные пользователю в других телефонных базах
+                if selected_base.slug in PHONE_BASE_SLUGS:
+                    other_phone_bases = BaseType.objects.filter(slug__in=PHONE_BASE_SLUGS).exclude(pk=selected_base.pk)
+                    already_issued_values = set(
+                        Contact.objects.filter(
+                            base_type__in=other_phone_bases,
+                            assigned_to=user,
+                        ).values_list("value", flat=True)
+                    )
+                    if already_issued_values:
+                        free_qs = free_qs.exclude(value__in=already_issued_values)
                 free_count = free_qs.count()
                 if free_count < can_give:
                     reason = "not_enough"
