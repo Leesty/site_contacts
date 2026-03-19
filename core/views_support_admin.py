@@ -1953,144 +1953,78 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
     if not _require_standalone_admin(request):
         return HttpResponseForbidden("Недостаточно прав.")
     from .models import WorkerWithdrawalRequest
-    try:
-        if request.method == "POST":
-            req_id = request.POST.get("request_id")
-            action = request.POST.get("action")
-            post_message = None
-            post_level = None
-            if req_id and action in ("approve", "reject"):
-                with transaction.atomic():
-                    wreq = (
-                        WorkerWithdrawalRequest.objects.select_for_update()
-                        .select_related("worker")
-                        .filter(pk=req_id, standalone_admin=request.user, status="pending")
-                        .first()
-                    )
-                    if not wreq:
-                        post_message = "Заявка уже обработана или не найдена."
-                        post_level = "warning"
-                    else:
-                        now = timezone.now()
-                        if action == "approve":
-                            wreq.status = "approved"
-                            wreq.processed_at = now
-                            wreq.processed_by = request.user
-                            wreq.save()
-                            post_message = f"Вывод @{wreq.worker.username} на {wreq.amount} руб. одобрен."
-                            post_level = "success"
-                        else:
-                            wreq.worker.balance = (wreq.worker.balance or 0) + wreq.amount
-                            wreq.worker.save(update_fields=["balance"])
-                            wreq.status = "rejected"
-                            wreq.processed_at = now
-                            wreq.processed_by = request.user
-                            wreq.save()
-                            post_message = f"Заявка @{wreq.worker.username} отклонена. Баланс восстановлен."
-                            post_level = "info"
-            if post_message:
-                getattr(messages, post_level)(request, post_message)
-            return redirect("standalone_admin_worker_withdrawal_requests")
 
-        pending = (
-            WorkerWithdrawalRequest.objects
-            .filter(standalone_admin=request.user, status="pending")
-            .select_related("worker")
-            .order_by("created_at")
-        )
-        history = (
-            WorkerWithdrawalRequest.objects
-            .filter(standalone_admin=request.user)
-            .exclude(status="pending")
-            .select_related("worker", "processed_by")
-            .order_by("-created_at")[:100]
-        )
-        total_worker_approved = (
-            WorkerWithdrawalRequest.objects
-            .filter(standalone_admin=request.user, status="approved")
-            .aggregate(s=Sum("amount"))["s"] or 0
-        )
-        total_user_approved = (
-            WithdrawalRequest.objects
-            .filter(status="approved")
-            .aggregate(s=Sum("amount"))["s"] or 0
-        )
-        return render(request, "core/standalone_admin_worker_withdrawal_requests.html", {
-            "pending_requests": pending,
-            "history_requests": history,
-            "total_worker_approved": total_worker_approved,
-            "total_user_approved": total_user_approved,
-            "total_approved_all": total_worker_approved + total_user_approved,
-        })
-    except Exception:
-        import traceback
-        tb = traceback.format_exc()
-        logger.exception("standalone_admin_worker_withdrawal_requests CRASH")
-        return HttpResponse(
-            f"<pre>Ошибка в обработке заявок на вывод:\n\n{tb}</pre>",
-            content_type="text/html; charset=utf-8",
-        )
+    if request.method == "POST":
+        req_id = request.POST.get("request_id")
+        action = request.POST.get("action")
+        if req_id and action in ("approve", "reject"):
+            with transaction.atomic():
+                wreq = (
+                    WorkerWithdrawalRequest.objects
+                    .select_for_update(of=("self",))
+                    .select_related("worker")
+                    .filter(pk=req_id, standalone_admin=request.user, status="pending")
+                    .first()
+                )
+                if not wreq:
+                    messages.warning(request, "Заявка уже обработана или не найдена.")
+                else:
+                    now = timezone.now()
+                    if action == "approve":
+                        wreq.status = "approved"
+                        wreq.processed_at = now
+                        wreq.processed_by = request.user
+                        wreq.save()
+                        messages.success(request, f"Вывод @{wreq.worker.username} на {wreq.amount} руб. одобрен.")
+                    else:
+                        wreq.worker.balance = (wreq.worker.balance or 0) + wreq.amount
+                        wreq.worker.save(update_fields=["balance"])
+                        wreq.status = "rejected"
+                        wreq.processed_at = now
+                        wreq.processed_by = request.user
+                        wreq.save()
+                        messages.info(request, f"Заявка @{wreq.worker.username} отклонена. Баланс восстановлен.")
+        return redirect("standalone_admin_worker_withdrawal_requests")
+
+    pending = (
+        WorkerWithdrawalRequest.objects
+        .filter(standalone_admin=request.user, status="pending")
+        .select_related("worker")
+        .order_by("created_at")
+    )
+    history = (
+        WorkerWithdrawalRequest.objects
+        .filter(standalone_admin=request.user)
+        .exclude(status="pending")
+        .select_related("worker", "processed_by")
+        .order_by("-created_at")[:100]
+    )
+    total_worker_approved = (
+        WorkerWithdrawalRequest.objects
+        .filter(standalone_admin=request.user, status="approved")
+        .aggregate(s=Sum("amount"))["s"] or 0
+    )
+    total_user_approved = (
+        WithdrawalRequest.objects
+        .filter(status="approved")
+        .aggregate(s=Sum("amount"))["s"] or 0
+    )
+    return render(request, "core/standalone_admin_worker_withdrawal_requests.html", {
+        "pending_requests": pending,
+        "history_requests": history,
+        "total_worker_approved": total_worker_approved,
+        "total_user_approved": total_user_approved,
+        "total_approved_all": total_worker_approved + total_user_approved,
+    })
 
 
 @login_required
 def standalone_admin_worker_withdrawal_debug(request: HttpRequest) -> HttpResponse:
-    """Диагностика: показывает traceback ошибки или OK. POST — тест messages+redirect."""
+    """Диагностика: показывает статус заявок на вывод."""
     import traceback as tb_mod
     try:
         if not _require_standalone_admin(request):
             return HttpResponse("NOT standalone_admin", content_type="text/plain")
-
-        # POST test: isolate messages + redirect inside atomic
-        if request.method == "POST":
-            test = request.POST.get("test", "")
-            if test == "msg_only":
-                messages.warning(request, "Debug: test message")
-                return redirect("standalone_admin_worker_withdrawal_requests")
-            elif test == "atomic_msg":
-                with transaction.atomic():
-                    messages.warning(request, "Debug: message inside atomic")
-                return redirect("standalone_admin_worker_withdrawal_requests")
-            elif test == "atomic_redirect":
-                with transaction.atomic():
-                    return redirect("standalone_admin_worker_withdrawal_requests")
-            elif test == "atomic_msg_redirect":
-                with transaction.atomic():
-                    messages.warning(request, "Debug: message + redirect inside atomic")
-                    return redirect("standalone_admin_worker_withdrawal_requests")
-            elif test == "exact_query":
-                from .models import WorkerWithdrawalRequest
-                with transaction.atomic():
-                    wreq = (
-                        WorkerWithdrawalRequest.objects.select_for_update()
-                        .select_related("worker")
-                        .filter(pk=9999, standalone_admin=request.user, status="pending")
-                        .first()
-                    )
-                result = f"query OK, wreq={wreq}"
-                if wreq is None:
-                    messages.warning(request, "Debug: not found")
-                return redirect("standalone_admin_worker_withdrawal_requests")
-            elif test == "exact_real":
-                from .models import WorkerWithdrawalRequest
-                req_id = request.POST.get("request_id", "2")
-                with transaction.atomic():
-                    wreq = (
-                        WorkerWithdrawalRequest.objects.select_for_update()
-                        .select_related("worker")
-                        .filter(pk=req_id, standalone_admin=request.user, status="pending")
-                        .first()
-                    )
-                    if wreq:
-                        wreq.status = "approved"
-                        wreq.processed_at = timezone.now()
-                        wreq.processed_by = request.user
-                        wreq.save()
-                messages.success(request, f"Debug: done, wreq={wreq}")
-                return redirect("standalone_admin_worker_withdrawal_requests")
-            elif test == "plain":
-                return HttpResponse("POST OK — no messages, no atomic", content_type="text/plain")
-            else:
-                return HttpResponse(f"POST OK — unknown test={test!r}", content_type="text/plain")
 
         from .models import WorkerWithdrawalRequest
         pending_count = WorkerWithdrawalRequest.objects.filter(
