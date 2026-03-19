@@ -1957,6 +1957,8 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
         if request.method == "POST":
             req_id = request.POST.get("request_id")
             action = request.POST.get("action")
+            post_message = None
+            post_level = None
             if req_id and action in ("approve", "reject"):
                 with transaction.atomic():
                     wreq = (
@@ -1966,23 +1968,28 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
                         .first()
                     )
                     if not wreq:
-                        messages.warning(request, "Заявка уже обработана или не найдена.")
-                        return redirect("standalone_admin_worker_withdrawal_requests")
-                    now = timezone.now()
-                    if action == "approve":
-                        wreq.status = "approved"
-                        wreq.processed_at = now
-                        wreq.processed_by = request.user
-                        wreq.save()
-                        messages.success(request, f"Вывод @{wreq.worker.username} на {wreq.amount} руб. одобрен.")
+                        post_message = "Заявка уже обработана или не найдена."
+                        post_level = "warning"
                     else:
-                        wreq.worker.balance = (wreq.worker.balance or 0) + wreq.amount
-                        wreq.worker.save(update_fields=["balance"])
-                        wreq.status = "rejected"
-                        wreq.processed_at = now
-                        wreq.processed_by = request.user
-                        wreq.save()
-                        messages.info(request, f"Заявка @{wreq.worker.username} отклонена. Баланс восстановлен.")
+                        now = timezone.now()
+                        if action == "approve":
+                            wreq.status = "approved"
+                            wreq.processed_at = now
+                            wreq.processed_by = request.user
+                            wreq.save()
+                            post_message = f"Вывод @{wreq.worker.username} на {wreq.amount} руб. одобрен."
+                            post_level = "success"
+                        else:
+                            wreq.worker.balance = (wreq.worker.balance or 0) + wreq.amount
+                            wreq.worker.save(update_fields=["balance"])
+                            wreq.status = "rejected"
+                            wreq.processed_at = now
+                            wreq.processed_by = request.user
+                            wreq.save()
+                            post_message = f"Заявка @{wreq.worker.username} отклонена. Баланс восстановлен."
+                            post_level = "info"
+            if post_message:
+                getattr(messages, post_level)(request, post_message)
             return redirect("standalone_admin_worker_withdrawal_requests")
 
         pending = (
