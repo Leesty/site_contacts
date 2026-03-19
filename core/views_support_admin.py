@@ -1953,11 +1953,11 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
     if not _require_standalone_admin(request):
         return HttpResponseForbidden("Недостаточно прав.")
     from .models import WorkerWithdrawalRequest
-    if request.method == "POST":
-        req_id = request.POST.get("request_id")
-        action = request.POST.get("action")
-        if req_id and action in ("approve", "reject"):
-            try:
+    try:
+        if request.method == "POST":
+            req_id = request.POST.get("request_id")
+            action = request.POST.get("action")
+            if req_id and action in ("approve", "reject"):
                 with transaction.atomic():
                     wreq = (
                         WorkerWithdrawalRequest.objects.select_for_update()
@@ -1983,41 +1983,47 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
                         wreq.processed_by = request.user
                         wreq.save()
                         messages.info(request, f"Заявка @{wreq.worker.username} отклонена. Баланс восстановлен.")
-            except Exception:
-                logger.exception("Ошибка при обработке заявки на вывод #%s", req_id)
-                messages.error(request, "Произошла ошибка при обработке заявки. Попробуйте ещё раз.")
-        return redirect("standalone_admin_worker_withdrawal_requests")
+            return redirect("standalone_admin_worker_withdrawal_requests")
 
-    pending = (
-        WorkerWithdrawalRequest.objects
-        .filter(standalone_admin=request.user, status="pending")
-        .select_related("worker")
-        .order_by("created_at")
-    )
-    history = (
-        WorkerWithdrawalRequest.objects
-        .filter(standalone_admin=request.user)
-        .exclude(status="pending")
-        .select_related("worker", "processed_by")
-        .order_by("-created_at")[:100]
-    )
-    total_worker_approved = (
-        WorkerWithdrawalRequest.objects
-        .filter(standalone_admin=request.user, status="approved")
-        .aggregate(s=Sum("amount"))["s"] or 0
-    )
-    total_user_approved = (
-        WithdrawalRequest.objects
-        .filter(status="approved")
-        .aggregate(s=Sum("amount"))["s"] or 0
-    )
-    return render(request, "core/standalone_admin_worker_withdrawal_requests.html", {
-        "pending_requests": pending,
-        "history_requests": history,
-        "total_worker_approved": total_worker_approved,
-        "total_user_approved": total_user_approved,
-        "total_approved_all": total_worker_approved + total_user_approved,
-    })
+        pending = (
+            WorkerWithdrawalRequest.objects
+            .filter(standalone_admin=request.user, status="pending")
+            .select_related("worker")
+            .order_by("created_at")
+        )
+        history = (
+            WorkerWithdrawalRequest.objects
+            .filter(standalone_admin=request.user)
+            .exclude(status="pending")
+            .select_related("worker", "processed_by")
+            .order_by("-created_at")[:100]
+        )
+        total_worker_approved = (
+            WorkerWithdrawalRequest.objects
+            .filter(standalone_admin=request.user, status="approved")
+            .aggregate(s=Sum("amount"))["s"] or 0
+        )
+        total_user_approved = (
+            WithdrawalRequest.objects
+            .filter(status="approved")
+            .aggregate(s=Sum("amount"))["s"] or 0
+        )
+        return render(request, "core/standalone_admin_worker_withdrawal_requests.html", {
+            "pending_requests": pending,
+            "history_requests": history,
+            "total_worker_approved": total_worker_approved,
+            "total_user_approved": total_user_approved,
+            "total_approved_all": total_worker_approved + total_user_approved,
+        })
+    except Exception:
+        import traceback
+        tb = traceback.format_exc()
+        logger.exception("standalone_admin_worker_withdrawal_requests CRASH")
+        return HttpResponse(
+            f"<pre>Ошибка в обработке заявок на вывод:\n\n{tb}</pre>",
+            status=500,
+            content_type="text/html; charset=utf-8",
+        )
 
 
 # ──────────────────────────────────────────────────────────────
