@@ -154,6 +154,11 @@ urlpatterns = [
         name="standalone_admin_worker_withdrawal_requests",
     ),
     path(
+        "staff/standalone/worker-withdrawals/debug/",
+        views_support_admin.standalone_admin_worker_withdrawal_debug,
+        name="standalone_admin_worker_withdrawal_debug",
+    ),
+    path(
         "staff/standalone/worker-self-leads/",
         views_support_admin.standalone_admin_worker_self_leads,
         name="standalone_admin_worker_self_leads",

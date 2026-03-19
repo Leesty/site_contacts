@@ -2021,8 +2021,43 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
         logger.exception("standalone_admin_worker_withdrawal_requests CRASH")
         return HttpResponse(
             f"<pre>Ошибка в обработке заявок на вывод:\n\n{tb}</pre>",
-            status=500,
             content_type="text/html; charset=utf-8",
+        )
+
+
+@login_required
+def standalone_admin_worker_withdrawal_debug(request: HttpRequest) -> HttpResponse:
+    """Диагностика: показывает traceback ошибки или OK."""
+    import traceback as tb_mod
+    try:
+        if not _require_standalone_admin(request):
+            return HttpResponse("NOT standalone_admin", content_type="text/plain")
+        from .models import WorkerWithdrawalRequest
+        pending_count = WorkerWithdrawalRequest.objects.filter(
+            standalone_admin=request.user, status="pending"
+        ).count()
+        history_count = WorkerWithdrawalRequest.objects.filter(
+            standalone_admin=request.user
+        ).exclude(status="pending").count()
+        total_w = (
+            WorkerWithdrawalRequest.objects
+            .filter(standalone_admin=request.user, status="approved")
+            .aggregate(s=Sum("amount"))["s"] or 0
+        )
+        total_u = WithdrawalRequest.objects.filter(status="approved").aggregate(s=Sum("amount"))["s"] or 0
+        lines = [
+            f"OK — view работает",
+            f"pending: {pending_count}",
+            f"history: {history_count}",
+            f"total_worker_approved: {total_w}",
+            f"total_user_approved: {total_u}",
+            f"git: последний деплой view работает",
+        ]
+        return HttpResponse("\n".join(lines), content_type="text/plain; charset=utf-8")
+    except Exception:
+        return HttpResponse(
+            f"CRASH:\n\n{tb_mod.format_exc()}",
+            content_type="text/plain; charset=utf-8",
         )
 
 
