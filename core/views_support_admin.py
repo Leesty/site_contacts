@@ -2057,6 +2057,36 @@ def standalone_admin_worker_withdrawal_debug(request: HttpRequest) -> HttpRespon
                 with transaction.atomic():
                     messages.warning(request, "Debug: message + redirect inside atomic")
                     return redirect("standalone_admin_worker_withdrawal_requests")
+            elif test == "exact_query":
+                from .models import WorkerWithdrawalRequest
+                with transaction.atomic():
+                    wreq = (
+                        WorkerWithdrawalRequest.objects.select_for_update()
+                        .select_related("worker")
+                        .filter(pk=9999, standalone_admin=request.user, status="pending")
+                        .first()
+                    )
+                result = f"query OK, wreq={wreq}"
+                if wreq is None:
+                    messages.warning(request, "Debug: not found")
+                return redirect("standalone_admin_worker_withdrawal_requests")
+            elif test == "exact_real":
+                from .models import WorkerWithdrawalRequest
+                req_id = request.POST.get("request_id", "2")
+                with transaction.atomic():
+                    wreq = (
+                        WorkerWithdrawalRequest.objects.select_for_update()
+                        .select_related("worker")
+                        .filter(pk=req_id, standalone_admin=request.user, status="pending")
+                        .first()
+                    )
+                    if wreq:
+                        wreq.status = "approved"
+                        wreq.processed_at = timezone.now()
+                        wreq.processed_by = request.user
+                        wreq.save()
+                messages.success(request, f"Debug: done, wreq={wreq}")
+                return redirect("standalone_admin_worker_withdrawal_requests")
             elif test == "plain":
                 return HttpResponse("POST OK — no messages, no atomic", content_type="text/plain")
             else:
