@@ -1274,6 +1274,34 @@ def _excel_row_is_assigned(row: tuple) -> bool:
 
 
 BULK_CREATE_BATCH_SIZE = 1000
+
+# Телефонные базы: загрузка в одну → автоматическая репликация во все остальные
+PHONE_BASE_SLUGS = ("whatsapp", "max", "viber")
+
+
+def _replicate_to_phone_bases(values: list[str], source_slug: str) -> dict[str, int]:
+    """Реплицирует контакты из телефонной базы во все остальные телефонные базы.
+    Возвращает {slug: кол-во созданных} для каждой целевой базы."""
+    if source_slug not in PHONE_BASE_SLUGS or not values:
+        return {}
+    result = {}
+    for slug in PHONE_BASE_SLUGS:
+        if slug == source_slug:
+            continue
+        try:
+            bt = BaseType.objects.get(slug=slug)
+        except BaseType.DoesNotExist:
+            continue
+        count_before = Contact.objects.filter(base_type=bt).count()
+        for i in range(0, len(values), BULK_CREATE_BATCH_SIZE):
+            chunk = values[i : i + BULK_CREATE_BATCH_SIZE]
+            Contact.objects.bulk_create(
+                [Contact(base_type=bt, value=v) for v in chunk],
+                ignore_conflicts=True,
+            )
+        count_after = Contact.objects.filter(base_type=bt).count()
+        result[slug] = count_after - count_before
+    return result
 # Лимит строк на одну загрузку, чтобы не превышать таймаут воркера (gunicorn)
 MAX_UPLOAD_ROWS = 40_000
 
@@ -1408,6 +1436,12 @@ def _process_excel_all_sheets(wb, max_rows: int | None = MAX_UPLOAD_ROWS) -> tup
             details.append(
                 f"«{base_type.name}» — свободных строк {len(free_values)}, добавлено {sheet_created}, дубликатов {sheet_skipped}"
             )
+        # Репликация телефонных номеров во все телефонные базы
+        replicated = _replicate_to_phone_bases(to_process, base_slug)
+        for rslug, rcount in replicated.items():
+            if rcount > 0:
+                total_created += rcount
+                details.append(f"  ↳ репликация → «{rslug}»: добавлено {rcount}")
         if skipped_by_limit > 0:
             break
     return total_created, total_skipped, details
@@ -1437,7 +1471,12 @@ def _process_excel_single_sheet(wb, base_type: BaseType) -> tuple[int, int]:
             ignore_conflicts=True,
         )
     count_after = Contact.objects.filter(base_type=base_type).count()
-    return count_after - count_before, len(free_values) - (count_after - count_before)
+    created = count_after - count_before
+    # Репликация телефонных номеров во все телефонные базы
+    replicated = _replicate_to_phone_bases(free_values, base_type.slug)
+    for rcount in replicated.values():
+        created += rcount
+    return created, len(free_values) - (count_after - count_before)
 
 
 @login_required
@@ -1494,9 +1533,13 @@ def bases_excel(request: HttpRequest) -> HttpResponse:
                         wb = load_workbook(file, read_only=True)
                         created, skipped = _process_excel_single_sheet(wb, base_type)
                         wb.close()
+                        phone_note = ""
+                        if base_type.slug in PHONE_BASE_SLUGS:
+                            others = [s for s in PHONE_BASE_SLUGS if s != base_type.slug]
+                            phone_note = f" Номера также добавлены в: {', '.join(others)}."
                         messages.success(
                             request,
-                            f"База «{base_type.name}»: добавлено {created} контактов, пропущено (дубликаты) {skipped}.",
+                            f"База «{base_type.name}»: добавлено {created} контактов, пропущено (дубликаты) {skipped}.{phone_note}",
                         )
                         return redirect("bases_excel")
                     except Exception as e:
