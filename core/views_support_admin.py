@@ -2034,11 +2034,34 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
 
 @login_required
 def standalone_admin_worker_withdrawal_debug(request: HttpRequest) -> HttpResponse:
-    """Диагностика: показывает traceback ошибки или OK."""
+    """Диагностика: показывает traceback ошибки или OK. POST — тест messages+redirect."""
     import traceback as tb_mod
     try:
         if not _require_standalone_admin(request):
             return HttpResponse("NOT standalone_admin", content_type="text/plain")
+
+        # POST test: isolate messages + redirect inside atomic
+        if request.method == "POST":
+            test = request.POST.get("test", "")
+            if test == "msg_only":
+                messages.warning(request, "Debug: test message")
+                return redirect("standalone_admin_worker_withdrawal_requests")
+            elif test == "atomic_msg":
+                with transaction.atomic():
+                    messages.warning(request, "Debug: message inside atomic")
+                return redirect("standalone_admin_worker_withdrawal_requests")
+            elif test == "atomic_redirect":
+                with transaction.atomic():
+                    return redirect("standalone_admin_worker_withdrawal_requests")
+            elif test == "atomic_msg_redirect":
+                with transaction.atomic():
+                    messages.warning(request, "Debug: message + redirect inside atomic")
+                    return redirect("standalone_admin_worker_withdrawal_requests")
+            elif test == "plain":
+                return HttpResponse("POST OK — no messages, no atomic", content_type="text/plain")
+            else:
+                return HttpResponse(f"POST OK — unknown test={test!r}", content_type="text/plain")
+
         from .models import WorkerWithdrawalRequest
         pending_count = WorkerWithdrawalRequest.objects.filter(
             standalone_admin=request.user, status="pending"
@@ -2053,12 +2076,11 @@ def standalone_admin_worker_withdrawal_debug(request: HttpRequest) -> HttpRespon
         )
         total_u = WithdrawalRequest.objects.filter(status="approved").aggregate(s=Sum("amount"))["s"] or 0
         lines = [
-            f"OK — view работает",
+            f"OK — view работает v2",
             f"pending: {pending_count}",
             f"history: {history_count}",
             f"total_worker_approved: {total_w}",
             f"total_user_approved: {total_u}",
-            f"git: последний деплой view работает",
         ]
         return HttpResponse("\n".join(lines), content_type="text/plain; charset=utf-8")
     except Exception:
