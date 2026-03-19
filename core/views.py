@@ -176,6 +176,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 "logs": logs,
                 "withdrawals": withdrawals,
                 "withdrawal_min_balance": getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500),
+                "current_rate": rate,
             },
         )
     if _is_standalone_admin(user):

@@ -52,7 +52,7 @@
     <div class="col-md-7">
       <div class="card h-100 shadow-sm">
         <div class="card-header bg-transparent border-secondary py-2">
-          <strong>История начислений (+5 руб. за каждый одобренный лид)</strong>
+          <strong>История начислений (+{{ current_rate }} руб. за каждый одобренный лид)</strong>
         </div>
         <div class="card-body p-0">
           {% if logs %}
@@ -74,7 +74,7 @@
                       <td>#{{ log.lead_id }}</td>
                       <td>@{{ log.lead.user.username }}</td>
                       <td>@{{ log.admin.username|default:"—" }}</td>
-                      <td>+5 руб.</td>
+                      <td>+{{ log.balance_admin_rate_snapshot|default:"5" }} руб.</td>
                     </tr>
                   {% endfor %}
                 </tbody>

@@ -354,6 +354,10 @@ class LeadReviewLog(TimeStampedModel):
         related_name="lead_review_logs",
     )
     action = models.CharField(max_length=20, choices=Action.choices)
+    balance_admin_rate_snapshot = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text="Ставка баланс-админа на момент одобрения (руб.). NULL = старая ставка 5 руб.",
+    )
 
     class Meta:
         verbose_name = "Событие модерации лида"

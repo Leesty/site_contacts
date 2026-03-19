@@ -583,7 +583,16 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
         lead_owner.balance = (lead_owner.balance or 0) + LEAD_APPROVE_REWARD
         lead_owner.save(update_fields=["balance"])
-        LeadReviewLog.objects.create(lead=lead, admin=request.user, action=LeadReviewLog.Action.APPROVED)
+        # Сохраняем текущую ставку баланс-админа в логе
+        _ba_rate = None
+        _ba_user = User.objects.filter(role=User.Role.BALANCE_ADMIN).first()
+        if _ba_user:
+            _ba_rate = _ba_user.balance_admin_rate
+        LeadReviewLog.objects.create(
+            lead=lead, admin=request.user,
+            action=LeadReviewLog.Action.APPROVED,
+            balance_admin_rate_snapshot=_ba_rate,
+        )
         # Начислить партнёру +10 руб., если пользователь привлечён через партнёрскую ссылку
         partner_owner_id = lead.user.partner_owner_id
         if partner_owner_id:
