@@ -344,6 +344,52 @@ def worker_self_lead_create(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def worker_self_lead_edit(request: HttpRequest, self_lead_id: int) -> HttpResponse:
+    """Редактирование самостоятельного лида (только если статус «pending»)."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, worker=request.user)
+
+    if self_lead.status != WorkerSelfLead.Status.PENDING:
+        messages.warning(request, "Редактировать можно только лиды на проверке.")
+        return redirect("worker_self_leads")
+
+    if request.method == "POST":
+        form = WorkerSelfLeadForm(request.POST, request.FILES, instance=self_lead)
+        if form.is_valid():
+            # Повторная проверка статуса (защита от race condition: админ мог одобрить пока воркер редактировал)
+            current = WorkerSelfLead.objects.filter(pk=self_lead.pk).values_list("status", flat=True).first()
+            if current != WorkerSelfLead.Status.PENDING:
+                messages.warning(request, "Лид уже был обработан администратором. Редактирование невозможно.")
+                return redirect("worker_self_leads")
+
+            new_contact = form.cleaned_data["raw_contact"].strip()
+            # Проверка дубликатов только если контакт изменился
+            if new_contact.lower() != self_lead.raw_contact.lower():
+                if _self_lead_duplicate_exists(new_contact, exclude_self_lead_id=self_lead.id):
+                    messages.error(
+                        request,
+                        "Такой контакт уже есть в базе. Укажите другой контакт.",
+                    )
+                    return render(request, "worker/self_lead_edit.html", {"form": form, "self_lead": self_lead})
+
+            self_lead.raw_contact = new_contact
+            self_lead.lead_date = form.cleaned_data["lead_date"]
+            self_lead.comment = form.cleaned_data.get("comment") or ""
+            update_fields = ["raw_contact", "lead_date", "comment", "updated_at"]
+            if form.cleaned_data.get("attachment"):
+                self_lead.attachment = form.cleaned_data["attachment"]
+                update_fields.append("attachment")
+            self_lead.save(update_fields=update_fields)
+            messages.success(request, "Лид обновлён.")
+            return redirect("worker_self_leads")
+    else:
+        form = WorkerSelfLeadForm(instance=self_lead)
+
+    return render(request, "worker/self_lead_edit.html", {"form": form, "self_lead": self_lead})
+
+
+@login_required
 def worker_self_lead_redo(request: HttpRequest, self_lead_id: int) -> HttpResponse:
     """Доработка самостоятельного лида исполнителем."""
     if not _require_worker(request):

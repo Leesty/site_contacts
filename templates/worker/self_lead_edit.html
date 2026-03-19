@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load support_extras %}
+
+{% block title %}Редактировать лид #{{ self_lead.id }}{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Редактировать лид #{{ self_lead.id }}</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'worker_self_leads' %}">← Мои лиды</a>
+  </div>
+
+  <div class="card shadow-sm" style="max-width: 600px;">
+    <div class="card-body">
+      {% if self_lead.attachment %}
+        <div class="mb-3">
+          <span class="text-muted small">Текущее вложение:</span>
+          {% if self_lead.attachment|lead_attachment_is_video %}
+            <a href="{% url 'worker_self_lead_attachment' self_lead.id %}" target="_blank" class="btn btn-outline-primary btn-sm ms-1">▶ Видео</a>
+          {% else %}
+            <a href="{% url 'worker_self_lead_attachment' self_lead.id %}" target="_blank" class="btn btn-outline-primary btn-sm ms-1">Файл</a>
+          {% endif %}
+          <div class="form-text text-muted">Чтобы заменить — загрузите новый файл ниже. Без загрузки — останется текущий.</div>
+        </div>
+      {% endif %}
+      <form method="post" enctype="multipart/form-data" id="selfLeadEditForm">
+        {% csrf_token %}
+        {% for field in form %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+              <div class="form-text text-muted">{{ field.help_text }}</div>
+            {% endif %}
+            {% for error in field.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+        <div id="selfEditSizeError" class="alert alert-danger d-none mb-2 py-2 small">
+          ⚠ Файл слишком большой (макс. 30 МБ). Сожмите видео или приложите скриншот.
+        </div>
+        <button type="submit" class="btn btn-primary" id="selfEditSubmitBtn">Сохранить изменения</button>
+      </form>
+      <script>
+      (function() {
+        var MAX = 30 * 1024 * 1024;
+        var errDiv = document.getElementById('selfEditSizeError');
+        var submitBtn = document.getElementById('selfEditSubmitBtn');
+        document.querySelectorAll('#selfLeadEditForm input[type="file"]').forEach(function(inp) {
+          inp.addEventListener('change', function() {
+            var file = inp.files && inp.files[0];
+            if (file && file.size > MAX) {
+              errDiv.classList.remove('d-none');
+              submitBtn.disabled = true;
+            } else {
+              errDiv.classList.add('d-none');
+              submitBtn.disabled = false;
+            }
+          });
+        });
+      })();
+      </script>
+    </div>
+  </div>
+{% endblock %}

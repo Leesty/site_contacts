@@ -70,6 +70,9 @@
                              target="_blank" class="btn btn-outline-primary btn-sm">Файл</a>
                         {% endif %}
                       {% endif %}
+                      {% if lead.status == 'pending' %}
+                        <a href="{% url 'worker_self_lead_edit' lead.id %}" class="btn btn-outline-info btn-sm">Редактировать</a>
+                      {% endif %}
                       {% if lead.status == 'rework' %}
                         <a href="{% url 'worker_self_lead_redo' lead.id %}" class="btn btn-warning btn-sm">Доработать</a>
                       {% endif %}

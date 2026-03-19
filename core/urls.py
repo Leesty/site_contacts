@@ -32,6 +32,7 @@ urlpatterns = [
     # Worker self-leads
     path("worker/my-leads/", views_worker.worker_self_leads, name="worker_self_leads"),
     path("worker/my-leads/new/", views_worker.worker_self_lead_create, name="worker_self_lead_create"),
+    path("worker/my-leads/<int:self_lead_id>/edit/", views_worker.worker_self_lead_edit, name="worker_self_lead_edit"),
     path("worker/my-leads/<int:self_lead_id>/redo/", views_worker.worker_self_lead_redo, name="worker_self_lead_redo"),
     path("worker/my-leads/<int:self_lead_id>/attachment/", views_worker.worker_self_lead_attachment, name="worker_self_lead_attachment"),
     path(
