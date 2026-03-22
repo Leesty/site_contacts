@@ -1,9 +1,9 @@
 """
-Удаление файлов вложений лидов (фото и видео в отчётах) старше 7 дней для экономии места.
+Удаление файлов вложений лидов (фото и видео в отчётах) старше 30 дней для экономии места.
 
 Запуск:
   python manage.py cleanup_old_lead_attachments
-  python manage.py cleanup_old_lead_attachments --days 7 --dry-run  # только показать
+  python manage.py cleanup_old_lead_attachments --days 30 --dry-run  # только показать
 
 Автозапуск (cron, раз в сутки в 03:00):
   0 3 * * * cd /path/to/web && python manage.py cleanup_old_lead_attachments
@@ -18,14 +18,14 @@ from core.models import Lead
 
 
 class Command(BaseCommand):
-    help = "Удаляет вложения (фото и видео) лидов старше 7 дней."
+    help = "Удаляет вложения (фото и видео) лидов старше 30 дней."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--days",
             type=int,
-            default=7,
-            help="Удалять вложения лидов старше N дней (по умолчанию 7).",
+            default=30,
+            help="Удалять вложения лидов старше N дней (по умолчанию 30).",
         )
         parser.add_argument(
             "--dry-run",
