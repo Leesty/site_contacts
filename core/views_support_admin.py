@@ -2346,7 +2346,7 @@ def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
         if action == "search" and query:
             try:
                 found_user = User.objects.get(
-                    username=query, standalone_admin_owner=request.user, role="worker",
+                    username=query, role="worker",
                 )
             except User.DoesNotExist:
                 not_found = True
@@ -2354,7 +2354,7 @@ def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
         elif action == "reset" and query:
             try:
                 target = User.objects.get(
-                    username=query, standalone_admin_owner=request.user, role="worker",
+                    username=query, role="worker",
                 )
                 new_password = _generate_password()
                 target.set_password(new_password)
