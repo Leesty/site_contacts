@@ -31,6 +31,9 @@
               <li class="nav-item">
                 <a class="nav-link" href="{% url 'worker_tasks' %}">Мои задания</a>
               </li>
+              <li class="nav-item">
+                <a class="nav-link" href="{% url 'worker_available_leads' %}">Найти лиды</a>
+              </li>
               {% elif user.role == 'partner' %}
               <li class="nav-item">
                 <a class="nav-link" href="{% url 'partner_referrals' %}">Рефералы</a>

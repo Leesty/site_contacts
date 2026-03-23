@@ -95,7 +95,7 @@
                   <td class="small">
                     {% for a in lead.assignments.all %}
                       <div class="mb-1">
-                        <span class="fw-semibold">@{{ a.worker.username }}</span>
+                        <span class="fw-semibold">@{{ a.worker.username }}</span>{% if a.assigned_by_id == a.worker_id %} <span class="text-muted small">(сам)</span>{% endif %}
                         {% if a.report_status == 'approved' %}
                           <span class="badge bg-success ms-1">Одобрен</span>
                         {% elif a.report_status == 'pending' %}

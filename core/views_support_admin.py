@@ -152,7 +152,7 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
                     "assignments",
                     queryset=_LA.objects.filter(
                         worker__standalone_admin_owner=request.user
-                    ).select_related("worker").order_by("-created_at"),
+                    ).select_related("worker", "assigned_by").order_by("-created_at"),
                 )
             )
             .order_by("-updated_at", "-id")

@@ -8,10 +8,12 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.core.paginator import Paginator
 from django.db.models import Q
 from django.db.utils import OperationalError, ProgrammingError
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 
 from .forms import WorkerReportForm, WorkerReportReworkForm, WorkerSelfLeadForm, WorkerSelfLeadReworkForm
@@ -99,6 +101,52 @@ def worker_tasks(request: HttpRequest) -> HttpResponse:
         except WorkerReport.DoesNotExist:
             a.report_obj = None
     return render(request, "worker/tasks.html", {"assignments": assignments})
+
+
+@login_required
+def worker_available_leads(request: HttpRequest) -> HttpResponse:
+    """Список доступных лидов, которые воркер может взять в работу."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    available = (
+        Lead.objects.filter(
+            status=Lead.Status.APPROVED,
+            needs_team_contact=True,
+        )
+        .exclude(assignments__isnull=False)
+        .select_related("lead_type", "base_type")
+        .order_by("-reviewed_at", "-id")
+    )
+    paginator = Paginator(available, 25)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    return render(request, "worker/available_leads.html", {"page_obj": page_obj})
+
+
+@login_required
+@require_http_methods(["POST"])
+def worker_claim_lead(request: HttpRequest, lead_id: int) -> HttpResponse:
+    """Воркер берёт лид в работу — создаёт LeadAssignment на себя."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    user = request.user
+    if not user.standalone_admin_owner:
+        messages.error(request, "Ошибка: не найден ваш самостоятельный админ.")
+        return redirect("worker_dashboard")
+    lead = get_object_or_404(
+        Lead, pk=lead_id, status=Lead.Status.APPROVED, needs_team_contact=True,
+    )
+    with transaction.atomic():
+        if LeadAssignment.objects.filter(lead=lead).select_for_update().exists():
+            messages.warning(request, "Этот лид уже взят другим исполнителем.")
+            return redirect("worker_available_leads")
+        LeadAssignment.objects.create(
+            lead=lead,
+            worker=user,
+            assigned_by=user,
+            task_description="",
+        )
+    messages.success(request, f"Лид #{lead_id} взят в работу.")
+    return redirect("worker_tasks")
 
 
 @login_required
