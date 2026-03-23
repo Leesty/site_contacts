@@ -156,6 +156,19 @@
       </div>
     </div>
 
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="card-icon report mb-2">🔑</div>
+          <h2 class="h5 mb-2">Сброс пароля</h2>
+          <p class="text-muted small mb-3">
+            Восстановление пароля пользователя по логину.
+          </p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_reset_password' %}">Перейти</a>
+        </div>
+      </div>
+    </div>
+
     {% if user.is_superuser %}
     <div class="col">
       <div class="card h-100 shadow-sm">

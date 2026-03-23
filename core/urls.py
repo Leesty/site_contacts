@@ -107,6 +107,16 @@ urlpatterns = [
         name="admin_site_settings",
     ),
     path(
+        "staff/reset-password/",
+        views_support_admin.admin_reset_password,
+        name="admin_reset_password",
+    ),
+    path(
+        "staff/standalone/reset-password/",
+        views_support_admin.standalone_admin_reset_password,
+        name="standalone_admin_reset_password",
+    ),
+    path(
         "staff/standalone/ss-leads/",
         views_support_admin.standalone_admin_ss_leads,
         name="standalone_admin_ss_leads",

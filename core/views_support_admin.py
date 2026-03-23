@@ -2277,3 +2277,96 @@ def standalone_admin_worker_self_lead_attachment(request: HttpRequest, self_lead
         return HttpResponseForbidden("Вложение отсутствует.")
     return _serve_lead_attachment(self_lead, request=request)
 
+
+# ──────────────────────────────────────────────────────────
+#  Сброс пароля (админ + СС-админ)
+# ──────────────────────────────────────────────────────────
+
+def _generate_password(length: int = 10) -> str:
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+@login_required
+def admin_reset_password(request: HttpRequest) -> HttpResponse:
+    """Сброс пароля пользователя (для обычного админа/саппорта)."""
+    if not _require_support(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+
+    found_user = None
+    new_password = None
+    not_found = False
+    query = ""
+
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        query = request.POST.get("username", "").strip()
+
+        if action == "search" and query:
+            try:
+                found_user = User.objects.get(username=query)
+            except User.DoesNotExist:
+                not_found = True
+
+        elif action == "reset" and query:
+            try:
+                target = User.objects.get(username=query)
+                new_password = _generate_password()
+                target.set_password(new_password)
+                target.save(update_fields=["password"])
+                found_user = target
+            except User.DoesNotExist:
+                not_found = True
+
+    return render(request, "core/admin_reset_password.html", {
+        "found_user": found_user,
+        "new_password": new_password,
+        "not_found": not_found,
+        "query": query,
+    })
+
+
+@login_required
+def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
+    """Сброс пароля воркера (для СС-админа — только свои воркеры)."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+
+    found_user = None
+    new_password = None
+    not_found = False
+    query = ""
+
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        query = request.POST.get("username", "").strip()
+
+        if action == "search" and query:
+            try:
+                found_user = User.objects.get(
+                    username=query, standalone_admin_owner=request.user, role="worker",
+                )
+            except User.DoesNotExist:
+                not_found = True
+
+        elif action == "reset" and query:
+            try:
+                target = User.objects.get(
+                    username=query, standalone_admin_owner=request.user, role="worker",
+                )
+                new_password = _generate_password()
+                target.set_password(new_password)
+                target.save(update_fields=["password"])
+                found_user = target
+            except User.DoesNotExist:
+                not_found = True
+
+    return render(request, "core/standalone_admin_reset_password.html", {
+        "found_user": found_user,
+        "new_password": new_password,
+        "not_found": not_found,
+        "query": query,
+    })
+
