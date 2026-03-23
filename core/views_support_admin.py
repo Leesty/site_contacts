@@ -1842,21 +1842,24 @@ def standalone_admin_assign_lead(request: HttpRequest, lead_id: int) -> HttpResp
             messages.error(request, "Выберите исполнителя.")
         else:
             worker = get_object_or_404(User, pk=worker_id, standalone_admin_owner=request.user, role="worker")
-            assignment, created = LeadAssignment.objects.get_or_create(
-                lead=lead,
-                worker=worker,
-                defaults={"assigned_by": request.user, "task_description": task_description},
-            )
-            if created:
-                if lead.ss_admin_status is None:
-                    lead.ss_admin_status = "in_progress"
-                    lead.save(update_fields=["ss_admin_status", "updated_at"])
-                messages.success(request, f"Лид #{lead_id} назначен @{worker.username}.")
+            existing = LeadAssignment.objects.filter(lead=lead).exclude(worker=worker).select_related("worker").first()
+            if existing:
+                messages.warning(request, f"Лид #{lead_id} уже назначен @{existing.worker.username}. Один лид — один исполнитель.")
             else:
-                # Update task description if already assigned
-                assignment.task_description = task_description
-                assignment.save(update_fields=["task_description", "updated_at"])
-                messages.info(request, f"Назначение обновлено для @{worker.username}.")
+                assignment, created = LeadAssignment.objects.get_or_create(
+                    lead=lead,
+                    worker=worker,
+                    defaults={"assigned_by": request.user, "task_description": task_description},
+                )
+                if created:
+                    if lead.ss_admin_status is None:
+                        lead.ss_admin_status = "in_progress"
+                        lead.save(update_fields=["ss_admin_status", "updated_at"])
+                    messages.success(request, f"Лид #{lead_id} назначен @{worker.username}.")
+                else:
+                    assignment.task_description = task_description
+                    assignment.save(update_fields=["task_description", "updated_at"])
+                    messages.info(request, f"Назначение обновлено для @{worker.username}.")
         next_url = request.POST.get("next") or request.GET.get("next")
         if next_url:
             from django.utils.http import url_has_allowed_host_and_scheme
