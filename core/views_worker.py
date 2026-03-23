@@ -112,6 +112,7 @@ def worker_available_leads(request: HttpRequest) -> HttpResponse:
         Lead.objects.filter(
             status=Lead.Status.APPROVED,
             needs_team_contact=True,
+            ss_admin_status__isnull=True,
         )
         .exclude(assignments__isnull=False)
         .select_related("lead_type", "base_type")
@@ -145,6 +146,10 @@ def worker_claim_lead(request: HttpRequest, lead_id: int) -> HttpResponse:
             assigned_by=user,
             task_description="",
         )
+        # Убираем лид из таба "Новые" у СС-админа → он появится в "Назначены"
+        if lead.ss_admin_status is None:
+            lead.ss_admin_status = "in_progress"
+            lead.save(update_fields=["ss_admin_status", "updated_at"])
     messages.success(request, f"Лид #{lead_id} взят в работу.")
     return redirect("worker_tasks")
 
