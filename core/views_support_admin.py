@@ -140,25 +140,31 @@ def _standalone_admin_ss_leads_impl(request: HttpRequest) -> HttpResponse:
     # Поиск
     search_q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
 
+    from django.db.models import Prefetch
+    from .models import LeadAssignment as _LA
+    _assignment_prefetch = Prefetch(
+        "assignments",
+        queryset=_LA.objects.filter(
+            worker__standalone_admin_owner=request.user
+        ).select_related("worker", "assigned_by").order_by("-created_at"),
+    )
+
     if tab == "assigned":
-        from django.db.models import Prefetch
-        from .models import LeadAssignment as _LA
         leads = (
             base_qs
             .filter(assignments__worker__standalone_admin_owner=request.user)
             .distinct()
-            .prefetch_related(
-                Prefetch(
-                    "assignments",
-                    queryset=_LA.objects.filter(
-                        worker__standalone_admin_owner=request.user
-                    ).select_related("worker", "assigned_by").order_by("-created_at"),
-                )
-            )
+            .prefetch_related(_assignment_prefetch)
             .order_by("-updated_at", "-id")
         )
     elif tab == "new":
         leads = base_qs.filter(ss_admin_status__isnull=True).order_by("-reviewed_at", "-id")
+    elif tab == "in_progress":
+        leads = (
+            base_qs.filter(ss_admin_status="in_progress")
+            .prefetch_related(_assignment_prefetch)
+            .order_by("-updated_at", "-id")
+        )
     else:
         leads = base_qs.filter(ss_admin_status=tab).order_by("-updated_at", "-id")
 
@@ -1842,6 +1848,9 @@ def standalone_admin_assign_lead(request: HttpRequest, lead_id: int) -> HttpResp
                 defaults={"assigned_by": request.user, "task_description": task_description},
             )
             if created:
+                if lead.ss_admin_status is None:
+                    lead.ss_admin_status = "in_progress"
+                    lead.save(update_fields=["ss_admin_status", "updated_at"])
                 messages.success(request, f"Лид #{lead_id} назначен @{worker.username}.")
             else:
                 # Update task description if already assigned
