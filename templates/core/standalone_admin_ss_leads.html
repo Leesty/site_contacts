@@ -64,7 +64,7 @@
             </thead>
             <tbody>
               {% for lead in page_obj %}
-                <tr{% if (tab == 'assigned' or tab == 'in_progress') and lead.all_assignments_approved %} class="opacity-50"{% endif %}>
+                <tr{% if tab == 'assigned' and lead.all_assignments_approved or tab == 'in_progress' and lead.all_assignments_approved %} class="opacity-50"{% endif %}>
                   <td>#{{ lead.id }}</td>
                   <td>@{{ lead.user.username }}</td>
                   <td class="text-break small">{% if lead.raw_contact %}{{ lead.raw_contact }}{% elif lead.contact %}{{ lead.contact.value }}{% else %}—{% endif %}</td>
@@ -112,7 +112,7 @@
                   </td>
                   {% endif %}
                   <td>
-                    {% if (tab == 'assigned' or tab == 'in_progress') and lead.all_assignments_approved %}
+                    {% if tab == 'assigned' and lead.all_assignments_approved or tab == 'in_progress' and lead.all_assignments_approved %}
                       <span class="badge bg-success">✓ Завершён</span>
                     {% else %}
                       <div class="d-flex align-items-center gap-1 flex-wrap">
