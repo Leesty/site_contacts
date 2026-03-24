@@ -155,6 +155,30 @@ def worker_claim_lead(request: HttpRequest, lead_id: int) -> HttpResponse:
 
 
 @login_required
+@require_http_methods(["POST"])
+def worker_cancel_assignment(request: HttpRequest, assignment_id: int) -> HttpResponse:
+    """Воркер отменяет взятый лид (только если отчёт ещё не отправлен)."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    user = request.user
+    assignment = get_object_or_404(LeadAssignment, pk=assignment_id, worker=user)
+    try:
+        if assignment.report:
+            messages.error(request, "Нельзя отменить — отчёт уже отправлен.")
+            return redirect("worker_tasks")
+    except WorkerReport.DoesNotExist:
+        pass
+    lead = assignment.lead
+    assignment.delete()
+    # Вернуть лид в "Новые" если больше нет назначений
+    if not LeadAssignment.objects.filter(lead=lead).exists():
+        lead.ss_admin_status = None
+        lead.save(update_fields=["ss_admin_status", "updated_at"])
+    messages.success(request, f"Лид #{lead.id} отменён.")
+    return redirect("worker_tasks")
+
+
+@login_required
 def worker_task_detail(request: HttpRequest, assignment_id: int) -> HttpResponse:
     """Детальная страница задания: контакт, описание задачи, форма отчёта (если ещё не отправлен)."""
     if not _require_worker(request):
