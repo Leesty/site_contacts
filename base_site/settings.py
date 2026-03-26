@@ -13,7 +13,9 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key-change-in-prod")
 
 DEBUG = os.getenv("DJANGO_DEBUG", "False") == "True"
 
-if not DEBUG and SECRET_KEY == "dev-secret-key-change-in-prod":
+import sys
+_is_management_command = len(sys.argv) > 1 and sys.argv[1] in ("migrate", "collectstatic", "check", "makemigrations", "showmigrations")
+if not DEBUG and not _is_management_command and SECRET_KEY == "dev-secret-key-change-in-prod":
     raise RuntimeError(
         "DJANGO_SECRET_KEY не задан! Укажите надёжный секретный ключ через переменную окружения."
     )
