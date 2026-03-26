@@ -3,223 +3,193 @@
 {% block title %}Админ-панель — Партнёрка{% endblock %}
 
 {% block content %}
-  <div class="mb-3">
+  <div class="mb-4">
     <h1 class="h4 mb-1">Админ-панель</h1>
-    <p class="text-muted small mb-0">
-      Добро пожаловать, {{ user.username }}. Управление заявками, диалогами, базами и лидами.
-    </p>
+    <p class="text-muted small mb-0">{{ user.username }} — управление отчётами, пользователями и базами.</p>
   </div>
 
-  <div class="row row-cols-1 row-cols-md-2 g-3 mt-2 dashboard-grid">
+  {# ═══ Секция 1: Заработок (компактная полоса сверху) ═══ #}
+  <div class="card shadow-sm mb-4" style="background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(99,102,241,0.05) 100%); border: 1px solid rgba(99,102,241,0.2);">
+    <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-3">
+        <span style="font-size: 13px;">💵 <strong>{{ admin_earned|default:0 }} ₽</strong> заработано</span>
+        <span class="text-white-50" style="font-size: 12px;">{{ admin_actions|default:0 }} действий × 2.5₽</span>
+        <span style="font-size: 13px;">Доступно: <strong>{{ admin_balance|default:0 }} ₽</strong></span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        {% if admin_withdrawal_pending %}
+          <span class="badge bg-warning text-dark" style="font-size: 11px;">Заявка на вывод</span>
+        {% elif admin_can_withdraw %}
+          <a class="btn btn-success btn-sm py-0 px-2" style="font-size: 12px;" href="{% url 'request_withdrawal_create' %}">Вывести</a>
+        {% endif %}
+        <a class="btn btn-outline-light btn-sm py-0 px-2" style="font-size: 12px;" href="{% url 'admin_earnings_stats' %}">Детали</a>
+      </div>
+    </div>
+  </div>
+
+  {# ═══ Секция 2: Отчёты (главное — крупные карточки) ═══ #}
+  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Отчёты</h6>
+  <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon contacts mb-2">👥</div>
-          <h2 class="h5 mb-2">Все пользователи</h2>
-          <p class="text-muted small mb-3">
-            Список пользователей: написать, статистика лидов, выдача лимитов.
-          </p>
-          <div class="d-flex align-items-center gap-2">
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_all_users' %}">Перейти</a>
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">📝 Отдел поиска</h2>
+            <span id="admin-pending-leads" class="badge bg-danger" style="{% if not pending_leads_count %}display:none;{% endif %}">{{ pending_leads_count|default:0 }}</span>
+          </div>
+          <p class="text-muted small mb-2">Новые, в доработке, принятые, отклонённые.</p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?dept=search">Перейти</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">🔄 Отдел дожима</h2>
+            {% if dozhim_pending_count %}<span class="badge bg-danger">{{ dozhim_pending_count }}</span>{% endif %}
+          </div>
+          <p class="text-muted small mb-2">Отчёты дожима. Одобренный — 30 руб.</p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?dept=dozhim">Перейти</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">📋 Все отчёты</h2>
+          </div>
+          <p class="text-muted small mb-2">Все отделы + поиск по контакту, дате, ID.</p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?tab=all">Поиск</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ═══ Секция 3: Пользователи и заявки ═══ #}
+  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Пользователи и заявки</h6>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3 mb-4">
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">👥 Пользователи</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_all_users' %}">Список</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">📋 Регистрации</span>
+            <span id="admin-pending-requests" class="badge bg-danger" style="{% if not pending_requests_count %}display:none;{% endif %}">{{ pending_requests_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_users_pending' %}">Заявки</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">💰 Выводы</span>
+            <span id="admin-withdrawal-requests" class="badge bg-danger" style="{% if not withdrawal_requests_pending_count %}display:none;{% endif %}">{{ withdrawal_requests_pending_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_withdrawal_requests' %}">Заявки</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">💬 Поддержка</span>
+            <span id="admin-unread-threads" class="badge bg-danger" style="{% if not unread_threads_count %}display:none;{% endif %}">{{ unread_threads_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'support_threads_list' %}">Диалоги</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">📥 Контакты</span>
+            <span id="admin-contact-requests" class="badge bg-danger" style="{% if not contact_requests_pending_count %}display:none;{% endif %}">{{ contact_requests_pending_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_contact_requests' %}">Запросы</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <span class="fw-semibold" style="font-size: 14px;">🔑 Сброс пароля</span>
+          <br>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_reset_password' %}">Сбросить</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ═══ Секция 4: Инструменты (свёрнуты) ═══ #}
+  <div class="mb-3">
+    <a class="text-white-50 text-decoration-none" style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; cursor: pointer;" data-bs-toggle="collapse" href="#adminTools" role="button" aria-expanded="false">
+      Инструменты и настройки ▾
+    </a>
+  </div>
+  <div class="collapse" id="adminTools">
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3 mb-4">
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 14px;">📊 Статистика</span>
+            <br>
+            <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_stats' %}">Открыть</a>
           </div>
         </div>
       </div>
-    </div>
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon report mb-2">📝</div>
-          <h2 class="h5 mb-2">Отчёты</h2>
-          <p class="text-muted small mb-3">
-            Новые отчёты, в доработке, принятые и отклонённые. Одобрить, отклонить, на доработку — по вкладкам.
-          </p>
-          <div class="d-flex align-items-center gap-2">
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}">Перейти</a>
-            <span id="admin-pending-leads" class="btn btn-danger btn-sm" title="Отчётов на проверке" style="{% if not pending_leads_count %}display:none;{% endif %}">{{ pending_leads_count|default:0 }}</span>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 14px;">📦 Базы (Excel)</span>
+            <br>
+            <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'bases_excel' %}">Загрузить</a>
           </div>
         </div>
       </div>
-    </div>
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon report mb-2">🔄</div>
-          <h2 class="h5 mb-2">Отчёты (Дожим)</h2>
-          <p class="text-muted small mb-3">
-            Отчёты из Отдела дожима. Оплата за одобренный — 30 руб.
-          </p>
-          <div class="d-flex align-items-center gap-2">
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?dept=dozhim">Перейти</a>
-            {% if dozhim_pending_count %}<span class="btn btn-danger btn-sm">{{ dozhim_pending_count }}</span>{% endif %}
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 14px;">📋 Выгрузка лидов</span>
+            <br>
+            <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'download_leads_excel' %}">Скачать</a>
           </div>
         </div>
       </div>
-    </div>
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon contacts mb-2">📋</div>
-          <h2 class="h5 mb-2">Заявки пользователей</h2>
-          <p class="text-muted small mb-3">
-            Одобрение или отклонение новых заявок на регистрацию.
-          </p>
-          <div class="d-flex align-items-center gap-2">
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_users_pending' %}">Перейти</a>
-            <span id="admin-pending-requests" class="btn btn-danger btn-sm" title="Новых заявок" style="{% if not pending_requests_count %}display:none;{% endif %}">{{ pending_requests_count|default:0 }}</span>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 14px;">☁️ Хранилище S3</span>
+            <br>
+            <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_media_storage_status' %}">Проверить</a>
           </div>
         </div>
       </div>
-    </div>
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon support mb-2">💬</div>
-          <h2 class="h5 mb-2">Диалоги поддержки</h2>
-          <p class="text-muted small mb-3">
-            Список обращений и чаты с пользователями.
-          </p>
-          <div class="d-flex align-items-center gap-2">
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'support_threads_list' %}">Перейти</a>
-            <span id="admin-unread-threads" class="btn btn-danger btn-sm" title="Непрочитанных диалогов" style="{% if not unread_threads_count %}display:none;{% endif %}">{{ unread_threads_count|default:0 }}</span>
+      {% if user.is_superuser %}
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 14px;">⚙️ Настройки сайта</span>
+            <br>
+            <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_site_settings' %}">Настроить</a>
           </div>
         </div>
       </div>
-    </div>
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon contacts mb-2">📥</div>
-          <h2 class="h5 mb-2">Выдача контактов по запросу</h2>
-          <p class="text-muted small mb-3">
-            Пользователи, которые просят дополнительный лимит контактов. Выдать лимиты и отметить заявки.
-          </p>
-          <div class="d-flex align-items-center gap-2">
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_contact_requests' %}">Перейти</a>
-            <span id="admin-contact-requests" class="btn btn-danger btn-sm" title="Заявок на контакты" style="{% if not contact_requests_pending_count %}display:none;{% endif %}">{{ contact_requests_pending_count|default:0 }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon contacts mb-2">💰</div>
-          <h2 class="h5 mb-2">Заявки на вывод</h2>
-          <p class="text-muted small mb-3">
-            Пользователи запросили вывод средств (баланс в рублях). Одобрить или отклонить.
-          </p>
-          <div class="d-flex align-items-center gap-2">
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_withdrawal_requests' %}">Перейти</a>
-            <span id="admin-withdrawal-requests" class="btn btn-danger btn-sm" title="Заявок на вывод" style="{% if not withdrawal_requests_pending_count %}display:none;{% endif %}">{{ withdrawal_requests_pending_count|default:0 }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon stats mb-2">📊</div>
-          <h2 class="h5 mb-2">Статистика</h2>
-          <p class="text-muted small mb-3">
-            Сводка по базам контактов и лидам.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_stats' %}">Перейти</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon report mb-2">📦</div>
-          <h2 class="h5 mb-2">Базы (Excel)</h2>
-          <p class="text-muted small mb-3">
-            Загрузка и выгрузка баз контактов в Excel.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'bases_excel' %}">Перейти</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon stats mb-2">📋</div>
-          <h2 class="h5 mb-2">Выгрузить лиды (Excel)</h2>
-          <p class="text-muted small mb-3">
-            Скачать все лиды в одном Excel-файле.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'download_leads_excel' %}">Скачать</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon report mb-2">☁️</div>
-          <h2 class="h5 mb-2">Хранилище медиа (S3)</h2>
-          <p class="text-muted small mb-3">
-            Куда сохраняются фото и видео из отчётов. Проверка подключения к облаку.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_media_storage_status' %}">Проверить</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon report mb-2">🔑</div>
-          <h2 class="h5 mb-2">Сброс пароля</h2>
-          <p class="text-muted small mb-3">
-            Восстановление пароля пользователя по логину.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_reset_password' %}">Перейти</a>
-        </div>
-      </div>
-    </div>
-
-    {% if user.is_superuser %}
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon report mb-2">⚙️</div>
-          <h2 class="h5 mb-2">Настройки сайта</h2>
-          <p class="text-muted small mb-3">
-            Видео-пример идеального отчёта и другие настройки.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_site_settings' %}">Настроить</a>
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon report mb-2">💵</div>
-          <h2 class="h5 mb-2">Мой заработок</h2>
-          <p class="text-muted small mb-3">
-            {{ admin_actions }} действий × 2.5 руб. = {{ admin_earned }} руб. заработано.<br>
-            Доступно к выводу: <strong>{{ admin_balance }} руб.</strong>
-          </p>
-          <div class="d-flex align-items-center gap-2 flex-wrap">
-            {% if admin_withdrawal_pending %}
-              <span class="badge bg-warning text-dark">Заявка на вывод на рассмотрении</span>
-            {% elif admin_can_withdraw %}
-              <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}">Вывести средства</a>
-            {% else %}
-              <span class="text-muted small">Вывод от 500 руб.</span>
-            {% endif %}
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_earnings_stats' %}">Все начисления</a>
-          </div>
-        </div>
-      </div>
+      {% endif %}
     </div>
   </div>
 {% endblock %}
