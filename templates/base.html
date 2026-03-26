@@ -15,72 +15,57 @@
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
   </head>
   <body {% block body_attrs %}{% endblock %}>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 py-2">
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4 py-0" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-bottom: 1px solid rgba(255,255,255,0.06);">
       <div class="container">
-        <a class="navbar-brand fw-bold" href="{% url 'index' %}">Партнёрка</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+        <a class="navbar-brand fw-bold py-2" href="{% url 'index' %}" style="font-size: 1.1rem; letter-spacing: 0.5px;">ПАРТНЁРКА</a>
+        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
           <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarMain">
-          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0 align-items-lg-center">
             {% if user.is_authenticated %}
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'dashboard' %}">Кабинет</a>
-              </li>
-              {% if user.role == 'worker' %}
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'worker_tasks' %}">Мои задания</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'worker_available_leads' %}">Найти лиды</a>
-              </li>
-              {% elif user.role == 'partner' %}
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'partner_referrals' %}">Рефералы</a>
-              </li>
-              {% elif not user.is_staff and not user.is_superuser and user.role != 'support' and user.role != 'admin' and user.role != 'standalone_admin' and user.role != 'balance_admin' %}
+              {# — Переключатель отделов (только role=user, approved) — #}
               {% if user.role == 'user' and user.status == 'approved' %}
-              <li class="nav-item me-3 d-flex align-items-center">
+              <li class="nav-item me-lg-3 my-1 my-lg-0">
                 <form method="post" action="{% url 'switch_department' %}" class="d-inline" id="dept-switch-form">
                   {% csrf_token %}
-                  <div class="btn-group" role="group" style="border-radius: 20px; overflow: hidden;">
-                    <button type="submit" name="department" value="search" class="btn btn-sm {% if department != 'dozhim' %}btn-light text-dark{% else %}btn-outline-secondary text-white-50{% endif %}" style="border-radius: 20px 0 0 20px; padding: 2px 14px; font-size: 13px; font-weight: 500; border: 1px solid rgba(255,255,255,0.2);">Отдел поиска</button>
-                    <button type="submit" name="department" value="dozhim" class="btn btn-sm {% if department == 'dozhim' %}btn-light text-dark{% else %}btn-outline-secondary text-white-50{% endif %}" style="border-radius: 0 20px 20px 0; padding: 2px 14px; font-size: 13px; font-weight: 500; border: 1px solid rgba(255,255,255,0.2);">Отдел дожима</button>
+                  <div class="d-inline-flex" style="background: rgba(255,255,255,0.08); border-radius: 8px; padding: 3px;">
+                    <button type="submit" name="department" value="search" class="btn btn-sm px-3 py-1 {% if department != 'dozhim' %}text-white{% else %}text-white-50{% endif %}" style="font-size: 12px; font-weight: 600; border-radius: 6px; border: none; {% if department != 'dozhim' %}background: rgba(99,102,241,0.9);{% else %}background: transparent;{% endif %}">Поиск</button>
+                    <button type="submit" name="department" value="dozhim" class="btn btn-sm px-3 py-1 {% if department == 'dozhim' %}text-white{% else %}text-white-50{% endif %}" style="font-size: 12px; font-weight: 600; border-radius: 6px; border: none; {% if department == 'dozhim' %}background: rgba(99,102,241,0.9);{% else %}background: transparent;{% endif %}">Дожим</button>
                   </div>
                 </form>
               </li>
               {% endif %}
-              {% if department == 'dozhim' %}
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'dozhim_contacts' %}">Лиды для дожима</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'dozhim_leads_report' %}">Отчёт (дожим)</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'dozhim_leads_stats' %}">Статистика (дожим)</a>
-              </li>
-              {% else %}
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'contacts' %}">Списки контактов</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'leads_report' %}">Отчёт по лидам</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'leads_stats' %}">Статистика лидов</a>
-              </li>
-              {% endif %}
+
+              {# — Навигационные ссылки по ролям — #}
+              {% if user.role == 'worker' %}
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'worker_tasks' %}">Задания</a></li>
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'worker_available_leads' %}">Найти лиды</a></li>
+              {% elif user.role == 'partner' %}
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'partner_referrals' %}">Рефералы</a></li>
+              {% elif user.role == 'user' and user.status == 'approved' %}
+                {% if department == 'dozhim' %}
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'dozhim_contacts' %}">Контакты</a></li>
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'dozhim_leads_report' %}">Отчёт</a></li>
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'dozhim_leads_my_list' %}">Мои лиды</a></li>
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'dozhim_leads_stats' %}">Статистика</a></li>
+                {% else %}
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'contacts' %}">Контакты</a></li>
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'leads_report' %}">Отчёт</a></li>
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'leads_my_list' %}">Мои лиды</a></li>
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'leads_stats' %}">Статистика</a></li>
+                {% endif %}
               {% endif %}
             {% endif %}
           </ul>
-          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center">
             {% if user.is_authenticated %}
+              {# Уведомления (колокольчик) #}
               {% if not user.is_staff and not user.is_superuser and user.role != 'support' and user.role != 'admin' and user.role != 'standalone_admin' and user.role != 'balance_admin' and user.status == 'approved' %}
               <li class="nav-item align-self-center dropdown">
                 <a class="nav-link position-relative py-1 px-2 {% if rework_leads_count %}text-warning{% else %}text-white-50{% endif %}" href="#" id="navbarReworkDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Уведомления">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zM8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628.134 2.197.459 3.742.16.767.376 1.566.663 2.258h10.244c.287-.692.502-1.49.663-2.258C13.866 8.197 14 6.628 14 6a4.002 4.002 0 0 0-3.203-3.92L8 1.917z"/></svg>
-                  <span id="navbar-rework-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="{% if not rework_leads_count %}display:none;{% endif %}">{{ rework_leads_count|default:0 }}</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zM8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628.134 2.197.459 3.742.16.767.376 1.566.663 2.258h10.244c.287-.692.502-1.49.663-2.258C13.866 8.197 14 6.628 14 6a4.002 4.002 0 0 0-3.203-3.92L8 1.917z"/></svg>
+                  <span id="navbar-rework-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:10px;{% if not rework_leads_count %}display:none;{% endif %}">{{ rework_leads_count|default:0 }}</span>
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarReworkDropdown" id="navbar-rework-dropdown-menu">
                   <li><span class="dropdown-item-text small" id="navbar-rework-text">{% if rework_leads_count %}У вас {{ rework_leads_count }} отчёт(ов) на доработке. Зайдите в «Мои лиды», доработайте и отправьте заново.{% else %}Нет уведомлений{% endif %}</span></li>
@@ -88,24 +73,26 @@
                 </ul>
               </li>
               {% endif %}
-              <li class="nav-item me-2 text-white-50 align-self-center">
-                {{ user.username }}
+              {# Имя + баланс #}
+              <li class="nav-item me-2 align-self-center">
+                <span class="text-white-50" style="font-size: 13px;">{{ user.username }}</span>
                 {% if user.status == 'approved' and user.role != 'balance_admin' and user.role != 'partner' %}
-                  <span id="navbar-balance" class="badge bg-primary ms-2">Баланс: {{ user.balance|default:0 }} руб.</span>
+                  <span id="navbar-balance" class="badge ms-1" style="background: rgba(99,102,241,0.8); font-size: 11px;">{{ user.balance|default:0 }} ₽</span>
                 {% endif %}
                 {% if user.status != 'approved' %}
-                  <span class="badge bg-warning text-dark ms-2">На модерации</span>
+                  <span class="badge bg-warning text-dark ms-1" style="font-size: 11px;">На модерации</span>
                 {% endif %}
               </li>
+              {# Выход #}
               <li class="nav-item">
-                <form method="post" action="{% url 'logout' %}" class="d-inline m-0">{% csrf_token %}<button type="submit" class="btn btn-outline-light btn-sm">Выйти</button></form>
+                <form method="post" action="{% url 'logout' %}" class="d-inline m-0">{% csrf_token %}<button type="submit" class="btn btn-sm px-2 py-1 text-white-50" style="font-size: 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;">Выйти</button></form>
               </li>
             {% else %}
               <li class="nav-item me-2">
-                <a class="btn btn-outline-light btn-sm" href="{% url 'login' %}">Войти</a>
+                <a class="btn btn-sm px-3" href="{% url 'login' %}" style="color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; font-size: 13px;">Войти</a>
               </li>
               <li class="nav-item">
-                <a class="btn btn-warning btn-sm" href="{% url 'register' %}">Регистрация</a>
+                <a class="btn btn-sm px-3" href="{% url 'register' %}" style="background: rgba(99,102,241,0.9); color: white; border-radius: 6px; font-size: 13px;">Регистрация</a>
               </li>
             {% endif %}
           </ul>

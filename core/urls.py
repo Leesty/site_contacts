@@ -24,6 +24,7 @@ urlpatterns = [
     # Dozhim department
     path("department/switch/", views.switch_department, name="switch_department"),
     path("dozhim/contacts/", views.dozhim_contacts, name="dozhim_contacts"),
+    path("dozhim/contacts/download/", views.dozhim_download_txt, name="dozhim_download_txt"),
     path("dozhim/leads/report/", views.dozhim_leads_report, name="dozhim_leads_report"),
     path("dozhim/leads/my/", views.dozhim_leads_my_list, name="dozhim_leads_my_list"),
     path("dozhim/leads/<int:lead_id>/redo/", views.dozhim_lead_redo, name="dozhim_lead_redo"),

@@ -1,85 +1,100 @@
 {% extends "base.html" %}
 
-{% block title %}Лиды для дожима{% endblock %}
+{% block title %}Лиды для дожима — Партнёрка{% endblock %}
 
 {% block content %}
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="h4 mb-0">Лиды для дожима</h1>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
   </div>
 
-  <p class="text-muted small mb-3">
-    Получите одобренные лиды из Отдела поиска для дожима. Каждый лид выдаётся только одному человеку.
+  <p class="text-muted">
+    Выберите категорию и получите одобренные лиды из Отдела поиска для дожима.
+    Каждый лид выдаётся только одному человеку.
   </p>
 
-  {% if allocated %}
-    <div class="alert alert-success">Получено {{ allocated|length }} лидов.</div>
-    <div class="card shadow-sm mb-3">
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Контакт</th>
-                <th>Тип</th>
-                <th>Одобрен</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for lead in allocated %}
-                <tr>
-                  <td>{{ forloop.counter }}</td>
-                  <td class="text-break">{{ lead.raw_contact }}</td>
-                  <td>{{ lead.lead_type.name|default:"—" }}</td>
-                  <td>{{ lead.reviewed_at|date:"d.m.Y"|default:"—" }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert py-2 mb-3 {% if message.tags == 'error' or message.tags == 'warning' %}alert-warning{% else %}alert-success{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
   {% endif %}
 
   <form method="post" class="mb-4">
     {% csrf_token %}
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-      <select name="lead_type" class="form-select form-select-sm" style="width: auto; min-width: 160px; background-color: rgba(15,23,42,0.95); border-color: rgba(55,65,81,0.9); color: #e5e7eb;">
+    <div class="mb-3">
+      <label class="form-label">Категория лида</label>
+      <select name="lead_type" class="form-select" style="background-color: rgba(15, 23, 42, 0.95); border-color: rgba(55, 65, 81, 0.9); color: #e5e7eb;">
         <option value="">Все категории</option>
         {% for lt in lead_types %}
           <option value="{{ lt.id }}" {% if selected_type_id == lt.id %}selected{% endif %}>{{ lt.name }}</option>
         {% endfor %}
       </select>
-      <button type="submit" name="get_leads" value="1" class="btn btn-primary btn-sm">Получить {{ batch_size }} лидов</button>
     </div>
+    <button type="submit" name="get_leads" value="1" class="btn btn-primary">Получить {{ batch_size }} лидов</button>
   </form>
 
-  {% if issued %}
-    <h2 class="h5 mb-2">Ранее выданные</h2>
-    <div class="card shadow-sm">
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
-              <tr>
-                <th>Контакт</th>
-                <th>Тип</th>
-                <th>Выдан</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for item in issued %}
-                <tr>
-                  <td class="text-break">{{ item.lead.raw_contact }}</td>
-                  <td>{{ item.lead.lead_type.name|default:"—" }}</td>
-                  <td>{{ item.created_at|date:"d.m.Y H:i" }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+  {% if allocated %}
+    <h2 class="h5 mt-4">Выданные лиды</h2>
+    <ul class="list-group mt-2">
+      {% for lead in allocated %}
+        <li class="list-group-item d-flex align-items-center gap-2 contact-row" data-contact-value="{{ lead.raw_contact|default:'' }}">
+          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-copy-contact flex-shrink-0" title="Скопировать" data-value="{{ lead.raw_contact|default:'' }}">📋</button>
+          <span class="text-break flex-grow-1">{{ lead.raw_contact }}</span>
+          <span class="text-muted small flex-shrink-0">{{ lead.lead_type.name|default:"—" }}</span>
+          <span class="js-copied-mark text-success flex-shrink-0" style="display:none;">✓</span>
+        </li>
+      {% endfor %}
+    </ul>
+    <p class="text-muted small mt-1">Клик по 📋 — копирует один контакт.</p>
   {% endif %}
+
+  {% if issued %}
+    <h2 class="h5 mt-4">Ранее выданные лиды</h2>
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <p class="text-muted small mb-0">Все ваши выданные лиды для дожима. Клик по 📋 — копирует контакт.</p>
+      <a class="btn btn-outline-primary btn-sm flex-shrink-0" href="{% url 'dozhim_download_txt' %}">Скачать .txt</a>
+    </div>
+    <ul class="list-group mt-2">
+      {% for item in issued %}
+        <li class="list-group-item d-flex align-items-center gap-2 contact-row" data-contact-value="{{ item.lead.raw_contact|default:'' }}">
+          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-copy-contact flex-shrink-0" title="Скопировать" data-value="{{ item.lead.raw_contact|default:'' }}">📋</button>
+          <span class="text-break flex-grow-1">{{ item.lead.raw_contact }}</span>
+          <span class="text-muted small flex-shrink-0">{{ item.lead.lead_type.name|default:"—" }}</span>
+          <span class="text-muted small flex-shrink-0 ms-1">{{ item.created_at|date:"d.m.Y" }}</span>
+          <span class="js-copied-mark text-success flex-shrink-0" style="display:none;">✓</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <style>.user-select-none { -webkit-user-select: none; user-select: none; }</style>
+  <script>
+  (function() {
+    var STORAGE_KEY = 'dozhim_copied';
+    function getCopied() { try { var s = sessionStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : {}; } catch (e) { return {}; } }
+    function setCopied(value) { try { var o = getCopied(); o[value] = true; sessionStorage.setItem(STORAGE_KEY, JSON.stringify(o)); } catch (e) {} }
+    function copyToClipboard(text) {
+      if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+      var ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { document.execCommand('copy'); return Promise.resolve(); } catch (e) { return Promise.reject(e); } finally { document.body.removeChild(ta); }
+    }
+    document.querySelectorAll('.contact-row').forEach(function(row) {
+      var value = row.getAttribute('data-contact-value');
+      if (value && getCopied()[value]) { var m = row.querySelector('.js-copied-mark'); if (m) m.style.display = ''; }
+    });
+    document.querySelectorAll('.js-copy-contact').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        var value = btn.getAttribute('data-value'); if (!value) return;
+        var row = btn.closest('.contact-row');
+        copyToClipboard(value).then(function() {
+          setCopied(value); var m = row.querySelector('.js-copied-mark'); if (m) m.style.display = '';
+          var orig = btn.textContent; btn.textContent = '✓'; btn.classList.replace('btn-outline-secondary', 'btn-outline-success');
+          setTimeout(function() { btn.textContent = orig; btn.classList.replace('btn-outline-success', 'btn-outline-secondary'); }, 600);
+        });
+      });
+    });
+  })();
+  </script>
 {% endblock %}
