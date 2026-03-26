@@ -121,6 +121,11 @@ urlpatterns = [
         name="admin_reset_password",
     ),
     path(
+        "staff/admin-earnings/",
+        views_support_admin.admin_earnings_stats,
+        name="admin_earnings_stats",
+    ),
+    path(
         "staff/standalone/reset-password/",
         views_support_admin.standalone_admin_reset_password,
         name="standalone_admin_reset_password",

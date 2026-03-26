@@ -2396,3 +2396,48 @@ def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
         "query": query,
     })
 
+
+# ──────────────────────────────────────────────────────────
+#  Статистика начислений админов
+# ──────────────────────────────────────────────────────────
+
+@login_required
+def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
+    """Страница статистики начислений админов (2.5р за действие)."""
+    if not _require_support(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    from .models import LeadReviewLog
+    from decimal import Decimal
+
+    admins = User.objects.filter(role="admin").order_by("username")
+    admin_stats = []
+    for admin in admins:
+        actions = LeadReviewLog.objects.filter(admin=admin).count()
+        earned = int(actions * Decimal("2.5"))
+        withdrawn = WithdrawalRequest.objects.filter(user=admin, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
+        admin_stats.append({
+            "user": admin,
+            "actions": actions,
+            "earned": earned,
+            "withdrawn": withdrawn,
+            "available": max(0, earned - withdrawn),
+        })
+
+    selected_admin = None
+    logs = []
+    admin_id = request.GET.get("admin_id")
+    if admin_id:
+        selected_admin = User.objects.filter(pk=admin_id, role="admin").first()
+        if selected_admin:
+            logs = (
+                LeadReviewLog.objects.filter(admin=selected_admin)
+                .select_related("lead", "lead__user", "lead__lead_type")
+                .order_by("-created_at")[:200]
+            )
+
+    return render(request, "core/admin_earnings_stats.html", {
+        "admin_stats": admin_stats,
+        "selected_admin": selected_admin,
+        "logs": logs,
+    })
+

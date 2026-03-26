@@ -274,9 +274,19 @@ def dashboard(request: HttpRequest) -> HttpResponse:
 def account_updates_api(request: HttpRequest) -> HttpResponse:
     """JSON API для опроса обновлений: уведомления, баланс, лиды, счётчики админа. Для автообновления без перезагрузки."""
     user = request.user
+    balance = getattr(user, "balance", 0) or 0
+    # Для role=admin баланс считается из LeadReviewLog
+    if getattr(user, "role", None) == "admin":
+        from .models import LeadReviewLog
+        from django.db.models import Sum
+        from decimal import Decimal
+        _admin_actions = LeadReviewLog.objects.filter(admin=user).count()
+        _admin_earned = int(_admin_actions * Decimal("2.5"))
+        _admin_withdrawn = WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
+        balance = max(0, _admin_earned - _admin_withdrawn)
     data = {
         "support_has_unread": False,
-        "balance": getattr(user, "balance", 0) or 0,
+        "balance": balance,
         "leads_updated_at": None,
     }
     if _is_admin(user):

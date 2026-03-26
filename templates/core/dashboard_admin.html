@@ -208,13 +208,16 @@
             {{ admin_actions }} действий × 2.5 руб. = {{ admin_earned }} руб. заработано.<br>
             Доступно к выводу: <strong>{{ admin_balance }} руб.</strong>
           </p>
-          {% if admin_withdrawal_pending %}
-            <span class="badge bg-warning text-dark">Заявка на вывод на рассмотрении</span>
-          {% elif admin_can_withdraw %}
-            <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}">Вывести средства</a>
-          {% else %}
-            <span class="text-muted small">Вывод от 500 руб.</span>
-          {% endif %}
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% if admin_withdrawal_pending %}
+              <span class="badge bg-warning text-dark">Заявка на вывод на рассмотрении</span>
+            {% elif admin_can_withdraw %}
+              <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}">Вывести средства</a>
+            {% else %}
+              <span class="text-muted small">Вывод от 500 руб.</span>
+            {% endif %}
+            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_earnings_stats' %}">Все начисления</a>
+          </div>
         </div>
       </div>
     </div>

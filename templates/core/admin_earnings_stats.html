@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Начисления админов — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Начисления админов</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Панель</a>
+  </div>
+
+  <p class="text-muted small mb-3">Каждое действие с отчётом (одобрение, отклонение, доработка) — 2.5 руб.</p>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Админ</th>
+              <th>Действий</th>
+              <th>Заработано</th>
+              <th>Выведено</th>
+              <th>Доступно</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in admin_stats %}
+              <tr{% if selected_admin and selected_admin.id == s.user.id %} class="table-active"{% endif %}>
+                <td>@{{ s.user.username }}</td>
+                <td>{{ s.actions }}</td>
+                <td>{{ s.earned }} ₽</td>
+                <td>{{ s.withdrawn }} ₽</td>
+                <td><strong>{{ s.available }} ₽</strong></td>
+                <td><a href="?admin_id={{ s.user.id }}" class="btn btn-outline-primary btn-sm py-0">Детали</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% if selected_admin %}
+    <h2 class="h5 mb-2">Действия @{{ selected_admin.username }}</h2>
+    {% if logs %}
+      <div class="card shadow-sm">
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle table-dark-site">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Действие</th>
+                  <th>Лид #</th>
+                  <th>Пользователь</th>
+                  <th>Тип лида</th>
+                  <th>Начислено</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for log in logs %}
+                  <tr>
+                    <td class="small">{{ log.created_at|date:"d.m.Y H:i" }}</td>
+                    <td>
+                      {% if log.action == 'approved' %}
+                        <span class="badge bg-success">Одобрен</span>
+                      {% elif log.action == 'rejected' %}
+                        <span class="badge bg-danger">Отклонён</span>
+                      {% elif log.action == 'rework' %}
+                        <span class="badge bg-warning text-dark">Доработка</span>
+                      {% endif %}
+                    </td>
+                    <td>#{{ log.lead.id }}</td>
+                    <td>@{{ log.lead.user.username }}</td>
+                    <td>{{ log.lead.lead_type.name|default:"—" }}</td>
+                    <td class="text-success">+2.5 ₽</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <p class="text-muted">Нет действий.</p>
+    {% endif %}
+  {% endif %}
+{% endblock %}

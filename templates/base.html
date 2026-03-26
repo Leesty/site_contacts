@@ -13,6 +13,7 @@
       crossorigin="anonymous"
     >
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <style>@keyframes balFloat{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-18px)}}</style>
   </head>
   <body {% block body_attrs %}{% endblock %}>
     <nav class="navbar navbar-expand-lg navbar-dark mb-4 py-0" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-bottom: 1px solid rgba(255,255,255,0.06);">
@@ -77,7 +78,7 @@
               <li class="nav-item me-2 align-self-center">
                 <span class="text-white-50" style="font-size: 13px;">{{ user.username }}</span>
                 {% if user.status == 'approved' and user.role != 'balance_admin' and user.role != 'partner' %}
-                  <span id="navbar-balance" class="badge ms-1" style="background: rgba(99,102,241,0.8); font-size: 11px;">{{ user.balance|default:0 }} ₽</span>
+                  <span id="navbar-balance" class="badge ms-1" style="background: rgba(99,102,241,0.8); font-size: 11px; position: relative;" data-balance="{{ admin_balance|default:user.balance|default:0 }}">{{ admin_balance|default:user.balance|default:0 }} ₽</span>
                 {% endif %}
                 {% if user.status != 'approved' %}
                   <span class="badge bg-warning text-dark ms-1" style="font-size: 11px;">На модерации</span>
@@ -142,7 +143,19 @@
                 }
                 var balanceEl = document.getElementById('navbar-balance');
                 if (balanceEl) {
-                  balanceEl.textContent = 'Баланс: ' + (data.balance || 0) + ' руб.';
+                  var newBal = data.balance || 0;
+                  var oldBal = parseFloat(balanceEl.getAttribute('data-balance') || '0');
+                  balanceEl.textContent = newBal + ' ₽';
+                  if (newBal > oldBal && oldBal >= 0) {
+                    var diff = (newBal - oldBal).toFixed(1).replace('.0', '');
+                    var floater = document.createElement('span');
+                    floater.textContent = '+' + diff + '₽';
+                    floater.style.cssText = 'position:absolute;top:-8px;right:-10px;color:#4ade80;font-size:12px;font-weight:700;pointer-events:none;animation:balFloat .8s ease-out forwards;white-space:nowrap;';
+                    balanceEl.style.position = 'relative';
+                    balanceEl.appendChild(floater);
+                    setTimeout(function() { floater.remove(); }, 900);
+                  }
+                  balanceEl.setAttribute('data-balance', newBal);
                 }
                 if (leadsUpdatedAt !== '' && data.leads_updated_at && data.leads_updated_at !== leadsUpdatedAt) {
                   location.reload();
