@@ -22,3 +22,12 @@ def rework_leads(request):
     except Exception as e:
         logger.exception("rework_leads context processor: %s", e)
         return {"rework_leads_count": 0}
+
+
+def department_context(request):
+    """Текущий отдел (поиск/дожим) для переключателя в навбаре."""
+    if not getattr(request, "user", None) or not request.user.is_authenticated:
+        return {"department": "search"}
+    if getattr(request.user, "role", None) != "user":
+        return {"department": "search"}
+    return {"department": request.session.get("department", "search")}

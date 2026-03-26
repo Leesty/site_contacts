@@ -163,6 +163,86 @@ class LeadReportForm(forms.ModelForm):
         return data
 
 
+class DozhimLeadReportForm(forms.ModelForm):
+    """Форма отчёта для Отдела дожима. Без выбора категории (всегда «Дожим»)."""
+
+    raw_contact = forms.CharField(
+        label="Контакт / ссылка",
+        max_length=255,
+        help_text="Юзернейм, телефон, ссылка на объявление или другой идентификатор.",
+    )
+
+    class Meta:
+        model = Lead
+        fields = ("lead_date", "raw_contact", "attachment", "comment")
+        labels = {
+            "lead_date": "Дата лида",
+            "comment": "Комментарий (необязательно)",
+            "attachment": "Видео",
+        }
+        help_texts = {
+            "comment": "",
+            "lead_date": "К какой дате относите отчёт. По умолчанию — сегодня.",
+            "attachment": "Запись экрана (видео), подтверждающая лид (обязательно)",
+        }
+        widgets = {
+            "lead_date": forms.DateInput(
+                attrs={
+                    "type": "date",
+                    "class": "form-control",
+                    "style": "background-color: rgba(15, 23, 42, 0.95); border: 1px solid rgba(55, 65, 81, 0.9); color: #e5e7eb;",
+                }
+            ),
+            "raw_contact": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Контакт / ссылка",
+                    "style": "background-color: rgba(15, 23, 42, 0.95); border: 1px solid rgba(55, 65, 81, 0.9); color: #e5e7eb;",
+                }
+            ),
+            "attachment": forms.FileInput(
+                attrs={
+                    "class": "form-control",
+                    "style": "background-color: rgba(15, 23, 42, 0.95); border-color: rgba(55, 65, 81, 0.9); color: #e5e7eb;",
+                    "accept": _ATTACHMENT_ACCEPT,
+                }
+            ),
+            "comment": forms.Textarea(
+                attrs={
+                    "rows": 2,
+                    "class": "form-control",
+                    "placeholder": "Комментарий (необязательно)",
+                    "style": "background-color: rgba(15, 23, 42, 0.95); border: 1px solid rgba(55, 65, 81, 0.9); color: #e5e7eb;",
+                }
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["attachment"].required = True
+        self.fields["lead_date"].required = True
+        if not self.instance or not self.instance.pk:
+            from django.utils import timezone
+            self.fields["lead_date"].initial = timezone.now().date()
+
+    def clean_attachment(self):
+        data = self.cleaned_data.get("attachment")
+        if not data:
+            raise forms.ValidationError("Обязательно приложите скриншот или видео, подтверждающие лид.")
+        name = getattr(data, "name", None) or ""
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in LEAD_ATTACHMENT_ALLOWED_EXTENSIONS:
+            raise forms.ValidationError(
+                "Разрешены только изображения и видео: jpg, png, gif, webp, mp4, mov и т.д."
+            )
+        size = getattr(data, "size", None)
+        if size is not None and size > LEAD_ATTACHMENT_MAX_SIZE:
+            raise forms.ValidationError(
+                "Размер файла не должен превышать 30 МБ. Сожмите видео или приложите скриншот."
+            )
+        return data
+
+
 class BaseExcelUploadForm(forms.Form):
     """Загрузка Excel с базами контактов — все листы по шаблону (как в боте)."""
 

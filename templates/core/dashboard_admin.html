@@ -43,6 +43,21 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
+          <div class="card-icon report mb-2">🔄</div>
+          <h2 class="h5 mb-2">Отчёты (Дожим)</h2>
+          <p class="text-muted small mb-3">
+            Отчёты из Отдела дожима. Оплата за одобренный — 30 руб.
+          </p>
+          <div class="d-flex align-items-center gap-2">
+            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?dept=dozhim">Перейти</a>
+            {% if dozhim_pending_count %}<span class="btn btn-danger btn-sm">{{ dozhim_pending_count }}</span>{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
           <div class="card-icon contacts mb-2">📋</div>
           <h2 class="h5 mb-2">Заявки пользователей</h2>
           <p class="text-muted small mb-3">

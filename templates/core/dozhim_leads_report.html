@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Отчёт (Дожим) — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">Отчёт по лидам (Дожим)</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-primary btn-sm" href="{% url 'dozhim_leads_my_list' %}">Мои лиды</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Заполните форму: укажите контакт или ссылку и загрузите видео. Категория: <strong>Дожим</strong>.
+    Оплата за одобренный лид — <strong>30 руб.</strong>
+  </p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert py-2 mb-3 {% if message.tags == 'error' %}alert-danger{% else %}alert-success{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="card shadow-sm" style="max-width: 600px;">
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data" id="dozhimReportForm">
+        {% csrf_token %}
+
+        <div class="mb-3">
+          <label class="form-label">{{ form.lead_date.label }}</label>
+          {{ form.lead_date }}
+          {% if form.lead_date.help_text %}<div class="form-text">{{ form.lead_date.help_text }}</div>{% endif %}
+          {% for error in form.lead_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">{{ form.raw_contact.label }}</label>
+          {{ form.raw_contact }}
+          {% if form.raw_contact.help_text %}<div class="form-text">{{ form.raw_contact.help_text }}</div>{% endif %}
+          {% for error in form.raw_contact.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">{{ form.attachment.label }}</label>
+          {{ form.attachment }}
+          {% if form.attachment.help_text %}<div class="form-text">{{ form.attachment.help_text }}</div>{% endif %}
+          {% for error in form.attachment.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">{{ form.comment.label }}</label>
+          {{ form.comment }}
+          {% for error in form.comment.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <button type="submit" class="btn btn-success w-100">Отправить отчёт (Дожим)</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

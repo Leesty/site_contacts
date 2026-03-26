@@ -21,6 +21,13 @@ urlpatterns = [
     path("partner/links/create/", views_partner.partner_create_link, name="partner_create_link"),
     path("partner/links/<int:link_id>/toggle/", views_partner.partner_toggle_link, name="partner_toggle_link"),
     path("p/<str:code>/", views_partner.partner_ref_register, name="partner_ref_register"),
+    # Dozhim department
+    path("department/switch/", views.switch_department, name="switch_department"),
+    path("dozhim/contacts/", views.dozhim_contacts, name="dozhim_contacts"),
+    path("dozhim/leads/report/", views.dozhim_leads_report, name="dozhim_leads_report"),
+    path("dozhim/leads/my/", views.dozhim_leads_my_list, name="dozhim_leads_my_list"),
+    path("dozhim/leads/<int:lead_id>/redo/", views.dozhim_lead_redo, name="dozhim_lead_redo"),
+    path("dozhim/leads/stats/", views.dozhim_leads_stats, name="dozhim_leads_stats"),
     # Worker sub-system
     path("worker/", views_worker.worker_dashboard, name="worker_dashboard"),
     path("worker/tasks/", views_worker.worker_tasks, name="worker_tasks"),

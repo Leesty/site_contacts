@@ -12,21 +12,27 @@
     </div>
   </div>
 
+  <div class="btn-group btn-group-sm mb-2">
+    <a class="btn {% if dept == '' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?tab={{ tab }}">Все отделы</a>
+    <a class="btn {% if dept == 'search' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?tab={{ tab }}&dept=search">Поиск</a>
+    <a class="btn {% if dept == 'dozhim' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?tab={{ tab }}&dept=dozhim">Дожим</a>
+  </div>
+
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">Все отчёты + поиск</a>
+      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all{% if dept %}&dept={{ dept }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">Все отчёты + поиск</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new">Новые отчёты</a>
+      <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new{% if dept %}&dept={{ dept }}{% endif %}">Новые отчёты</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">В доработке</a>
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework{% if dept %}&dept={{ dept }}{% endif %}">В доработке</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Принятые отчёты</a>
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved{% if dept %}&dept={{ dept }}{% endif %}">Принятые отчёты</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые отчёты</a>
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected{% if dept %}&dept={{ dept }}{% endif %}">Отклонённые отчёты</a>
     </li>
   </ul>
 

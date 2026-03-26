@@ -39,6 +39,28 @@
                 <a class="nav-link" href="{% url 'partner_referrals' %}">Рефералы</a>
               </li>
               {% elif not user.is_staff and not user.is_superuser and user.role != 'support' and user.role != 'admin' and user.role != 'standalone_admin' and user.role != 'balance_admin' %}
+              {% if user.role == 'user' and user.status == 'approved' %}
+              <li class="nav-item me-2">
+                <form method="post" action="{% url 'switch_department' %}" class="d-inline">
+                  {% csrf_token %}
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button type="submit" name="department" value="search" class="btn {% if department == 'dozhim' %}btn-outline-light{% else %}btn-primary{% endif %} py-0 px-2">Поиск</button>
+                    <button type="submit" name="department" value="dozhim" class="btn {% if department == 'dozhim' %}btn-primary{% else %}btn-outline-light{% endif %} py-0 px-2">Дожим</button>
+                  </div>
+                </form>
+              </li>
+              {% endif %}
+              {% if department == 'dozhim' %}
+              <li class="nav-item">
+                <a class="nav-link" href="{% url 'dozhim_contacts' %}">Лиды для дожима</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="{% url 'dozhim_leads_report' %}">Отчёт (дожим)</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="{% url 'dozhim_leads_stats' %}">Статистика (дожим)</a>
+              </li>
+              {% else %}
               <li class="nav-item">
                 <a class="nav-link" href="{% url 'contacts' %}">Списки контактов</a>
               </li>
@@ -48,6 +70,7 @@
               <li class="nav-item">
                 <a class="nav-link" href="{% url 'leads_stats' %}">Статистика лидов</a>
               </li>
+              {% endif %}
               {% endif %}
             {% endif %}
           </ul>

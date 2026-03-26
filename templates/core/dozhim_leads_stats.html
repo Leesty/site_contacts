@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Статистика (Дожим){% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Статистика лидов (Дожим)</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Оплата за одобренный лид: <strong>{{ dozhim_reward }} руб.</strong>
+  </p>
+
+  <div class="row g-3">
+    <div class="col-6 col-md-4">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1 text-success">{{ today_count }}</div>
+          <div class="small text-muted">Сегодня (одобрено)</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1 text-primary">{{ yesterday_count }}</div>
+          <div class="small text-muted">Вчера (одобрено)</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1">{{ total_count }}</div>
+          <div class="small text-muted">Всего (одобрено)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Лиды для дожима{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Лиды для дожима</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Получите одобренные лиды из Отдела поиска для дожима. Каждый лид выдаётся только одному человеку.
+  </p>
+
+  {% if allocated %}
+    <div class="alert alert-success">Получено {{ allocated|length }} лидов.</div>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Контакт</th>
+                <th>Тип</th>
+                <th>Одобрен</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lead in allocated %}
+                <tr>
+                  <td>{{ forloop.counter }}</td>
+                  <td class="text-break">{{ lead.raw_contact }}</td>
+                  <td>{{ lead.lead_type.name|default:"—" }}</td>
+                  <td>{{ lead.reviewed_at|date:"d.m.Y"|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <form method="post" class="mb-4">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary">Получить {{ batch_size }} лидов для дожима</button>
+  </form>
+
+  {% if issued %}
+    <h2 class="h5 mb-2">Ранее выданные</h2>
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Контакт</th>
+                <th>Тип</th>
+                <th>Выдан</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in issued %}
+                <tr>
+                  <td class="text-break">{{ item.lead.raw_contact }}</td>
+                  <td>{{ item.lead.lead_type.name|default:"—" }}</td>
+                  <td>{{ item.created_at|date:"d.m.Y H:i" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

@@ -69,6 +69,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.rework_leads",
+                "core.context_processors.department_context",
             ],
         },
     },
@@ -184,6 +185,10 @@ LOGOUT_REDIRECT_URL = "index"
 
 # Минимальный баланс для кнопки «Запрос на вывод» (руб.)
 WITHDRAWAL_MIN_BALANCE = int(os.getenv("WITHDRAWAL_MIN_BALANCE", "500"))
+
+# Отдел дожима
+DOZHIM_APPROVE_REWARD = int(os.getenv("DOZHIM_APPROVE_REWARD", "30"))
+DOZHIM_BATCH_SIZE = int(os.getenv("DOZHIM_BATCH_SIZE", "10"))
 
 # Лимит загрузки файлов: вложения лидов (скрин/видео) до 30 МБ
 _DATA_UPLOAD_MAX = 33 * 1024 * 1024  # 33 МБ, чтобы 30 МБ файл проходил

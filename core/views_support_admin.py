@@ -447,8 +447,13 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
     tab = request.GET.get("tab", "new")
     if tab not in ("new", "rework", "approved", "rejected", "all"):
         tab = "new"
+    dept = request.GET.get("dept", "")
     try:
         base = Lead.objects.select_related("user", "lead_type", "base_type", "reviewed_by")
+        if dept == "dozhim":
+            base = base.filter(lead_type__slug="dozhim")
+        elif dept == "search":
+            base = base.exclude(lead_type__slug="dozhim")
         if tab == "new":
             qs = base.filter(status=Lead.Status.PENDING).order_by("created_at")
         elif tab == "rework":
@@ -525,6 +530,7 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
             "page_obj": page_obj,
             "lead_approve_reward": lead_approve_reward,
             "tab": tab,
+            "dept": dept,
             "search_query": search_query,
         },
     )
@@ -586,8 +592,11 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         lead.reviewed_at = timezone.now()
         lead.reviewed_by = request.user
         lead.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
+        # Динамическая награда: дожим → 30р, поиск → 40р
+        is_dozhim = lead.lead_type and lead.lead_type.slug == "dozhim"
+        reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if is_dozhim else LEAD_APPROVE_REWARD
         lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
-        lead_owner.balance = (lead_owner.balance or 0) + LEAD_APPROVE_REWARD
+        lead_owner.balance = (lead_owner.balance or 0) + reward
         lead_owner.save(update_fields=["balance"])
         # Сохраняем текущую ставку баланс-админа в логе
         _ba_rate = None
@@ -599,16 +608,17 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
             action=LeadReviewLog.Action.APPROVED,
             balance_admin_rate_snapshot=_ba_rate,
         )
-        # Начислить партнёру за одобренный лид реферала
-        partner_owner_id = lead.user.partner_owner_id
-        if partner_owner_id:
-            from .models import PartnerEarning
-            partner = User.objects.select_for_update().get(pk=partner_owner_id)
-            rate = partner.partner_rate or 10
-            PartnerEarning.objects.create(partner=partner, lead=lead, amount=rate)
-            partner.balance = (partner.balance or 0) + rate
-            partner.save(update_fields=["balance"])
-    msg = f"Лид #{lead_id} одобрен. Пользователю начислено {LEAD_APPROVE_REWARD} руб."
+        # Начислить партнёру — только для лидов из Отдела поиска (не дожим)
+        if not is_dozhim:
+            partner_owner_id = lead.user.partner_owner_id
+            if partner_owner_id:
+                from .models import PartnerEarning
+                partner = User.objects.select_for_update().get(pk=partner_owner_id)
+                rate = partner.partner_rate or 10
+                PartnerEarning.objects.create(partner=partner, lead=lead, amount=rate)
+                partner.balance = (partner.balance or 0) + rate
+                partner.save(update_fields=["balance"])
+    msg = f"Лид #{lead_id} одобрен. Пользователю начислено {reward} руб."
     messages.success(request, msg)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return JsonResponse({"success": True, "message": msg})
@@ -640,18 +650,20 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                 lead_refresh.reviewed_by = request.user
                 lead_refresh.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
                 if was_approved:
-                    reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
+                    _is_dz = lead_refresh.lead_type and lead_refresh.lead_type.slug == "dozhim"
+                    reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if _is_dz else getattr(settings, "LEAD_APPROVE_REWARD", 40)
                     lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
                     lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
                     lead_owner.save(update_fields=["balance"])
-                    # Откат партнёрского заработка
-                    from .models import PartnerEarning
-                    pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
-                    if pe:
-                        partner = User.objects.select_for_update().get(pk=pe.partner_id)
-                        partner.balance = max(0, (partner.balance or 0) - pe.amount)
-                        partner.save(update_fields=["balance"])
-                        pe.delete()
+                    # Откат партнёрского заработка (только для лидов поиска)
+                    if not _is_dz:
+                        from .models import PartnerEarning
+                        pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
+                        if pe:
+                            partner = User.objects.select_for_update().get(pk=pe.partner_id)
+                            partner.balance = max(0, (partner.balance or 0) - pe.amount)
+                            partner.save(update_fields=["balance"])
+                            pe.delete()
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REJECTED)
             messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
@@ -688,18 +700,19 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                 lead_refresh.reviewed_by = request.user
                 lead_refresh.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by"])
                 if was_approved:
-                    reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
+                    _is_dz = lead_refresh.lead_type and lead_refresh.lead_type.slug == "dozhim"
+                    reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if _is_dz else getattr(settings, "LEAD_APPROVE_REWARD", 40)
                     lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
                     lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
                     lead_owner.save(update_fields=["balance"])
-                    # Откат партнёрского заработка
-                    from .models import PartnerEarning
-                    pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
-                    if pe:
-                        partner = User.objects.select_for_update().get(pk=pe.partner_id)
-                        partner.balance = max(0, (partner.balance or 0) - pe.amount)
-                        partner.save(update_fields=["balance"])
-                        pe.delete()
+                    if not _is_dz:
+                        from .models import PartnerEarning
+                        pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
+                        if pe:
+                            partner = User.objects.select_for_update().get(pk=pe.partner_id)
+                            partner.balance = max(0, (partner.balance or 0) - pe.amount)
+                            partner.save(update_fields=["balance"])
+                            pe.delete()
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REWORK)
             messages.success(request, f"Лид #{lead_id} отправлен на доработку." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme

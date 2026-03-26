@@ -813,6 +813,21 @@ class PartnerLink(TimeStampedModel):
         return f"PartnerLink({self.code}) → @{self.partner.username}"
 
 
+class DozhimIssuedLead(TimeStampedModel):
+    """Одобренный лид из Отдела поиска, выданный пользователю для дожима."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="dozhim_issued_leads")
+    lead = models.ForeignKey("Lead", on_delete=models.CASCADE, related_name="dozhim_issues")
+
+    class Meta:
+        unique_together = ("user", "lead")
+        verbose_name = "Выданный лид для дожима"
+        verbose_name_plural = "Выданные лиды для дожима"
+
+    def __str__(self) -> str:
+        return f"DozhimIssued(user={self.user_id}, lead={self.lead_id})"
+
+
 class PartnerEarning(TimeStampedModel):
     """Начисление партнёру за одобренный лид привлечённого пользователя."""
 

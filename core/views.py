@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 
-from .forms import BaseRequestForm, LeadReportForm, LeadReworkUserForm, UserRegistrationForm
+from .forms import BaseRequestForm, DozhimLeadReportForm, LeadReportForm, LeadReworkUserForm, UserRegistrationForm
 from .lead_utils import (
     LEAD_VIDEO_EXTENSIONS,
     _get_attachment_extension,
@@ -26,7 +26,7 @@ from .lead_utils import (
 )
 from django.conf import settings
 
-from .models import BaseType, Contact, ContactRequest, Lead, SupportMessage, SupportThread, User, UserBaseLimit, WithdrawalRequest
+from .models import BaseType, Contact, ContactRequest, DozhimIssuedLead, Lead, LeadType, SupportMessage, SupportThread, User, UserBaseLimit, WithdrawalRequest
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +207,10 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         withdrawal_requests_pending_count = WithdrawalRequest.objects.filter(status="pending").count()
         pending_leads_count = Lead.objects.filter(
             status__in=(Lead.Status.PENDING, Lead.Status.REWORK)
+        ).exclude(lead_type__slug="dozhim").count()
+        dozhim_pending_count = Lead.objects.filter(
+            status__in=(Lead.Status.PENDING, Lead.Status.REWORK),
+            lead_type__slug="dozhim",
         ).count()
         return render(
             request,
@@ -218,6 +222,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 "contact_requests_pending_count": contact_requests_pending_count,
                 "withdrawal_requests_pending_count": withdrawal_requests_pending_count,
                 "pending_leads_count": pending_leads_count,
+                "dozhim_pending_count": dozhim_pending_count,
             },
         )
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
@@ -824,6 +829,7 @@ def leads_my_list(request: HttpRequest) -> HttpResponse:
     try:
         leads_qs = (
             Lead.objects.filter(user=user)
+            .exclude(lead_type__slug="dozhim")
             .select_related("lead_type")
             .order_by("-created_at")
         )
@@ -834,7 +840,7 @@ def leads_my_list(request: HttpRequest) -> HttpResponse:
             page_number = 1
         page_obj = paginator.get_page(page_number)
         lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
-        agg = Lead.objects.filter(user=user).aggregate(m=Max("updated_at"))
+        agg = Lead.objects.filter(user=user).exclude(lead_type__slug="dozhim").aggregate(m=Max("updated_at"))
         leads_updated_at = agg.get("m").isoformat() if agg.get("m") else ""
         return render(
             request,
@@ -952,13 +958,14 @@ def leads_stats_placeholder(request: HttpRequest) -> HttpResponse:
     today_start, today_end = day_bounds(from_day)
     yesterday_start, yesterday_end = day_bounds(from_day - timedelta(days=1))
 
+    _exclude_dozhim = Q(lead_type__slug="dozhim")
     today_count = (
         Lead.objects.filter(
             user=user,
             status=Lead.Status.APPROVED,
             created_at__gte=today_start,
             created_at__lt=today_end,
-        ).count()
+        ).exclude(_exclude_dozhim).count()
     )
     yesterday_count = (
         Lead.objects.filter(
@@ -966,9 +973,9 @@ def leads_stats_placeholder(request: HttpRequest) -> HttpResponse:
             status=Lead.Status.APPROVED,
             created_at__gte=yesterday_start,
             created_at__lt=yesterday_end,
-        ).count()
+        ).exclude(_exclude_dozhim).count()
     )
-    total_count = Lead.objects.filter(user=user, status=Lead.Status.APPROVED).count()
+    total_count = Lead.objects.filter(user=user, status=Lead.Status.APPROVED).exclude(_exclude_dozhim).count()
 
     return render(
         request,
@@ -1095,4 +1102,221 @@ def ref_register(request: HttpRequest, code: str) -> HttpResponse:
         form = UserRegistrationForm()
 
     return render(request, "auth/ref_register.html", {"form": form, "code": code, "standalone_admin": ref_link.standalone_admin})
+
+
+# ──────────────────────────────────────────────────────────
+#  Отдел дожима
+# ──────────────────────────────────────────────────────────
+
+@login_required
+@require_http_methods(["POST"])
+def switch_department(request: HttpRequest) -> HttpResponse:
+    """Переключение между «Отдел поиска» и «Отдел дожима» (session)."""
+    dept = request.POST.get("department", "search")
+    if dept not in ("search", "dozhim"):
+        dept = "search"
+    request.session["department"] = dept
+    return redirect("dashboard")
+
+
+@login_required
+def dozhim_contacts(request: HttpRequest) -> HttpResponse:
+    """Выдача 10 одобренных лидов из Отдела поиска для дожима."""
+    user = request.user
+    if not _ensure_user_approved(request):
+        return redirect("dashboard")
+
+    batch_size = getattr(settings, "DOZHIM_BATCH_SIZE", 10)
+    allocated = []
+
+    if request.method == "POST":
+        with transaction.atomic():
+            available = (
+                Lead.objects.select_for_update()
+                .filter(status=Lead.Status.APPROVED)
+                .exclude(lead_type__slug="dozhim")
+                .exclude(dozhim_issues__isnull=False)
+                .order_by("reviewed_at", "id")[:batch_size]
+            )
+            leads_to_issue = list(available)
+            for lead in leads_to_issue:
+                DozhimIssuedLead.objects.create(user=user, lead=lead)
+            allocated = leads_to_issue
+
+        if allocated:
+            messages.success(request, f"Вы получили {len(allocated)} лидов для дожима.")
+        else:
+            messages.warning(request, "Нет доступных лидов для дожима.")
+
+    # Ранее выданные лиды (последние 50)
+    issued = (
+        DozhimIssuedLead.objects.filter(user=user)
+        .select_related("lead", "lead__lead_type")
+        .order_by("-created_at")[:50]
+    )
+
+    return render(request, "core/dozhim_contacts.html", {
+        "allocated": allocated,
+        "issued": issued,
+        "batch_size": batch_size,
+    })
+
+
+@login_required
+def dozhim_leads_report(request: HttpRequest) -> HttpResponse:
+    """Отправка отчёта в Отделе дожима."""
+    user = request.user
+    if not _ensure_user_approved(request):
+        return redirect("dashboard")
+
+    if request.method == "POST":
+        form = DozhimLeadReportForm(request.POST, request.FILES)
+        if form.is_valid():
+            raw = form.cleaned_data.get("raw_contact") or ""
+            if _lead_exists_globally(raw):
+                messages.error(
+                    request,
+                    "Такой контакт уже есть в базе отчётов. Дубликаты не принимаются.",
+                )
+            else:
+                try:
+                    lead = form.save(commit=False)
+                    lead.user = user
+                    lead.raw_contact = raw.strip()
+                    lead.source = raw.strip()
+                    lead.normalized_contact = normalize_lead_contact(raw)
+                    lead.lead_type = LeadType.objects.get(slug="dozhim")
+                    lead.base_type = determine_base_type_for_contact(raw, user)
+                    lead.needs_team_contact = False
+                    lead.save()
+                    ext = _get_attachment_extension(lead.attachment)
+                    if ext in LEAD_VIDEO_EXTENSIONS:
+                        lead_id = lead.id
+
+                        def _compress_bg(lid=lead_id):
+                            try:
+                                l = Lead.objects.filter(pk=lid).first()
+                                if l and l.attachment:
+                                    compress_lead_attachment(l)
+                            except Exception as e:
+                                logger.warning("Компрессия видео (dozhim lead %s): %s", lid, e)
+
+                        _bg_executor.submit(_compress_bg)
+                    else:
+                        compress_lead_attachment(lead)
+                    messages.success(request, "Отчёт (дожим) отправлен на проверку.")
+                    form = DozhimLeadReportForm()
+                except Exception as e:
+                    logger.exception("Ошибка при сохранении дожим-лида: %s", e)
+                    messages.error(request, "Не удалось сохранить отчёт. Попробуйте ещё раз.")
+    else:
+        form = DozhimLeadReportForm()
+
+    return render(request, "core/dozhim_leads_report.html", {"form": form})
+
+
+@login_required
+def dozhim_leads_my_list(request: HttpRequest) -> HttpResponse:
+    """Список дожим-лидов пользователя."""
+    user = request.user
+    if not _ensure_user_approved(request):
+        return redirect("dashboard")
+    leads_qs = (
+        Lead.objects.filter(user=user, lead_type__slug="dozhim")
+        .select_related("lead_type")
+        .order_by("-created_at")
+    )
+    paginator = Paginator(leads_qs, 30)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    dozhim_reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30)
+    return render(request, "core/dozhim_leads_my_list.html", {
+        "page_obj": page_obj,
+        "lead_approve_reward": dozhim_reward,
+    })
+
+
+@login_required
+def dozhim_leads_stats(request: HttpRequest) -> HttpResponse:
+    """Статистика дожим-лидов."""
+    user = request.user
+    if not _ensure_user_approved(request):
+        return redirect("dashboard")
+
+    tz = ZoneInfo("Europe/Moscow")
+    now = datetime.now(tz)
+    from_day = now.date()
+    if now.hour >= 20:
+        from_day = now.date() + timedelta(days=1)
+
+    def day_bounds(day):
+        start = datetime.combine(day - timedelta(days=1), time(hour=20), tzinfo=tz)
+        end = datetime.combine(day, time(hour=20), tzinfo=tz)
+        return start.astimezone(dt_utc.utc), end.astimezone(dt_utc.utc)
+
+    _dz = Q(lead_type__slug="dozhim")
+    today_start, today_end = day_bounds(from_day)
+    yesterday_start, yesterday_end = day_bounds(from_day - timedelta(days=1))
+
+    today_count = Lead.objects.filter(
+        _dz, user=user, status=Lead.Status.APPROVED,
+        created_at__gte=today_start, created_at__lt=today_end,
+    ).count()
+    yesterday_count = Lead.objects.filter(
+        _dz, user=user, status=Lead.Status.APPROVED,
+        created_at__gte=yesterday_start, created_at__lt=yesterday_end,
+    ).count()
+    total_count = Lead.objects.filter(_dz, user=user, status=Lead.Status.APPROVED).count()
+
+    return render(request, "core/dozhim_leads_stats.html", {
+        "today_count": today_count,
+        "yesterday_count": yesterday_count,
+        "total_count": total_count,
+        "dozhim_reward": getattr(settings, "DOZHIM_APPROVE_REWARD", 30),
+    })
+
+
+@login_required
+def dozhim_lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
+    """Доработка дожим-лида."""
+    user = request.user
+    if not _ensure_user_approved(request):
+        return redirect("dashboard")
+    lead = get_object_or_404(Lead, pk=lead_id, user=user, lead_type__slug="dozhim", status=Lead.Status.REWORK)
+
+    if request.method == "POST":
+        form = DozhimLeadReportForm(request.POST, request.FILES, instance=lead)
+        if form.is_valid():
+            raw = form.cleaned_data.get("raw_contact") or ""
+            if _lead_exists_globally(raw, exclude_lead_id=lead.pk):
+                messages.error(request, "Такой контакт уже есть в базе отчётов. Дубликаты не принимаются.")
+            else:
+                lead = form.save(commit=False)
+                lead.raw_contact = raw.strip()
+                lead.source = raw.strip()
+                lead.normalized_contact = normalize_lead_contact(raw)
+                lead.status = Lead.Status.PENDING
+                lead.rejection_reason = ""
+                lead.save()
+                if lead.attachment:
+                    ext = _get_attachment_extension(lead.attachment)
+                    if ext in LEAD_VIDEO_EXTENSIONS:
+                        lid = lead.id
+
+                        def _compress_redo_bg(lid=lid):
+                            try:
+                                l = Lead.objects.filter(pk=lid).first()
+                                if l and l.attachment:
+                                    compress_lead_attachment(l)
+                            except Exception as e:
+                                logger.warning("Компрессия видео (dozhim redo %s): %s", lid, e)
+
+                        _bg_executor.submit(_compress_redo_bg)
+                    else:
+                        compress_lead_attachment(lead)
+                messages.success(request, "Отчёт отправлен на повторную проверку.")
+                return redirect("dozhim_leads_my_list")
+    else:
+        form = DozhimLeadReportForm(instance=lead)
+
+    return render(request, "core/dozhim_lead_redo.html", {"form": form, "lead": lead})
 

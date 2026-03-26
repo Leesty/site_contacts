@@ -37,12 +37,60 @@
   {% endif %}
 
   <div class="row row-cols-1 row-cols-md-2 g-3 mt-2 dashboard-grid">
+    {% if department == 'dozhim' %}
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon contacts mb-2">
-            📦
-          </div>
+          <div class="card-icon contacts mb-2">🔄</div>
+          <h2 class="h5 mb-2">Лиды для дожима</h2>
+          <p class="text-muted small mb-3">
+            Получите одобренные лиды из Отдела поиска для дожима.
+          </p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'dozhim_contacts' %}">Получить лиды</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="card-icon leads mb-2">📋</div>
+          <h2 class="h5 mb-2">Мои лиды (Дожим)</h2>
+          <p class="text-muted small mb-3">
+            Ваши отчёты по дожиму. Оплата за одобренный — 30 руб.
+          </p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'dozhim_leads_my_list' %}">Перейти</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="card-icon report mb-2">📄</div>
+          <h2 class="h5 mb-2">Отчёт (Дожим)</h2>
+          <p class="text-muted small mb-3">
+            Отправьте отчёт по дожиму — контакт, видео, комментарий.
+          </p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'dozhim_leads_report' %}">Отправить отчёт</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="card-icon stats mb-2">📊</div>
+          <h2 class="h5 mb-2">Статистика (Дожим)</h2>
+          <p class="text-muted small mb-3">
+            Сводка по вашим дожим-лидам за сегодня, вчера и всего.
+          </p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'dozhim_leads_stats' %}">Перейти</a>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="card-icon contacts mb-2">📦</div>
           <h2 class="h5 mb-2">Получить списки контактов</h2>
           <p class="text-muted small mb-3">
             Выдача новых контактов из доступных баз с учётом лимитов и дополнительных квот.
@@ -51,13 +99,10 @@
         </div>
       </div>
     </div>
-
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon leads mb-2">
-            📋
-          </div>
+          <div class="card-icon leads mb-2">📋</div>
           <h2 class="h5 mb-2">Мои лиды</h2>
           <p class="text-muted small mb-3">
             Список ваших лидов, статусы проверки. Одобренные лиды оплачиваются автоматически.
@@ -66,13 +111,10 @@
         </div>
       </div>
     </div>
-
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon report mb-2">
-            📄
-          </div>
+          <div class="card-icon report mb-2">📄</div>
           <h2 class="h5 mb-2">Отчёт по лидам</h2>
           <p class="text-muted small mb-3">
             Загрузка файлов и скриншотов, фиксация результатов работы по каждому контакту.
@@ -81,13 +123,10 @@
         </div>
       </div>
     </div>
-
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon stats mb-2">
-            📊
-          </div>
+          <div class="card-icon stats mb-2">📊</div>
           <h2 class="h5 mb-2">Статистика лидов</h2>
           <p class="text-muted small mb-3">
             Сводка по вашим лидам за сегодня, вчера и всё время с учётом «сдвинутого» дня.
@@ -96,6 +135,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
     <div class="col">
       <div class="card h-100 shadow-sm">
