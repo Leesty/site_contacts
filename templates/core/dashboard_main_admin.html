@@ -122,15 +122,16 @@
 
   {# ═══ Статистика админов ═══ #}
   {% if admin_stats_list %}
-  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Админы — заработок</h6>
+  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Заработок команды</h6>
   <div class="card shadow-sm mb-4">
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-sm mb-0 align-middle table-dark-site">
           <thead>
             <tr>
-              <th>Админ</th>
-              <th>Действий</th>
+              <th>Имя</th>
+              <th>Роль</th>
+              <th>Действий / рефералов</th>
               <th>Заработано</th>
               <th>Доступно</th>
               <th></th>
@@ -140,6 +141,7 @@
             {% for s in admin_stats_list %}
               <tr>
                 <td>@{{ s.user.username }}</td>
+                <td><span class="badge bg-secondary" style="font-size:10px;">{{ s.role_label }}</span></td>
                 <td>{{ s.actions }}</td>
                 <td>{{ s.earned }} ₽</td>
                 <td><strong>{{ s.available }} ₽</strong></td>
