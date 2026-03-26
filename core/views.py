@@ -212,6 +212,16 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             status__in=(Lead.Status.PENDING, Lead.Status.REWORK),
             lead_type__slug="dozhim",
         ).count()
+        # Заработок админа: 2.5р за каждое действие (approve/reject/rework)
+        from .models import LeadReviewLog
+        from decimal import Decimal
+        from django.db.models import Sum
+        admin_actions = LeadReviewLog.objects.filter(admin=user).count()
+        admin_earned = int(admin_actions * Decimal("2.5"))
+        admin_withdrawn = WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
+        admin_balance = max(0, admin_earned - admin_withdrawn)
+        admin_withdrawal_pending = WithdrawalRequest.objects.filter(user=user, status="pending").exists()
+        admin_can_withdraw = admin_balance >= getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500) and not admin_withdrawal_pending
         return render(
             request,
             "core/dashboard_admin.html",
@@ -223,6 +233,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 "withdrawal_requests_pending_count": withdrawal_requests_pending_count,
                 "pending_leads_count": pending_leads_count,
                 "dozhim_pending_count": dozhim_pending_count,
+                "admin_balance": admin_balance,
+                "admin_earned": admin_earned,
+                "admin_actions": admin_actions,
+                "admin_can_withdraw": admin_can_withdraw,
+                "admin_withdrawal_pending": admin_withdrawal_pending,
             },
         )
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
@@ -581,6 +596,19 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             or 0
         )
         balance = max(0, earned - withdrawn)
+    elif getattr(user, "role", None) == "admin":
+        from django.db.models import Sum
+        from .models import LeadReviewLog
+        from decimal import Decimal
+        admin_actions = LeadReviewLog.objects.filter(admin=user).count()
+        earned = int(admin_actions * Decimal("2.5"))
+        withdrawn = (
+            WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
+            .aggregate(s=Sum("amount"))
+            .get("s")
+            or 0
+        )
+        balance = max(0, earned - withdrawn)
     else:
         balance = getattr(user, "balance", 0) or 0
     if balance < withdrawal_min:
@@ -607,7 +635,8 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         with transaction.atomic():
             user_refresh = User.objects.select_for_update().get(pk=user.pk)
             # Повторно считаем баланс внутри транзакции, чтобы учесть параллельные изменения.
-            if getattr(user_refresh, "role", None) == "balance_admin":
+            _role = getattr(user_refresh, "role", None)
+            if _role == "balance_admin":
                 from django.db.models import Sum
                 from .models import LeadReviewLog
 
@@ -619,6 +648,31 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 rate = getattr(user_refresh, "balance_admin_rate", None) or Decimal("5")
                 offset = getattr(user_refresh, "balance_admin_earnings_offset", None) or Decimal("0")
                 earned = int(total_approved * rate + offset)
+                withdrawn = (
+                    WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
+                    .aggregate(s=Sum("amount"))
+                    .get("s")
+                    or 0
+                )
+                current_balance = max(0, earned - withdrawn)
+                if WithdrawalRequest.objects.filter(user=user_refresh, status="pending").exists():
+                    messages.info(request, "У вас уже есть заявка на вывод на рассмотрении.")
+                    return redirect("dashboard")
+                if current_balance < withdrawal_min:
+                    messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
+                    return redirect("dashboard")
+                WithdrawalRequest.objects.create(
+                    user=user_refresh,
+                    amount=current_balance,
+                    payout_details=payout_details,
+                    status="pending",
+                )
+            elif _role == "admin":
+                from django.db.models import Sum
+                from .models import LeadReviewLog
+                from decimal import Decimal
+                admin_actions = LeadReviewLog.objects.filter(admin=user_refresh).count()
+                earned = int(admin_actions * Decimal("2.5"))
                 withdrawn = (
                     WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
                     .aggregate(s=Sum("amount"))
@@ -656,7 +710,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 user_refresh.save(update_fields=["balance"])
         messages.success(
             request,
-            f"Заявка на вывод {current_balance} руб. отправлена. {'Баланс обнулён. ' if getattr(user_refresh, 'role', None) != 'balance_admin' else ''}Ожидайте решения администратора.",
+            f"Заявка на вывод {current_balance} руб. отправлена. {'Баланс обнулён. ' if _role not in ('balance_admin', 'admin') else ''}Ожидайте решения администратора.",
         )
         return redirect("dashboard")
 
@@ -1121,24 +1175,29 @@ def switch_department(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def dozhim_contacts(request: HttpRequest) -> HttpResponse:
-    """Выдача 10 одобренных лидов из Отдела поиска для дожима."""
+    """Выдача 10 одобренных лидов из Отдела поиска для дожима с фильтром по категории."""
     user = request.user
     if not _ensure_user_approved(request):
         return redirect("dashboard")
 
     batch_size = getattr(settings, "DOZHIM_BATCH_SIZE", 10)
     allocated = []
+    # Категории для фильтра
+    lead_types = LeadType.objects.exclude(slug__in=("dozhim", "self")).order_by("order", "id")
+    selected_type_id = request.POST.get("lead_type") or request.GET.get("lead_type") or ""
 
-    if request.method == "POST":
+    if request.method == "POST" and "get_leads" in request.POST:
         with transaction.atomic():
             available = (
                 Lead.objects.select_for_update()
                 .filter(status=Lead.Status.APPROVED)
                 .exclude(lead_type__slug="dozhim")
                 .exclude(dozhim_issues__isnull=False)
-                .order_by("reviewed_at", "id")[:batch_size]
+                .order_by("reviewed_at", "id")
             )
-            leads_to_issue = list(available)
+            if selected_type_id:
+                available = available.filter(lead_type_id=selected_type_id)
+            leads_to_issue = list(available[:batch_size])
             for lead in leads_to_issue:
                 DozhimIssuedLead.objects.create(user=user, lead=lead)
             allocated = leads_to_issue
@@ -1159,6 +1218,8 @@ def dozhim_contacts(request: HttpRequest) -> HttpResponse:
         "allocated": allocated,
         "issued": issued,
         "batch_size": batch_size,
+        "lead_types": lead_types,
+        "selected_type_id": int(selected_type_id) if selected_type_id else "",
     })
 
 

@@ -198,5 +198,25 @@
       </div>
     </div>
     {% endif %}
+
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="card-icon report mb-2">💵</div>
+          <h2 class="h5 mb-2">Мой заработок</h2>
+          <p class="text-muted small mb-3">
+            {{ admin_actions }} действий × 2.5 руб. = {{ admin_earned }} руб. заработано.<br>
+            Доступно к выводу: <strong>{{ admin_balance }} руб.</strong>
+          </p>
+          {% if admin_withdrawal_pending %}
+            <span class="badge bg-warning text-dark">Заявка на вывод на рассмотрении</span>
+          {% elif admin_can_withdraw %}
+            <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal' %}">Вывести средства</a>
+          {% else %}
+            <span class="text-muted small">Вывод от 500 руб.</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
   </div>
 {% endblock %}

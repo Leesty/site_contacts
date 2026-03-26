@@ -40,12 +40,12 @@
               </li>
               {% elif not user.is_staff and not user.is_superuser and user.role != 'support' and user.role != 'admin' and user.role != 'standalone_admin' and user.role != 'balance_admin' %}
               {% if user.role == 'user' and user.status == 'approved' %}
-              <li class="nav-item me-2">
-                <form method="post" action="{% url 'switch_department' %}" class="d-inline">
+              <li class="nav-item me-3 d-flex align-items-center">
+                <form method="post" action="{% url 'switch_department' %}" class="d-inline" id="dept-switch-form">
                   {% csrf_token %}
-                  <div class="btn-group btn-group-sm" role="group">
-                    <button type="submit" name="department" value="search" class="btn {% if department == 'dozhim' %}btn-outline-light{% else %}btn-primary{% endif %} py-0 px-2">Поиск</button>
-                    <button type="submit" name="department" value="dozhim" class="btn {% if department == 'dozhim' %}btn-primary{% else %}btn-outline-light{% endif %} py-0 px-2">Дожим</button>
+                  <div class="btn-group" role="group" style="border-radius: 20px; overflow: hidden;">
+                    <button type="submit" name="department" value="search" class="btn btn-sm {% if department != 'dozhim' %}btn-light text-dark{% else %}btn-outline-secondary text-white-50{% endif %}" style="border-radius: 20px 0 0 20px; padding: 2px 14px; font-size: 13px; font-weight: 500; border: 1px solid rgba(255,255,255,0.2);">Отдел поиска</button>
+                    <button type="submit" name="department" value="dozhim" class="btn btn-sm {% if department == 'dozhim' %}btn-light text-dark{% else %}btn-outline-secondary text-white-50{% endif %}" style="border-radius: 0 20px 20px 0; padding: 2px 14px; font-size: 13px; font-weight: 500; border: 1px solid rgba(255,255,255,0.2);">Отдел дожима</button>
                   </div>
                 </form>
               </li>
