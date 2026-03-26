@@ -105,8 +105,13 @@ def _is_admin(user) -> bool:
     return bool(
         user.is_staff
         or user.is_superuser
-        or getattr(user, "role", None) in ("support", "admin")
+        or getattr(user, "role", None) in ("support", "admin", "main_admin")
     )
+
+
+def _is_main_admin(user) -> bool:
+    """Пользователь — главный админ (полный контроль)."""
+    return getattr(user, "role", None) == "main_admin"
 
 
 def _is_standalone_admin(user) -> bool:
@@ -199,6 +204,9 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "pending_worker_self_leads_count": pending_worker_self_leads_count,
         })
     if _is_admin(user):
+        from .models import LeadReviewLog
+        from decimal import Decimal
+        from django.db.models import Sum
         pending_count = User.objects.filter(status=User.Status.PENDING).count()
         unread_threads_count = SupportThread.objects.filter(
             Q(last_read_at__isnull=True) | Q(updated_at__gt=F("last_read_at"))
@@ -213,33 +221,41 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             lead_type__slug="dozhim",
         ).count()
         # Заработок админа: 2.5р за каждое действие (approve/reject/rework)
-        from .models import LeadReviewLog
-        from decimal import Decimal
-        from django.db.models import Sum
         admin_actions = LeadReviewLog.objects.filter(admin=user).count()
         admin_earned = int(admin_actions * Decimal("2.5"))
         admin_withdrawn = WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
         admin_balance = max(0, admin_earned - admin_withdrawn)
         admin_withdrawal_pending = WithdrawalRequest.objects.filter(user=user, status="pending").exists()
         admin_can_withdraw = admin_balance >= getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500) and not admin_withdrawal_pending
-        return render(
-            request,
-            "core/dashboard_admin.html",
-            {
-                "user": user,
-                "pending_requests_count": pending_count,
-                "unread_threads_count": unread_threads_count,
-                "contact_requests_pending_count": contact_requests_pending_count,
-                "withdrawal_requests_pending_count": withdrawal_requests_pending_count,
-                "pending_leads_count": pending_leads_count,
-                "dozhim_pending_count": dozhim_pending_count,
-                "admin_balance": admin_balance,
-                "admin_earned": admin_earned,
-                "admin_actions": admin_actions,
-                "admin_can_withdraw": admin_can_withdraw,
-                "admin_withdrawal_pending": admin_withdrawal_pending,
-            },
-        )
+
+        ctx = {
+            "user": user,
+            "pending_requests_count": pending_count,
+            "unread_threads_count": unread_threads_count,
+            "contact_requests_pending_count": contact_requests_pending_count,
+            "withdrawal_requests_pending_count": withdrawal_requests_pending_count,
+            "pending_leads_count": pending_leads_count,
+            "dozhim_pending_count": dozhim_pending_count,
+            "admin_balance": admin_balance,
+            "admin_earned": admin_earned,
+            "admin_actions": admin_actions,
+            "admin_can_withdraw": admin_can_withdraw,
+            "admin_withdrawal_pending": admin_withdrawal_pending,
+        }
+
+        if _is_main_admin(user):
+            # Статистика всех админов для main_admin
+            all_admins = User.objects.filter(role__in=("admin", "main_admin")).order_by("username")
+            admin_stats_list = []
+            for a in all_admins:
+                a_actions = LeadReviewLog.objects.filter(admin=a).count()
+                a_earned = int(a_actions * Decimal("2.5"))
+                a_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
+                admin_stats_list.append({"user": a, "actions": a_actions, "earned": a_earned, "available": max(0, a_earned - a_withdrawn)})
+            ctx["admin_stats_list"] = admin_stats_list
+            return render(request, "core/dashboard_main_admin.html", ctx)
+
+        return render(request, "core/dashboard_admin.html", ctx)
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     balance = getattr(user, "balance", 0) or 0
     withdrawal_pending = WithdrawalRequest.objects.filter(user=user, status="pending").exists()
@@ -275,8 +291,8 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
     """JSON API для опроса обновлений: уведомления, баланс, лиды, счётчики админа. Для автообновления без перезагрузки."""
     user = request.user
     balance = getattr(user, "balance", 0) or 0
-    # Для role=admin баланс считается из LeadReviewLog
-    if getattr(user, "role", None) == "admin":
+    # Для role=admin/main_admin баланс считается из LeadReviewLog
+    if getattr(user, "role", None) in ("admin", "main_admin"):
         from .models import LeadReviewLog
         from django.db.models import Sum
         from decimal import Decimal
@@ -606,7 +622,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             or 0
         )
         balance = max(0, earned - withdrawn)
-    elif getattr(user, "role", None) == "admin":
+    elif getattr(user, "role", None) in ("admin", "main_admin"):
         from django.db.models import Sum
         from .models import LeadReviewLog
         from decimal import Decimal
@@ -677,7 +693,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     payout_details=payout_details,
                     status="pending",
                 )
-            elif _role == "admin":
+            elif _role in ("admin", "main_admin"):
                 from django.db.models import Sum
                 from .models import LeadReviewLog
                 from decimal import Decimal

@@ -26,7 +26,8 @@ class User(AbstractUser):
     class Role(models.TextChoices):
         USER = "user", "Пользователь"
         SUPPORT = "support", "Поддержка"
-        ADMIN = "admin", "Администратор"
+        ADMIN = "admin", "Админ по отчётам"
+        MAIN_ADMIN = "main_admin", "Главный админ"
         STANDALONE_ADMIN = "standalone_admin", "Самостоятельный админ"
         BALANCE_ADMIN = "balance_admin", "Баланс‑админ"
         WORKER = "worker", "Исполнитель"
@@ -95,7 +96,7 @@ class User(AbstractUser):
 
     @property
     def is_support(self) -> bool:
-        return self.role in {self.Role.SUPPORT, self.Role.ADMIN}
+        return self.role in {self.Role.SUPPORT, self.Role.ADMIN, self.Role.MAIN_ADMIN}
 
 
 class TimeStampedModel(models.Model):

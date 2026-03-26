@@ -30,7 +30,7 @@ def admin_balance_context(request):
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
             return {}
-        if getattr(user, "role", None) != "admin":
+        if getattr(user, "role", None) not in ("admin", "main_admin"):
             return {}
         from .models import LeadReviewLog, WithdrawalRequest
         from django.db.models import Sum

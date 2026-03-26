@@ -95,17 +95,6 @@
       <div class="card h-100 shadow-sm">
         <div class="card-body py-3">
           <div class="d-flex align-items-center justify-content-between mb-1">
-            <span class="fw-semibold" style="font-size: 14px;">💰 Выводы</span>
-            <span id="admin-withdrawal-requests" class="badge bg-danger" style="{% if not withdrawal_requests_pending_count %}display:none;{% endif %}">{{ withdrawal_requests_pending_count|default:0 }}</span>
-          </div>
-          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_withdrawal_requests' %}">Заявки</a>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body py-3">
-          <div class="d-flex align-items-center justify-content-between mb-1">
             <span class="fw-semibold" style="font-size: 14px;">💬 Поддержка</span>
             <span id="admin-unread-threads" class="badge bg-danger" style="{% if not unread_threads_count %}display:none;{% endif %}">{{ unread_threads_count|default:0 }}</span>
           </div>
@@ -179,17 +168,7 @@
           </div>
         </div>
       </div>
-      {% if user.is_superuser %}
-      <div class="col">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body py-3">
-            <span class="fw-semibold" style="font-size: 14px;">⚙️ Настройки сайта</span>
-            <br>
-            <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_site_settings' %}">Настроить</a>
-          </div>
-        </div>
-      </div>
-      {% endif %}
+      {# Настройки сайта — только у main_admin #}
     </div>
   </div>
 {% endblock %}

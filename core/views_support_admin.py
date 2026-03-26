@@ -884,9 +884,9 @@ def admin_user_limits(request: HttpRequest, user_id: int) -> HttpResponse:
 
 @login_required
 def admin_user_balance(request: HttpRequest, user_id: int) -> HttpResponse:
-    """Начисление или списание рублей пользователю (баланс)."""
-    if not _require_support(request):
-        return HttpResponseForbidden("Недостаточно прав.")
+    """Начисление или списание рублей пользователю (баланс). Только main_admin."""
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
     target_user = get_object_or_404(User, pk=user_id)
     if request.method == "POST":
         try:
@@ -1178,9 +1178,9 @@ def balance_admin_contact_requests(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
-    """Список заявок на вывод. Одобрить — подтвердить вывод (баланс уже обнулён). Отклонить — вернуть сумму на баланс."""
-    if not _require_support(request):
-        return HttpResponseForbidden("Недостаточно прав.")
+    """Список заявок на вывод. Только main_admin."""
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
     if request.method == "POST":
         action = request.POST.get("action")
         # ── одиночное действие ──────────────────────────────────────────
@@ -1721,9 +1721,9 @@ def download_leads_excel(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_site_settings(request: HttpRequest) -> HttpResponse:
-    """Настройки сайта: пример видео-отчёта и другие параметры."""
-    if not request.user.is_superuser:
-        return HttpResponseForbidden("Только для суперадминистраторов.")
+    """Настройки сайта: пример видео-отчёта и другие параметры. Только main_admin."""
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
     
     try:
         site_settings = SiteSettings.get_settings()
@@ -2330,19 +2330,29 @@ def admin_reset_password(request: HttpRequest) -> HttpResponse:
         action = request.POST.get("action", "")
         query = request.POST.get("username", "").strip()
 
+        _admin_roles = ("admin", "main_admin", "support", "balance_admin", "standalone_admin")
+        _is_main = getattr(request.user, "role", None) == "main_admin"
+
         if action == "search" and query:
             try:
                 found_user = User.objects.get(username=query)
+                # Обычные админы не могут сбрасывать пароль другим админам
+                if not _is_main and found_user.role in _admin_roles:
+                    found_user = None
+                    not_found = True
             except User.DoesNotExist:
                 not_found = True
 
         elif action == "reset" and query:
             try:
                 target = User.objects.get(username=query)
-                new_password = _generate_password()
-                target.set_password(new_password)
-                target.save(update_fields=["password"])
-                found_user = target
+                if not _is_main and target.role in _admin_roles:
+                    not_found = True
+                else:
+                    new_password = _generate_password()
+                    target.set_password(new_password)
+                    target.save(update_fields=["password"])
+                    found_user = target
             except User.DoesNotExist:
                 not_found = True
 
@@ -2403,9 +2413,9 @@ def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
-    """Страница статистики начислений админов (2.5р за действие)."""
-    if not _require_support(request):
-        return HttpResponseForbidden("Недостаточно прав.")
+    """Страница статистики начислений админов (2.5р за действие). Только main_admin."""
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
     from .models import LeadReviewLog
     from decimal import Decimal
 

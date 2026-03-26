@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Главный админ — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="mb-4">
+    <h1 class="h4 mb-1">Главный админ</h1>
+    <p class="text-muted small mb-0">{{ user.username }} — полный контроль над системой.</p>
+  </div>
+
+  {# ═══ Заработок ═══ #}
+  <div class="card shadow-sm mb-4" style="background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(99,102,241,0.05) 100%); border: 1px solid rgba(99,102,241,0.2);">
+    <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-3">
+        <span style="font-size: 13px;">💵 <strong>{{ admin_earned|default:0 }} ₽</strong> заработано</span>
+        <span class="text-white-50" style="font-size: 12px;">{{ admin_actions|default:0 }} действий</span>
+        <span style="font-size: 13px;">Доступно: <strong>{{ admin_balance|default:0 }} ₽</strong></span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        {% if admin_withdrawal_pending %}
+          <span class="badge bg-warning text-dark" style="font-size: 11px;">Заявка на вывод</span>
+        {% elif admin_can_withdraw %}
+          <a class="btn btn-success btn-sm py-0 px-2" style="font-size: 12px;" href="{% url 'request_withdrawal_create' %}">Вывести</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ═══ Отчёты ═══ #}
+  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Отчёты</h6>
+  <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">📝 Отдел поиска</h2>
+            <span id="admin-pending-leads" class="badge bg-danger" style="{% if not pending_leads_count %}display:none;{% endif %}">{{ pending_leads_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?dept=search">Перейти</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">🔄 Отдел дожима</h2>
+            {% if dozhim_pending_count %}<span class="badge bg-danger">{{ dozhim_pending_count }}</span>{% endif %}
+          </div>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?dept=dozhim">Перейти</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="h6 mb-2">📋 Все отчёты + поиск</h2>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?tab=all">Поиск</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ═══ Управление ═══ #}
+  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Управление</h6>
+  <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 g-3 mb-4">
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">👥 Пользователи</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_all_users' %}">Список</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">📋 Регистрации</span>
+            <span id="admin-pending-requests" class="badge bg-danger" style="font-size:10px;{% if not pending_requests_count %}display:none;{% endif %}">{{ pending_requests_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_users_pending' %}">Заявки</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">💰 Выводы</span>
+            <span id="admin-withdrawal-requests" class="badge bg-danger" style="font-size:10px;{% if not withdrawal_requests_pending_count %}display:none;{% endif %}">{{ withdrawal_requests_pending_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_withdrawal_requests' %}">Заявки</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">💬 Поддержка</span>
+            <span id="admin-unread-threads" class="badge bg-danger" style="font-size:10px;{% if not unread_threads_count %}display:none;{% endif %}">{{ unread_threads_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'support_threads_list' %}">Диалоги</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">📥 Контакты</span>
+            <span id="admin-contact-requests" class="badge bg-danger" style="font-size:10px;{% if not contact_requests_pending_count %}display:none;{% endif %}">{{ contact_requests_pending_count|default:0 }}</span>
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_contact_requests' %}">Запросы</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ═══ Статистика админов ═══ #}
+  {% if admin_stats_list %}
+  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Админы — заработок</h6>
+  <div class="card shadow-sm mb-4">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Админ</th>
+              <th>Действий</th>
+              <th>Заработано</th>
+              <th>Доступно</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in admin_stats_list %}
+              <tr>
+                <td>@{{ s.user.username }}</td>
+                <td>{{ s.actions }}</td>
+                <td>{{ s.earned }} ₽</td>
+                <td><strong>{{ s.available }} ₽</strong></td>
+                <td><a href="{% url 'admin_earnings_stats' %}?admin_id={{ s.user.id }}" class="btn btn-outline-primary btn-sm py-0" style="font-size:11px;">Детали</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ═══ Инструменты ═══ #}
+  <div class="mb-3">
+    <a class="text-white-50 text-decoration-none" style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; cursor: pointer;" data-bs-toggle="collapse" href="#mainAdminTools" role="button" aria-expanded="false">
+      Инструменты и настройки ▾
+    </a>
+  </div>
+  <div class="collapse" id="mainAdminTools">
+    <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 g-3 mb-4">
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">📊 Статистика</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_stats' %}">Открыть</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">📦 Базы (Excel)</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'bases_excel' %}">Загрузить</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">📋 Выгрузка лидов</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'download_leads_excel' %}">Скачать</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">🔑 Сброс пароля</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_reset_password' %}">Сбросить</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">☁️ Хранилище S3</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_media_storage_status' %}">Проверить</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">⚙️ Настройки сайта</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_site_settings' %}">Настроить</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">💵 Все начисления</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_earnings_stats' %}">Детали</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
