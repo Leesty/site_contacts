@@ -81,7 +81,7 @@
               </table>
             </div>
           {% else %}
-            <p class="text-muted small p-3 mb-0">Начислений пока нет. Приглашайте пользователей через реферальные ссылки — вы будете получать +10 руб. за каждый их одобренный лид.</p>
+            <p class="text-muted small p-3 mb-0">Начислений пока нет. Приглашайте пользователей через реферальные ссылки — вы будете получать +{{ partner_rate }} руб. за каждый их одобренный лид.</p>
           {% endif %}
         </div>
       </div>
@@ -95,7 +95,7 @@
           <strong>Реферальная ссылка</strong>
         </div>
         <div class="card-body">
-          <p class="small text-muted mb-2">Отправьте эту ссылку пользователям. За каждый их одобренный лид вы получаете +10 руб.</p>
+          <p class="small text-muted mb-2">Отправьте эту ссылку пользователям. За каждый их одобренный лид вы получаете +{{ partner_rate }} руб.</p>
           <div class="input-group input-group-sm">
             <input type="text" id="partner-ref-url" class="form-control font-monospace"
                    value="{{ request.scheme }}://{{ request.get_host }}{% url 'partner_ref_register' link.code %}"

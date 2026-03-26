@@ -16,7 +16,7 @@ from .models import PartnerEarning, PartnerLink, User, WithdrawalRequest
 
 logger = logging.getLogger(__name__)
 
-PARTNER_EARN_PER_LEAD = 10  # руб. за каждый одобренный лид
+PARTNER_EARN_PER_LEAD_DEFAULT = 10  # руб. за каждый одобренный лид (по умолчанию)
 
 
 def _require_partner(request: HttpRequest) -> bool:
@@ -63,6 +63,7 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         "withdrawal_pending": withdrawal_pending,
         "can_request_withdrawal": can_request_withdrawal,
         "withdrawal_min_balance": withdrawal_min,
+        "partner_rate": user.partner_rate or PARTNER_EARN_PER_LEAD_DEFAULT,
     })
 
 

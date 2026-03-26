@@ -85,6 +85,10 @@ class User(AbstractUser):
         limit_choices_to={"role": "partner"},
         help_text="Партнёр, привлёкший этого пользователя.",
     )
+    partner_rate = models.PositiveIntegerField(
+        default=10,
+        help_text="Ставка партнёра (руб.) за каждый одобренный лид реферала.",
+    )
 
     def is_approved(self) -> bool:
         return self.status == self.Status.APPROVED

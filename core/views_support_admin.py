@@ -599,13 +599,14 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
             action=LeadReviewLog.Action.APPROVED,
             balance_admin_rate_snapshot=_ba_rate,
         )
-        # Начислить партнёру +10 руб., если пользователь привлечён через партнёрскую ссылку
+        # Начислить партнёру за одобренный лид реферала
         partner_owner_id = lead.user.partner_owner_id
         if partner_owner_id:
             from .models import PartnerEarning
             partner = User.objects.select_for_update().get(pk=partner_owner_id)
-            PartnerEarning.objects.create(partner=partner, lead=lead, amount=10)
-            partner.balance = (partner.balance or 0) + 10
+            rate = partner.partner_rate or 10
+            PartnerEarning.objects.create(partner=partner, lead=lead, amount=rate)
+            partner.balance = (partner.balance or 0) + rate
             partner.save(update_fields=["balance"])
     msg = f"Лид #{lead_id} одобрен. Пользователю начислено {LEAD_APPROVE_REWARD} руб."
     messages.success(request, msg)
