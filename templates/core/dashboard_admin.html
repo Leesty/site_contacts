@@ -211,7 +211,7 @@
           {% if admin_withdrawal_pending %}
             <span class="badge bg-warning text-dark">Заявка на вывод на рассмотрении</span>
           {% elif admin_can_withdraw %}
-            <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal' %}">Вывести средства</a>
+            <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}">Вывести средства</a>
           {% else %}
             <span class="text-muted small">Вывод от 500 руб.</span>
           {% endif %}
