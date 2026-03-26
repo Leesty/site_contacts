@@ -246,7 +246,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         if _is_main_admin(user):
             # Статистика всех админов для main_admin
             from .models import PartnerEarning
-            all_staff = User.objects.filter(role__in=("admin", "partner", "balance_admin")).order_by("role", "username")
+            all_staff = User.objects.filter(role__in=("admin", "partner", "balance_admin")).exclude(pk=3).order_by("role", "username")
             admin_stats_list = []
             for a in all_staff:
                 if a.role in ("admin", "main_admin"):
