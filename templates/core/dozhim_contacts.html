@@ -13,12 +13,31 @@
     Каждый лид выдаётся только одному человеку.
   </p>
 
+  <div class="alert alert-secondary py-2 small mb-3">
+    Лимит на сегодня: <strong>{{ issued_today }} / {{ daily_limit }}</strong> лидов.
+    {% if remaining_today > 0 %}Осталось: {{ remaining_today }}.{% else %}Лимит исчерпан.{% endif %}
+  </div>
+
+  {% if reason == 'limit_reached' %}
+    <div class="alert alert-info mb-3 d-flex flex-wrap align-items-center gap-2">
+      <span class="flex-grow-1">Вы получили максимум лидов на сегодня ({{ daily_limit }}). Обратитесь к менеджеру за дополнительным лимитом.</span>
+      <form method="post" action="{% url 'request_contact_create' %}" class="d-inline">
+        {% csrf_token %}
+        <input type="hidden" name="base_type" value="">
+        <button type="submit" class="btn btn-primary btn-sm">Обратиться</button>
+      </form>
+    </div>
+  {% elif reason == 'not_enough' %}
+    <div class="alert alert-warning mb-3">Нет доступных лидов для дожима.</div>
+  {% endif %}
+
   {% if messages %}
     {% for message in messages %}
       <div class="alert py-2 mb-3 {% if message.tags == 'error' or message.tags == 'warning' %}alert-warning{% else %}alert-success{% endif %}" role="alert">{{ message }}</div>
     {% endfor %}
   {% endif %}
 
+  {% if remaining_today > 0 %}
   <form method="post" class="mb-4">
     {% csrf_token %}
     <div class="mb-3">
@@ -32,6 +51,7 @@
     </div>
     <button type="submit" name="get_leads" value="1" class="btn btn-primary">Получить {{ batch_size }} лидов</button>
   </form>
+  {% endif %}
 
   {% if allocated %}
     <h2 class="h5 mt-4">Выданные лиды</h2>

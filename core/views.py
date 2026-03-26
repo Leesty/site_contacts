@@ -206,10 +206,10 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         contact_requests_pending_count = ContactRequest.objects.filter(status="pending").count()
         withdrawal_requests_pending_count = WithdrawalRequest.objects.filter(status="pending").count()
         pending_leads_count = Lead.objects.filter(
-            status__in=(Lead.Status.PENDING, Lead.Status.REWORK)
+            status=Lead.Status.PENDING
         ).exclude(lead_type__slug="dozhim").count()
         dozhim_pending_count = Lead.objects.filter(
-            status__in=(Lead.Status.PENDING, Lead.Status.REWORK),
+            status=Lead.Status.PENDING,
             lead_type__slug="dozhim",
         ).count()
         # Заработок админа: 2.5р за каждое действие (approve/reject/rework)
@@ -300,7 +300,7 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
             "contact_requests_pending_count": ContactRequest.objects.filter(status="pending").count(),
             "withdrawal_requests_pending_count": WithdrawalRequest.objects.filter(status="pending").count(),
             "pending_leads_count": Lead.objects.filter(
-                status__in=(Lead.Status.PENDING, Lead.Status.REWORK)
+                status=Lead.Status.PENDING
             ).count(),
             "threads_updated_at": threads_agg["m"].isoformat() if threads_agg.get("m") else None,
         }
@@ -1199,31 +1199,45 @@ def dozhim_contacts(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard")
 
     batch_size = getattr(settings, "DOZHIM_BATCH_SIZE", 10)
+    daily_limit = 20
     allocated = []
+    reason = None
     # Категории для фильтра
     lead_types = LeadType.objects.exclude(slug__in=("dozhim", "self")).order_by("order", "id")
     selected_type_id = request.POST.get("lead_type") or request.GET.get("lead_type") or ""
 
-    if request.method == "POST" and "get_leads" in request.POST:
-        with transaction.atomic():
-            available = (
-                Lead.objects.select_for_update()
-                .filter(status=Lead.Status.APPROVED)
-                .exclude(lead_type__slug="dozhim")
-                .exclude(dozhim_issues__isnull=False)
-                .order_by("reviewed_at", "id")
-            )
-            if selected_type_id:
-                available = available.filter(lead_type_id=selected_type_id)
-            leads_to_issue = list(available[:batch_size])
-            for lead in leads_to_issue:
-                DozhimIssuedLead.objects.create(user=user, lead=lead)
-            allocated = leads_to_issue
+    # Сколько лидов выдано сегодня
+    from datetime import timedelta
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    issued_today = DozhimIssuedLead.objects.filter(user=user, created_at__gte=today_start).count()
+    remaining_today = max(0, daily_limit - issued_today)
 
-        if allocated:
-            messages.success(request, f"Вы получили {len(allocated)} лидов для дожима.")
+    if request.method == "POST" and "get_leads" in request.POST:
+        if remaining_today <= 0:
+            reason = "limit_reached"
         else:
-            messages.warning(request, "Нет доступных лидов для дожима.")
+            give_count = min(batch_size, remaining_today)
+            with transaction.atomic():
+                available = (
+                    Lead.objects.select_for_update()
+                    .filter(status=Lead.Status.APPROVED)
+                    .exclude(lead_type__slug="dozhim")
+                    .exclude(dozhim_issues__isnull=False)
+                    .order_by("reviewed_at", "id")
+                )
+                if selected_type_id:
+                    available = available.filter(lead_type_id=selected_type_id)
+                leads_to_issue = list(available[:give_count])
+                for lead in leads_to_issue:
+                    DozhimIssuedLead.objects.create(user=user, lead=lead)
+                allocated = leads_to_issue
+
+            if allocated:
+                issued_today += len(allocated)
+                remaining_today = max(0, daily_limit - issued_today)
+                messages.success(request, f"Вы получили {len(allocated)} лидов для дожима.")
+            else:
+                reason = "not_enough"
 
     # Ранее выданные лиды (последние 50)
     issued = (
@@ -1235,9 +1249,13 @@ def dozhim_contacts(request: HttpRequest) -> HttpResponse:
     return render(request, "core/dozhim_contacts.html", {
         "allocated": allocated,
         "issued": issued,
-        "batch_size": batch_size,
+        "batch_size": min(batch_size, remaining_today) if remaining_today > 0 else 0,
         "lead_types": lead_types,
         "selected_type_id": int(selected_type_id) if selected_type_id else "",
+        "daily_limit": daily_limit,
+        "issued_today": issued_today,
+        "remaining_today": remaining_today,
+        "reason": reason,
     })
 
 
