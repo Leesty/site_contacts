@@ -788,6 +788,32 @@ def request_contact_create(request: HttpRequest) -> HttpResponse:
     return redirect("contacts")
 
 
+def _dozhim_lead_exists(raw_contact: str, exclude_lead_id: int | None = None) -> bool:
+    """Проверяет дубликат контакта ТОЛЬКО среди дожим-лидов."""
+    normalized = normalize_lead_contact(raw_contact)
+    if not normalized:
+        return False
+    try:
+        qs = Lead.objects.filter(normalized_contact=normalized, lead_type__slug="dozhim")
+        if exclude_lead_id is not None:
+            qs = qs.exclude(pk=exclude_lead_id)
+        if qs.exists():
+            return True
+        username = extract_username_from_contact(normalized)
+        if username and len(username) >= 3:
+            cross_q = Q()
+            for prefix in ("telegram:", "vk:", "ig:", "ok:"):
+                cross_q |= Q(normalized_contact=prefix + username)
+            cross_qs = Lead.objects.filter(cross_q, lead_type__slug="dozhim")
+            if exclude_lead_id is not None:
+                cross_qs = cross_qs.exclude(pk=exclude_lead_id)
+            if cross_qs.exists():
+                return True
+        return False
+    except (OperationalError, ProgrammingError):
+        return False
+
+
 def _lead_exists_globally(raw_contact: str, exclude_lead_id: int | None = None) -> bool:
     """Проверяет, есть ли в базе уже лид с таким контактом (любой пользователь). Комплексная нормализация: @user=user, ссылки и т.д."""
     from .models import WorkerSelfLead
@@ -1304,10 +1330,10 @@ def dozhim_leads_report(request: HttpRequest) -> HttpResponse:
         form = DozhimLeadReportForm(request.POST, request.FILES)
         if form.is_valid():
             raw = form.cleaned_data.get("raw_contact") or ""
-            if _lead_exists_globally(raw):
+            if _dozhim_lead_exists(raw):
                 messages.error(
                     request,
-                    "Такой контакт уже есть в базе отчётов. Дубликаты не принимаются.",
+                    "Такой контакт уже есть в отчётах дожима. Дубликаты не принимаются.",
                 )
             else:
                 try:
@@ -1430,8 +1456,8 @@ def dozhim_lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
         form = DozhimLeadReportForm(request.POST, request.FILES, instance=lead)
         if form.is_valid():
             raw = form.cleaned_data.get("raw_contact") or ""
-            if _lead_exists_globally(raw, exclude_lead_id=lead.pk):
-                messages.error(request, "Такой контакт уже есть в базе отчётов. Дубликаты не принимаются.")
+            if _dozhim_lead_exists(raw, exclude_lead_id=lead.pk):
+                messages.error(request, "Такой контакт уже есть в отчётах дожима. Дубликаты не принимаются.")
             else:
                 lead = form.save(commit=False)
                 lead.raw_contact = raw.strip()
