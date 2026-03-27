@@ -331,7 +331,7 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
             "withdrawal_requests_pending_count": WithdrawalRequest.objects.filter(status="pending").count(),
             "pending_leads_count": Lead.objects.filter(
                 status=Lead.Status.PENDING
-            ).count(),
+            ).exclude(lead_type__slug="dozhim").count(),
             "threads_updated_at": threads_agg["m"].isoformat() if threads_agg.get("m") else None,
         }
     else:
@@ -1344,7 +1344,7 @@ def dozhim_leads_report(request: HttpRequest) -> HttpResponse:
                     lead.normalized_contact = normalize_lead_contact(raw)
                     lead.lead_type = LeadType.objects.get(slug="dozhim")
                     lead.base_type = determine_base_type_for_contact(raw, user)
-                    lead.needs_team_contact = False
+                    # needs_team_contact берётся из формы
                     lead.save()
                     ext = _get_attachment_extension(lead.attachment)
                     if ext in LEAD_VIDEO_EXTENSIONS:

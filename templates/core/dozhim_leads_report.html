@@ -104,6 +104,14 @@
       {% endif %}
     </div>
 
+    <div class="mb-3 form-check">
+      {{ form.needs_team_contact }}
+      <label class="form-check-label" for="{{ form.needs_team_contact.id_for_label }}">{{ form.needs_team_contact.label }}</label>
+      {% if form.needs_team_contact.help_text %}
+        <div class="form-text">{{ form.needs_team_contact.help_text }}</div>
+      {% endif %}
+    </div>
+
     {% if form.non_field_errors %}
       <div class="alert alert-danger py-2 mb-3">
         {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}

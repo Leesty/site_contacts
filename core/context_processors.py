@@ -14,7 +14,7 @@ def rework_leads(request):
             return {"rework_leads_count": 0}
         if getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False):
             return {"rework_leads_count": 0}
-        if getattr(request.user, "role", None) in ("support", "admin", "standalone_admin", "worker"):
+        if getattr(request.user, "role", None) in ("support", "admin", "main_admin", "standalone_admin", "worker"):
             return {"rework_leads_count": 0}
         from .models import Lead
         count = Lead.objects.filter(user=request.user, status=Lead.Status.REWORK).count()

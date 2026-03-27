@@ -174,16 +174,18 @@ class DozhimLeadReportForm(forms.ModelForm):
 
     class Meta:
         model = Lead
-        fields = ("lead_date", "raw_contact", "attachment", "comment")
+        fields = ("lead_date", "raw_contact", "attachment", "comment", "needs_team_contact")
         labels = {
             "lead_date": "Дата лида",
             "comment": "Комментарий (необязательно)",
             "attachment": "Видео",
+            "needs_team_contact": "Связаться самим",
         }
         help_texts = {
             "comment": "",
             "lead_date": "К какой дате относите отчёт. По умолчанию — сегодня.",
             "attachment": "Запись экрана (видео), подтверждающая лид (обязательно)",
+            "needs_team_contact": "Отметьте, если команда должна связаться с контактом.",
         }
         widgets = {
             "lead_date": forms.DateInput(
@@ -214,6 +216,9 @@ class DozhimLeadReportForm(forms.ModelForm):
                     "placeholder": "Комментарий (необязательно)",
                     "style": "background-color: rgba(15, 23, 42, 0.95); border: 1px solid rgba(55, 65, 81, 0.9); color: #e5e7eb;",
                 }
+            ),
+            "needs_team_contact": forms.CheckboxInput(
+                attrs={"class": "form-check-input"}
             ),
         }
 
