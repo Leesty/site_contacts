@@ -190,7 +190,7 @@ LOGOUT_REDIRECT_URL = "index"
 WITHDRAWAL_MIN_BALANCE = int(os.getenv("WITHDRAWAL_MIN_BALANCE", "500"))
 
 # Отдел дожима
-DOZHIM_APPROVE_REWARD = int(os.getenv("DOZHIM_APPROVE_REWARD", "30"))
+DOZHIM_APPROVE_REWARD = int(os.getenv("DOZHIM_APPROVE_REWARD", "40"))
 DOZHIM_BATCH_SIZE = int(os.getenv("DOZHIM_BATCH_SIZE", "10"))
 
 # Лимит загрузки файлов: вложения лидов (скрин/видео) до 30 МБ
