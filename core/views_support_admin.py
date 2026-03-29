@@ -48,6 +48,13 @@ def _require_support(request: HttpRequest) -> bool:
     return False
 
 
+def _require_support_or_partner(request: HttpRequest) -> bool:
+    """Доступ для админов + партнёров (для баз, лидов, контактов)."""
+    if _require_support(request):
+        return True
+    return getattr(request.user, "role", None) == "partner"
+
+
 def _require_standalone_admin(request: HttpRequest) -> bool:
     """Только роль «Самостоятельный админ». Выдаётся только суперадмином."""
     user = request.user
@@ -1106,7 +1113,7 @@ def _allocate_contacts_to_user(target_user, base_type, count: int) -> int:
 @login_required
 def admin_contact_requests(request: HttpRequest) -> HttpResponse:
     """Список заявок на контакты. «Выдать контакты» — сбрасывает лимит (добавляет доп. лимит), пользователь сам нажимает «Получить контакты»."""
-    if not _require_support(request):
+    if not _require_support_or_partner(request):
         return HttpResponseForbidden("Недостаточно прав.")
     if request.method == "POST" and request.POST.get("action") == "refresh":
         return redirect("admin_contact_requests")
@@ -1388,7 +1395,7 @@ def _run_bases_import_background(file_path: str, job_id: int) -> None:
 @login_required
 def upload_bases_excel(request: HttpRequest) -> HttpResponse:
     """Редирект на единую страницу загрузки/выгрузки баз."""
-    if not _require_support(request):
+    if not _require_support_or_partner(request):
         return HttpResponseForbidden("Недостаточно прав.")
     return redirect("bases_excel")
 
@@ -1498,7 +1505,7 @@ def _process_excel_single_sheet(wb, base_type: BaseType) -> tuple[int, int]:
 @login_required
 def bases_excel(request: HttpRequest) -> HttpResponse:
     """Одна страница: загрузка по категории, загрузка всех листов (шаблон бота), выгрузка."""
-    if not _require_support(request):
+    if not _require_support_or_partner(request):
         return HttpResponseForbidden("Недостаточно прав.")
 
     base_types = list(BaseType.objects.all().order_by("order"))
@@ -1607,7 +1614,7 @@ def _make_bases_excel_response(wb, filename: str) -> HttpResponse:
 def download_bases_excel(request: HttpRequest) -> HttpResponse:
     """Выгрузка всех баз контактов в один Excel (по листам)."""
 
-    if not _require_support(request):
+    if not _require_support_or_partner(request):
         return HttpResponseForbidden("Недостаточно прав.")
 
     wb = Workbook()
@@ -1640,7 +1647,7 @@ def download_bases_excel(request: HttpRequest) -> HttpResponse:
 def download_bases_excel_category(request: HttpRequest, base_type_id: int) -> HttpResponse:
     """Выгрузка одной базы контактов по категории."""
 
-    if not _require_support(request):
+    if not _require_support_or_partner(request):
         return HttpResponseForbidden("Недостаточно прав.")
 
     base_type = get_object_or_404(BaseType, pk=base_type_id)
@@ -1667,7 +1674,7 @@ def download_bases_excel_category(request: HttpRequest, base_type_id: int) -> Ht
 def download_leads_excel(request: HttpRequest) -> HttpResponse:
     """Выгрузка всех лидов в один Excel."""
 
-    if not _require_support(request):
+    if not _require_support_or_partner(request):
         return HttpResponseForbidden("Недостаточно прав.")
 
     wb = Workbook()

@@ -160,6 +160,36 @@
       </div>
     </div>
   </div>
+
+  {# ═══ Инструменты админа ═══ #}
+  <h6 class="text-white-50 text-uppercase mt-4 mb-2" style="font-size: 11px; letter-spacing: 1px;">Управление базами</h6>
+  <div class="row row-cols-2 row-cols-md-4 g-3 mb-3">
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <span class="fw-semibold" style="font-size: 13px;">📦 Базы (Excel)</span><br>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'bases_excel' %}">Загрузить / Скачать</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <span class="fw-semibold" style="font-size: 13px;">📋 Выгрузка лидов</span><br>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'download_leads_excel' %}">Скачать Excel</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <span class="fw-semibold" style="font-size: 13px;">📥 Запросы контактов</span><br>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_contact_requests' %}">Заявки</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <script>
 function copyPartnerLink() {
   var inp = document.getElementById('partner-ref-url');
