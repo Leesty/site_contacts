@@ -29,28 +29,17 @@ def _require_worker(request: HttpRequest) -> bool:
 
 
 def _self_lead_duplicate_exists(raw_contact: str, exclude_self_lead_id: int | None = None) -> bool:
-    """Проверяет дубликат контакта среди обычных лидов (Lead) и самостоятельных лидов (WorkerSelfLead)."""
+    """Проверяет дубликат контакта только среди самостоятельных лидов воркеров (WorkerSelfLead)."""
     normalized = normalize_lead_contact(raw_contact)
     if not normalized:
         return False
     try:
-        # Проверка в основной таблице лидов
-        if Lead.objects.filter(normalized_contact=normalized).exists():
-            return True
-        # Проверка в таблице самостоятельных лидов
+        # Проверка только в таблице самостоятельных лидов
         sl_qs = WorkerSelfLead.objects.filter(raw_contact__iexact=raw_contact.strip())
         if exclude_self_lead_id is not None:
             sl_qs = sl_qs.exclude(pk=exclude_self_lead_id)
         if sl_qs.exists():
             return True
-        # Кросс-платформенная проверка (telegram/vk/ig/ok)
-        username = extract_username_from_contact(normalized)
-        if username and len(username) >= 3:
-            cross_q = Q()
-            for prefix in ("telegram:", "vk:", "ig:", "ok:"):
-                cross_q |= Q(normalized_contact=prefix + username)
-            if Lead.objects.filter(cross_q).exists():
-                return True
         return False
     except (OperationalError, ProgrammingError):
         return False
