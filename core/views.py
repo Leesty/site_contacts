@@ -1397,7 +1397,7 @@ def dozhim_leads_my_list(request: HttpRequest) -> HttpResponse:
     )
     paginator = Paginator(leads_qs, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
-    dozhim_reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30)
+    dozhim_reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
     return render(request, "core/dozhim_leads_my_list.html", {
         "page_obj": page_obj,
         "lead_approve_reward": dozhim_reward,
@@ -1444,7 +1444,7 @@ def dozhim_leads_stats(request: HttpRequest) -> HttpResponse:
         "today_count": today_count,
         "yesterday_count": yesterday_count,
         "total_count": total_count,
-        "dozhim_reward": getattr(settings, "DOZHIM_APPROVE_REWARD", 30),
+        "dozhim_reward": getattr(settings, "DOZHIM_APPROVE_REWARD", 40),
     })
 
 

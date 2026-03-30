@@ -601,7 +601,7 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         lead.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
         # Динамическая награда: дожим → 30р, поиск → 40р
         is_dozhim = lead.lead_type and lead.lead_type.slug == "dozhim"
-        reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if is_dozhim else LEAD_APPROVE_REWARD
+        reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40) if is_dozhim else LEAD_APPROVE_REWARD
         partner_earning = 0
         # Партнёрская экономика — только для лидов из Отдела поиска (не дожим)
         if not is_dozhim:
@@ -667,7 +667,7 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                 lead_refresh.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by"])
                 if was_approved:
                     _is_dz = lead_refresh.lead_type and lead_refresh.lead_type.slug == "dozhim"
-                    reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if _is_dz else getattr(settings, "LEAD_APPROVE_REWARD", 40)
+                    reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40) if _is_dz else getattr(settings, "LEAD_APPROVE_REWARD", 40)
                     # Откат партнёрского заработка (только для лидов поиска)
                     if not _is_dz:
                         from .models import PartnerEarning
@@ -722,7 +722,7 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                 lead_refresh.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by"])
                 if was_approved:
                     _is_dz = lead_refresh.lead_type and lead_refresh.lead_type.slug == "dozhim"
-                    reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if _is_dz else getattr(settings, "LEAD_APPROVE_REWARD", 40)
+                    reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40) if _is_dz else getattr(settings, "LEAD_APPROVE_REWARD", 40)
                     if not _is_dz:
                         from .models import PartnerEarning
                         pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
