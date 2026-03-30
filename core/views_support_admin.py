@@ -2511,7 +2511,7 @@ def admin_set_affiliate(request: HttpRequest, user_id: int) -> HttpResponse:
     target.status = User.Status.APPROVED
     target.save(update_fields=["role", "status"])
     messages.success(request, f"@{target.username} — роль изменена с «{old_role}» на «Партнёрка». Баланс: {target.balance} руб.")
-    return redirect(f"{request.path}?q={target.username}")
+    return redirect(f"/staff/roles/?q={target.username}")
 
 
 @login_required
