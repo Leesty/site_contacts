@@ -779,7 +779,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     user_refresh.save(update_fields=["balance"])
         messages.success(
             request,
-            f"Заявка на вывод {current_balance} руб. отправлена. {'Баланс обнулён. ' if _role not in ('balance_admin', 'admin') else ''}Ожидайте решения администратора.",
+            f"Заявка на вывод {current_balance} руб. отправлена. {'Баланс обнулён. ' if _role not in ('balance_admin', 'admin', 'main_admin') else ''}Ожидайте решения администратора.",
         )
         return redirect("dashboard")
 
