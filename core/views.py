@@ -1253,10 +1253,6 @@ def switch_department(request: HttpRequest) -> HttpResponse:
     dept = request.POST.get("department", "search")
     if dept not in ("search", "dozhim"):
         dept = "search"
-    # TEMPORARY: dozhim locked for everyone except user id=4
-    if dept == "dozhim" and request.user.id != 206:
-        messages.error(request, "Отдел дожима временно недоступен.")
-        return redirect("dashboard")
     request.session["department"] = dept
     return redirect("dashboard")
 
@@ -1266,10 +1262,6 @@ def dozhim_contacts(request: HttpRequest) -> HttpResponse:
     """Выдача 10 одобренных лидов из Отдела поиска для дожима с фильтром по категории."""
     user = request.user
     if not _ensure_user_approved(request):
-        return redirect("dashboard")
-    # TEMPORARY: dozhim locked for everyone except user id=4
-    if user.id != 206:
-        messages.error(request, "Отдел дожима временно недоступен.")
         return redirect("dashboard")
 
     batch_size = getattr(settings, "DOZHIM_BATCH_SIZE", 10)
@@ -1339,10 +1331,6 @@ def dozhim_leads_report(request: HttpRequest) -> HttpResponse:
     user = request.user
     if not _ensure_user_approved(request):
         return redirect("dashboard")
-    # TEMPORARY: dozhim locked for everyone except user id=4
-    if user.id != 206:
-        messages.error(request, "Отдел дожима временно недоступен.")
-        return redirect("dashboard")
 
     if request.method == "POST":
         form = DozhimLeadReportForm(request.POST, request.FILES)
@@ -1396,10 +1384,6 @@ def dozhim_leads_my_list(request: HttpRequest) -> HttpResponse:
     user = request.user
     if not _ensure_user_approved(request):
         return redirect("dashboard")
-    # TEMPORARY: dozhim locked for everyone except user id=4
-    if user.id != 206:
-        messages.error(request, "Отдел дожима временно недоступен.")
-        return redirect("dashboard")
     leads_qs = (
         Lead.objects.filter(user=user, lead_type__slug="dozhim")
         .select_related("lead_type")
@@ -1419,10 +1403,6 @@ def dozhim_leads_stats(request: HttpRequest) -> HttpResponse:
     """Статистика дожим-лидов."""
     user = request.user
     if not _ensure_user_approved(request):
-        return redirect("dashboard")
-    # TEMPORARY: dozhim locked for everyone except user id=4
-    if user.id != 206:
-        messages.error(request, "Отдел дожима временно недоступен.")
         return redirect("dashboard")
 
     tz = ZoneInfo("Europe/Moscow")
@@ -1463,10 +1443,6 @@ def dozhim_lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
     """Доработка дожим-лида."""
     user = request.user
     if not _ensure_user_approved(request):
-        return redirect("dashboard")
-    # TEMPORARY: dozhim locked for everyone except user id=4
-    if user.id != 206:
-        messages.error(request, "Отдел дожима временно недоступен.")
         return redirect("dashboard")
     lead = get_object_or_404(Lead, pk=lead_id, user=user, lead_type__slug="dozhim", status=Lead.Status.REWORK)
 
@@ -1515,10 +1491,6 @@ def dozhim_download_txt(request: HttpRequest) -> HttpResponse:
     if not _ensure_user_approved(request):
         return redirect("dashboard")
 
-    # TEMPORARY: dozhim locked for everyone except user id=4
-    if user.id != 206:
-        messages.error(request, "Отдел дожима временно недоступен.")
-        return redirect("dashboard")
 
     issued = (
         DozhimIssuedLead.objects.filter(user=user)
