@@ -2474,3 +2474,69 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
         "logs": logs,
     })
 
+
+# ─── Управление ролями (только main_admin) ────────────────────────────────────
+
+@login_required
+def admin_manage_roles(request: HttpRequest) -> HttpResponse:
+    """Страница управления ролями: поиск пользователей, смена роли на affiliate."""
+    if getattr(request.user, "role", None) != User.Role.MAIN_ADMIN:
+        return HttpResponseForbidden("Только для главного админа.")
+
+    q = (request.GET.get("q") or "").strip().lstrip("@")[:50]
+    users_list = None
+    if q:
+        users_list = User.objects.filter(username__icontains=q).order_by("-date_joined")[:50]
+
+    return render(request, "core/admin_manage_roles.html", {
+        "q": q,
+        "users_list": users_list,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def admin_set_affiliate(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Сменить роль пользователя на affiliate. Баланс сохраняется."""
+    if getattr(request.user, "role", None) != User.Role.MAIN_ADMIN:
+        return HttpResponseForbidden("Только для главного админа.")
+
+    target = get_object_or_404(User, pk=user_id)
+    if target.role == User.Role.MAIN_ADMIN:
+        messages.error(request, "Нельзя менять роль главного админа.")
+        return redirect("admin_manage_roles")
+
+    old_role = target.get_role_display()
+    target.role = User.Role.AFFILIATE
+    target.status = User.Status.APPROVED
+    target.save(update_fields=["role", "status"])
+    messages.success(request, f"@{target.username} — роль изменена с «{old_role}» на «Партнёрка». Баланс: {target.balance} руб.")
+    return redirect(f"{request.path}?q={target.username}")
+
+
+@login_required
+@require_http_methods(["POST"])
+def admin_set_role(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Сменить роль пользователя на указанную. Баланс сохраняется."""
+    if getattr(request.user, "role", None) != User.Role.MAIN_ADMIN:
+        return HttpResponseForbidden("Только для главного админа.")
+
+    target = get_object_or_404(User, pk=user_id)
+    if target.role == User.Role.MAIN_ADMIN:
+        messages.error(request, "Нельзя менять роль главного админа.")
+        return redirect("admin_manage_roles")
+
+    new_role = request.POST.get("role", "")
+    allowed_roles = {r.value for r in User.Role if r.value != "main_admin"}
+    if new_role not in allowed_roles:
+        messages.error(request, f"Недопустимая роль: {new_role}")
+        return redirect("admin_manage_roles")
+
+    old_role = target.get_role_display()
+    target.role = new_role
+    target.status = User.Status.APPROVED
+    target.save(update_fields=["role", "status"])
+    messages.success(request, f"@{target.username} — роль изменена с «{old_role}» на «{target.get_role_display()}». Баланс: {target.balance} руб.")
+    q = request.GET.get("q") or target.username
+    return redirect(f"/staff/roles/?q={q}")
+

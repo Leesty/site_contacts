@@ -317,5 +317,9 @@ urlpatterns = [
         views_support_admin.download_leads_excel,
         name="download_leads_excel",
     ),
+    # Role management (main_admin only)
+    path("staff/roles/", views_support_admin.admin_manage_roles, name="admin_manage_roles"),
+    path("staff/roles/<int:user_id>/set-affiliate/", views_support_admin.admin_set_affiliate, name="admin_set_affiliate"),
+    path("staff/roles/<int:user_id>/set-role/", views_support_admin.admin_set_role, name="admin_set_role"),
 ]
 

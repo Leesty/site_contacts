@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Управление ролями — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Управление ролями</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+  </div>
+
+  {# Поиск #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-body py-3">
+      <form method="get" class="d-flex gap-2">
+        <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск по нику..." autofocus>
+        <button type="submit" class="btn btn-primary btn-sm px-4">Найти</button>
+      </form>
+    </div>
+  </div>
+
+  {# Результаты #}
+  {% if users_list is not None %}
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        {% if users_list %}
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle table-dark-site">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Пользователь</th>
+                  <th>Роль</th>
+                  <th>Статус</th>
+                  <th>Баланс</th>
+                  <th>Регистрация</th>
+                  <th>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for u in users_list %}
+                  <tr>
+                    <td class="text-muted">{{ u.id }}</td>
+                    <td>@{{ u.username }}</td>
+                    <td>
+                      {% if u.role == 'main_admin' %}
+                        <span class="badge bg-danger">{{ u.get_role_display }}</span>
+                      {% elif u.role == 'admin' %}
+                        <span class="badge bg-primary">{{ u.get_role_display }}</span>
+                      {% elif u.role == 'affiliate' %}
+                        <span class="badge bg-success">{{ u.get_role_display }}</span>
+                      {% elif u.role == 'partner' %}
+                        <span class="badge bg-info text-dark">{{ u.get_role_display }}</span>
+                      {% elif u.role == 'worker' %}
+                        <span class="badge bg-warning text-dark">{{ u.get_role_display }}</span>
+                      {% elif u.role == 'standalone_admin' %}
+                        <span class="badge bg-secondary">{{ u.get_role_display }}</span>
+                      {% else %}
+                        <span class="badge bg-dark">{{ u.get_role_display }}</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if u.status == 'approved' %}
+                        <span class="badge bg-success" style="font-size:10px;">Одобрен</span>
+                      {% elif u.status == 'pending' %}
+                        <span class="badge bg-warning text-dark" style="font-size:10px;">Ожидает</span>
+                      {% else %}
+                        <span class="badge bg-danger" style="font-size:10px;">{{ u.get_status_display }}</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ u.balance }} ₽</td>
+                    <td class="text-muted small">{{ u.date_joined|date:"d.m.Y" }}</td>
+                    <td>
+                      {% if u.role != 'main_admin' %}
+                        <div class="d-flex gap-1 flex-wrap">
+                          {% if u.role != 'affiliate' %}
+                            <form method="post" action="{% url 'admin_set_affiliate' u.id %}?q={{ q }}">
+                              {% csrf_token %}
+                              <button type="submit" class="btn btn-success btn-sm py-0 px-2" style="font-size: 11px;" onclick="return confirm('Сделать @{{ u.username }} партнёром (affiliate)? Баланс {{ u.balance }} ₽ сохранится.');">Партнёрка</button>
+                            </form>
+                          {% endif %}
+                          {% if u.role != 'user' %}
+                            <form method="post" action="{% url 'admin_set_role' u.id %}?q={{ q }}">
+                              {% csrf_token %}
+                              <input type="hidden" name="role" value="user">
+                              <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size: 11px;" onclick="return confirm('Вернуть @{{ u.username }} роль пользователя?');">Пользователь</button>
+                            </form>
+                          {% endif %}
+                        </div>
+                      {% else %}
+                        <span class="text-muted small">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-muted small p-3 mb-0">Пользователей по запросу «{{ q }}» не найдено.</p>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <p class="text-muted">Введите ник для поиска пользователя.</p>
+  {% endif %}
+{% endblock %}
