@@ -2477,11 +2477,18 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
 
 # ─── Управление ролями (только main_admin) ────────────────────────────────────
 
+def _can_manage_roles(request: HttpRequest) -> bool:
+    """Доступ к управлению ролями: main_admin, balance_admin, standalone_admin."""
+    return getattr(request.user, "role", None) in (
+        User.Role.MAIN_ADMIN, User.Role.BALANCE_ADMIN, User.Role.STANDALONE_ADMIN,
+    )
+
+
 @login_required
 def admin_manage_roles(request: HttpRequest) -> HttpResponse:
     """Страница управления ролями: поиск пользователей, смена роли на affiliate."""
-    if getattr(request.user, "role", None) != User.Role.MAIN_ADMIN:
-        return HttpResponseForbidden("Только для главного админа.")
+    if not _can_manage_roles(request):
+        return HttpResponseForbidden("Недостаточно прав.")
 
     q = (request.GET.get("q") or "").strip().lstrip("@")[:50]
     users_list = None
@@ -2498,8 +2505,8 @@ def admin_manage_roles(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["POST"])
 def admin_set_affiliate(request: HttpRequest, user_id: int) -> HttpResponse:
     """Сменить роль пользователя на affiliate. Баланс сохраняется."""
-    if getattr(request.user, "role", None) != User.Role.MAIN_ADMIN:
-        return HttpResponseForbidden("Только для главного админа.")
+    if not _can_manage_roles(request):
+        return HttpResponseForbidden("Недостаточно прав.")
 
     target = get_object_or_404(User, pk=user_id)
     if target.role == User.Role.MAIN_ADMIN:
@@ -2518,8 +2525,8 @@ def admin_set_affiliate(request: HttpRequest, user_id: int) -> HttpResponse:
 @require_http_methods(["POST"])
 def admin_set_role(request: HttpRequest, user_id: int) -> HttpResponse:
     """Сменить роль пользователя на указанную. Баланс сохраняется."""
-    if getattr(request.user, "role", None) != User.Role.MAIN_ADMIN:
-        return HttpResponseForbidden("Только для главного админа.")
+    if not _can_manage_roles(request):
+        return HttpResponseForbidden("Недостаточно прав.")
 
     target = get_object_or_404(User, pk=user_id)
     if target.role == User.Role.MAIN_ADMIN:

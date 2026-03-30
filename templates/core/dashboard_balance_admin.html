@@ -10,9 +10,10 @@
         Добро пожаловать, {{ user.username }}. Здесь баланс, история начислений, заявки на вывод и выдача контактов.
       </p>
     </div>
-    <a href="{% url 'balance_admin_contact_requests' %}" class="btn btn-outline-primary btn-sm">
-      Выдача контактов
-    </a>
+    <div class="d-flex gap-2">
+      <a href="{% url 'balance_admin_contact_requests' %}" class="btn btn-outline-primary btn-sm">Выдача контактов</a>
+      <a href="{% url 'admin_manage_roles' %}" class="btn btn-outline-primary btn-sm">Управление ролями</a>
+    </div>
   </div>
 
   <div class="row g-3 mb-4">
