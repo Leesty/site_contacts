@@ -1209,7 +1209,7 @@ def ref_register(request: HttpRequest, code: str) -> HttpResponse:
     try:
         ref_link = ReferralLink.objects.select_related("standalone_admin").get(code=code, is_active=True)
     except ReferralLink.DoesNotExist:
-        return render(request, "auth/ref_register.html", {"error": "Реферальная ссылка недействительна или устарела.", "code": code})
+        return render(request, "auth/ref_register.html", {"error": "Реферальная ссылка недействительна или устарела.", "code": code, "hide_nav_auth": True})
 
     from .forms import UserRegistrationForm
     if request.method == "POST":
@@ -1229,7 +1229,7 @@ def ref_register(request: HttpRequest, code: str) -> HttpResponse:
     else:
         form = UserRegistrationForm()
 
-    return render(request, "auth/ref_register.html", {"form": form, "code": code, "standalone_admin": ref_link.standalone_admin})
+    return render(request, "auth/ref_register.html", {"form": form, "code": code, "standalone_admin": ref_link.standalone_admin, "hide_nav_auth": True})
 
 
 # ──────────────────────────────────────────────────────────

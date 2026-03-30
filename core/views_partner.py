@@ -170,6 +170,7 @@ def partner_ref_register(request: HttpRequest, code: str) -> HttpResponse:
         return render(request, "auth/partner_ref_register.html", {
             "error": "Реферальная ссылка недействительна или устарела.",
             "code": code,
+            "hide_nav_auth": True,
         })
 
     from .forms import UserRegistrationForm
@@ -193,6 +194,7 @@ def partner_ref_register(request: HttpRequest, code: str) -> HttpResponse:
         "form": form,
         "code": code,
         "partner": ref_link.partner,
+        "hide_nav_auth": True,
     })
 
 
@@ -372,6 +374,7 @@ def affiliate_ref_register(request: HttpRequest, code: str) -> HttpResponse:
         return render(request, "auth/affiliate_ref_register.html", {
             "error": "Реферальная ссылка недействительна или устарела.",
             "code": code,
+            "hide_nav_auth": True,
         })
 
     from .forms import UserRegistrationForm
@@ -396,6 +399,7 @@ def affiliate_ref_register(request: HttpRequest, code: str) -> HttpResponse:
         "form": form,
         "code": code,
         "partner": ref_link.partner,
+        "hide_nav_auth": True,
     })
 
 

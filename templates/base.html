@@ -91,12 +91,14 @@
                 <form method="post" action="{% url 'logout' %}" class="d-inline m-0">{% csrf_token %}<button type="submit" class="btn btn-sm px-2 py-1 text-white-50" style="font-size: 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;">Выйти</button></form>
               </li>
             {% else %}
+              {% if not hide_nav_auth %}
               <li class="nav-item me-2">
                 <a class="btn btn-sm px-3" href="{% url 'login' %}" style="color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; font-size: 13px;">Войти</a>
               </li>
               <li class="nav-item">
                 <a class="btn btn-sm px-3" href="{% url 'register' %}" style="background: rgba(99,102,241,0.9); color: white; border-radius: 6px; font-size: 13px;">Регистрация</a>
               </li>
+              {% endif %}
             {% endif %}
           </ul>
         </div>
