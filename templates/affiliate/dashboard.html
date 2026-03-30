@@ -49,87 +49,98 @@
     </div>
   </div>
 
+  {# Создание ссылки #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Новая реферальная ссылка</strong>
+    </div>
+    <div class="card-body py-3">
+      <form method="post" action="{% url 'affiliate_create_link' %}">
+        {% csrf_token %}
+        <div class="row g-3 align-items-end">
+          <div class="col-6 col-md-3">
+            <label class="form-label small mb-1" for="ref_reward">Ставка рефу (руб.)</label>
+            <input type="number" class="form-control form-control-sm" id="ref_reward" name="ref_reward" min="1" max="39" value="20" required>
+            <div class="form-text text-muted" style="font-size: 11px;">от 1 до 39. Вы получите {{ total_reward }} - ставка</div>
+          </div>
+          <div class="col-6 col-md-5">
+            <label class="form-label small mb-1" for="note">Заметка</label>
+            <input type="text" class="form-control form-control-sm" id="note" name="note" placeholder="Необязательно" maxlength="100">
+          </div>
+          <div class="col-12 col-md-4">
+            <button type="submit" class="btn btn-primary btn-sm w-100">Создать ссылку</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# Таблица ссылок #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Мои ссылки</strong>
+    </div>
+    <div class="card-body p-0">
+      {% if links %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Ссылка</th>
+                <th class="text-center">Рефу</th>
+                <th class="text-center">Вам</th>
+                <th class="text-center">Рефы</th>
+                <th class="text-center">Статус</th>
+                <th class="text-center" style="width: 70px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for link in links %}
+                <tr>
+                  <td>
+                    <div class="d-flex align-items-center gap-2">
+                      <input type="text" class="form-control form-control-sm font-monospace flex-grow-1" style="font-size: 11px; min-width: 180px;"
+                             value="{{ request.scheme }}://{{ request.get_host }}{% url 'affiliate_ref_register' link.code %}"
+                             readonly onclick="this.select();">
+                      <button class="btn btn-outline-secondary btn-sm py-0 px-1 flex-shrink-0" type="button" onclick="var i=this.previousElementSibling;i.select();navigator.clipboard?navigator.clipboard.writeText(i.value):document.execCommand('copy');" title="Копировать">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/></svg>
+                      </button>
+                    </div>
+                    {% if link.note %}<div class="text-muted mt-1" style="font-size: 11px;">{{ link.note }}</div>{% endif %}
+                  </td>
+                  <td class="text-center text-nowrap">{{ link.ref_reward }} ₽</td>
+                  <td class="text-center text-nowrap text-success fw-semibold">{{ link.partner_cut }} ₽</td>
+                  <td class="text-center">{{ link.ref_count }}</td>
+                  <td class="text-center">
+                    {% if link.is_active %}
+                      <span class="badge bg-success">Активна</span>
+                    {% else %}
+                      <span class="badge bg-secondary">Откл.</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    <form method="post" action="{% url 'affiliate_toggle_link' link.id %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size: 12px;">
+                        {% if link.is_active %}Откл{% else %}Вкл{% endif %}
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted small p-3 mb-0">У вас пока нет ссылок. Создайте первую ссылку выше.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# История начислений и заявки на вывод #}
   <div class="row g-3">
-    {# Реферальные ссылки #}
     <div class="col-md-7">
-      <div class="card shadow-sm mb-3">
-        <div class="card-header bg-transparent border-secondary py-2 d-flex justify-content-between align-items-center">
-          <strong>Реферальные ссылки</strong>
-        </div>
-        <div class="card-body">
-          {# Форма создания ссылки #}
-          <form method="post" action="{% url 'affiliate_create_link' %}" class="mb-3">
-            {% csrf_token %}
-            <div class="row g-2 align-items-end">
-              <div class="col-sm-4">
-                <label class="form-label small mb-1" for="ref_reward">Ставка рефу (руб.)</label>
-                <input type="number" class="form-control form-control-sm" id="ref_reward" name="ref_reward" min="1" max="39" value="20" required>
-                <div class="form-text text-muted" style="font-size: 11px;">1-39 руб. Вы получите {{ total_reward }} - ставка</div>
-              </div>
-              <div class="col-sm-5">
-                <label class="form-label small mb-1" for="note">Заметка</label>
-                <input type="text" class="form-control form-control-sm" id="note" name="note" placeholder="Необязательно" maxlength="100">
-              </div>
-              <div class="col-sm-3">
-                <button type="submit" class="btn btn-primary btn-sm w-100">Создать</button>
-              </div>
-            </div>
-          </form>
-
-          {# Таблица ссылок #}
-          {% if links %}
-            <div class="table-responsive">
-              <table class="table table-sm mb-0 align-middle table-dark-site">
-                <thead>
-                  <tr>
-                    <th>Ссылка</th>
-                    <th>Ставка рефу</th>
-                    <th>Ваш доход</th>
-                    <th>Рефы</th>
-                    <th>Статус</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for link in links %}
-                    <tr>
-                      <td>
-                        <input type="text" class="form-control form-control-sm font-monospace" style="font-size: 11px; width: 220px;"
-                               value="{{ request.scheme }}://{{ request.get_host }}{% url 'affiliate_ref_register' link.code %}"
-                               readonly onclick="this.select();">
-                        {% if link.note %}<div class="text-muted" style="font-size: 11px;">{{ link.note }}</div>{% endif %}
-                      </td>
-                      <td class="text-center">{{ link.ref_reward }} руб.</td>
-                      <td class="text-center text-success">{{ link.partner_cut }} руб.</td>
-                      <td class="text-center">{{ link.ref_count }}</td>
-                      <td>
-                        {% if link.is_active %}
-                          <span class="badge bg-success">Активна</span>
-                        {% else %}
-                          <span class="badge bg-secondary">Отключена</span>
-                        {% endif %}
-                      </td>
-                      <td>
-                        <form method="post" action="{% url 'affiliate_toggle_link' link.id %}" class="d-inline">
-                          {% csrf_token %}
-                          <button type="submit" class="btn btn-outline-secondary btn-sm py-0">
-                            {% if link.is_active %}Откл{% else %}Вкл{% endif %}
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <p class="text-muted small mb-0">У вас пока нет ссылок. Создайте первую ссылку выше.</p>
-          {% endif %}
-        </div>
-      </div>
-
-      {# История начислений #}
-      <div class="card shadow-sm">
+      <div class="card shadow-sm h-100">
         <div class="card-header bg-transparent border-secondary py-2">
           <strong>История начислений</strong>
         </div>
@@ -151,7 +162,7 @@
                       <td class="text-muted small">{{ e.created_at|date:"d.m.Y H:i" }}</td>
                       <td>#{{ e.lead_id|default:"—" }}</td>
                       <td>{% if e.lead %}@{{ e.lead.user.username }}{% else %}—{% endif %}</td>
-                      <td class="text-success">+{{ e.amount }} руб.</td>
+                      <td class="text-success">+{{ e.amount }} ₽</td>
                     </tr>
                   {% endfor %}
                 </tbody>
@@ -164,9 +175,8 @@
       </div>
     </div>
 
-    {# Правая колонка: заявки на вывод #}
     <div class="col-md-5">
-      <div class="card shadow-sm">
+      <div class="card shadow-sm h-100">
         <div class="card-header bg-transparent border-secondary py-2">
           <strong>Заявки на вывод</strong>
         </div>
@@ -185,7 +195,7 @@
                   {% for w in withdrawals %}
                     <tr>
                       <td class="text-muted small">{{ w.created_at|date:"d.m.Y" }}</td>
-                      <td>{{ w.amount }} руб.</td>
+                      <td>{{ w.amount }} ₽</td>
                       <td>
                         {% if w.status == 'pending' %}
                           <span class="badge bg-warning text-dark">На рассмотрении</span>
