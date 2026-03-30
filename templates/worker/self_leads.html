@@ -12,12 +12,38 @@
     </div>
   </div>
 
+  {# Поиск #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <form method="get" class="d-flex gap-2">
+        <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск по контакту или ID лида...">
+        <button type="submit" class="btn btn-primary btn-sm px-4">Найти</button>
+        {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'worker_self_leads' %}">Сбросить</a>{% endif %}
+      </form>
+    </div>
+  </div>
+
   <p class="text-muted small mb-3">
-    Здесь вы можете самостоятельно отправить лиды на проверку администратору. За каждый одобренный лид начисляется вознаграждение 40 руб.
+    {% if q %}Результаты поиска «{{ q }}» — найдено {{ page_obj.paginator.count }}.{% else %}Здесь вы можете самостоятельно отправить лиды на проверку администратору. За каждый одобренный лид начисляется вознаграждение 40 руб.{% endif %}
   </p>
 
   {% if self_leads %}
     <div class="card shadow-sm">
+      {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-header bg-transparent border-secondary d-flex justify-content-end">
+          <nav>
+            <ul class="pagination pagination-sm mb-0">
+              {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
+              {% endif %}
+              <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+              {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
+              {% endif %}
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
       <div class="card-body p-0">
         <div class="table-responsive">
           <table class="table table-sm mb-0 align-middle table-dark-site">
@@ -92,14 +118,36 @@
           </table>
         </div>
       </div>
+      {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer bg-transparent border-secondary d-flex justify-content-end">
+          <nav>
+            <ul class="pagination pagination-sm mb-0">
+              {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
+              {% endif %}
+              <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+              {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
+              {% endif %}
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
     </div>
   {% else %}
     <div class="card shadow-sm">
       <div class="card-body text-center text-muted py-5">
-        Вы ещё не отправляли лиды.
-        <div class="mt-3">
-          <a href="{% url 'worker_self_lead_create' %}" class="btn btn-primary btn-sm">Отправить первый лид</a>
-        </div>
+        {% if q %}
+          По запросу «{{ q }}» лидов не найдено.
+          <div class="mt-3">
+            <a href="{% url 'worker_self_leads' %}" class="btn btn-outline-secondary btn-sm">Показать все</a>
+          </div>
+        {% else %}
+          Вы ещё не отправляли лиды.
+          <div class="mt-3">
+            <a href="{% url 'worker_self_lead_create' %}" class="btn btn-primary btn-sm">Отправить первый лид</a>
+          </div>
+        {% endif %}
       </div>
     </div>
   {% endif %}

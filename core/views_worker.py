@@ -360,8 +360,19 @@ def worker_self_leads(request: HttpRequest) -> HttpResponse:
     """Список самостоятельно отправленных лидов исполнителя."""
     if not _require_worker(request):
         return HttpResponseForbidden("Только для исполнителей.")
-    leads = WorkerSelfLead.objects.filter(worker=request.user).order_by("-created_at")
-    return render(request, "worker/self_leads.html", {"self_leads": leads})
+    from django.core.paginator import Paginator
+    from django.db.models import Q
+    leads_qs = WorkerSelfLead.objects.filter(worker=request.user).order_by("-created_at")
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        leads_qs = leads_qs.filter(Q(raw_contact__icontains=q) | Q(pk__icontains=q))
+    paginator = Paginator(leads_qs, 30)
+    try:
+        page_number = int(request.GET.get("page", 1))
+    except (TypeError, ValueError):
+        page_number = 1
+    page_obj = paginator.get_page(page_number)
+    return render(request, "worker/self_leads.html", {"self_leads": page_obj, "page_obj": page_obj, "q": q})
 
 
 @login_required

@@ -8,8 +8,19 @@
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
   </div>
 
-  <p class="text-muted small mb-4">
-    Статусы проверки лидов. Одобренные лиды оплачиваются автоматически.
+  {# Поиск #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <form method="get" class="d-flex gap-2">
+        <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск по контакту или ID лида...">
+        <button type="submit" class="btn btn-primary btn-sm px-4">Найти</button>
+        {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'leads_my_list' %}">Сбросить</a>{% endif %}
+      </form>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3">
+    {% if q %}Результаты поиска «{{ q }}» — найдено {{ page_obj.paginator.count }}.{% else %}Статусы проверки лидов. Одобренные лиды оплачиваются автоматически.{% endif %}
   </p>
 
   {% if page_obj.object_list %}
@@ -23,11 +34,11 @@
           <nav aria-label="Страницы лидов">
             <ul class="pagination pagination-sm mb-0">
                 {% if page_obj.has_previous %}
-                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a></li>
+                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
                 {% endif %}
                 <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
                 {% if page_obj.has_next %}
-                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a></li>
+                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
                 {% endif %}
             </ul>
           </nav>
@@ -73,11 +84,11 @@
           <nav aria-label="Страницы лидов">
             <ul class="pagination pagination-sm mb-0">
                 {% if page_obj.has_previous %}
-                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a></li>
+                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
                 {% endif %}
                 <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
                 {% if page_obj.has_next %}
-                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a></li>
+                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
                 {% endif %}
             </ul>
           </nav>
@@ -87,9 +98,14 @@
   {% else %}
     <div class="card shadow-sm">
       <div class="card-body text-center text-muted py-5">
-        <p class="mb-3">У вас пока нет лидов.</p>
-        <a class="btn btn-outline-primary btn-sm" href="{% url 'leads_report' %}">Добавить лид</a>
-        <a class="btn btn-outline-secondary btn-sm ms-1" href="{% url 'dashboard' %}">В кабинет</a>
+        {% if q %}
+          <p class="mb-3">По запросу «{{ q }}» лидов не найдено.</p>
+          <a class="btn btn-outline-secondary btn-sm" href="{% url 'leads_my_list' %}">Показать все</a>
+        {% else %}
+          <p class="mb-3">У вас пока нет лидов.</p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'leads_report' %}">Добавить лид</a>
+          <a class="btn btn-outline-secondary btn-sm ms-1" href="{% url 'dashboard' %}">В кабинет</a>
+        {% endif %}
       </div>
     </div>
   {% endif %}

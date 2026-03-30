@@ -961,6 +961,12 @@ def leads_my_list(request: HttpRequest) -> HttpResponse:
             .select_related("lead_type")
             .order_by("-created_at")
         )
+        q = (request.GET.get("q") or "").strip()
+        if q:
+            from django.db.models import Q
+            leads_qs = leads_qs.filter(
+                Q(raw_contact__icontains=q) | Q(normalized_contact__icontains=q) | Q(pk__icontains=q)
+            )
         paginator = Paginator(leads_qs, 30)
         try:
             page_number = int(request.GET.get("page", 1))
@@ -977,6 +983,7 @@ def leads_my_list(request: HttpRequest) -> HttpResponse:
                 "page_obj": page_obj,
                 "lead_approve_reward": lead_approve_reward,
                 "leads_updated_at": leads_updated_at,
+                "q": q,
             },
         )
     except Exception as e:
