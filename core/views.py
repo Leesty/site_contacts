@@ -280,10 +280,12 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         return render(request, "core/dashboard_admin.html", ctx)
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     balance = getattr(user, "balance", 0) or 0
+    dozhim_balance = getattr(user, "dozhim_balance", 0) or 0
     pending_wr = WithdrawalRequest.objects.filter(user=user, status="pending").first()
     withdrawal_pending = pending_wr is not None
     withdrawal_pending_amount = pending_wr.amount if pending_wr else 0
-    can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending
+    can_withdraw_search = balance >= withdrawal_min and not withdrawal_pending
+    can_withdraw_dozhim = dozhim_balance >= withdrawal_min and not withdrawal_pending
     # Есть ли непрочитанные сообщения от поддержки
     support_has_unread = False
     thread = SupportThread.objects.filter(user=user).order_by("-updated_at").first()
@@ -304,7 +306,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "withdrawal_min_balance": withdrawal_min,
             "withdrawal_pending": withdrawal_pending,
             "withdrawal_pending_amount": withdrawal_pending_amount,
-            "can_request_withdrawal": can_request_withdrawal,
+            "can_request_withdrawal": can_withdraw_search,
+            "can_withdraw_dozhim": can_withdraw_dozhim,
             "support_has_unread": support_has_unread,
             "rework_leads_count": rework_leads_count,
         },
@@ -626,6 +629,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard")
     user = request.user
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
+    dept = request.GET.get("dept") or request.POST.get("dept") or "search"
 
     # Специальная логика для баланс‑админа: баланс считается по логу одобренных лидов.
     if getattr(user, "role", None) == "balance_admin":
@@ -661,7 +665,10 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         )
         balance = max(0, earned - withdrawn)
     else:
-        balance = getattr(user, "balance", 0) or 0
+        if dept == "dozhim":
+            balance = getattr(user, "dozhim_balance", 0) or 0
+        else:
+            balance = getattr(user, "balance", 0) or 0
     if balance < withdrawal_min:
         messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
         return redirect("dashboard")
@@ -681,6 +688,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     "balance": balance,
                     "withdrawal_min_balance": withdrawal_min,
                     "payout_details": payout_details,
+                    "dept": dept,
                 },
             )
         with transaction.atomic():
@@ -744,21 +752,29 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     status="pending",
                 )
             else:
-                current_balance = getattr(user_refresh, "balance", 0) or 0
+                if dept == "dozhim":
+                    current_balance = getattr(user_refresh, "dozhim_balance", 0) or 0
+                else:
+                    current_balance = getattr(user_refresh, "balance", 0) or 0
                 if WithdrawalRequest.objects.filter(user=user_refresh, status="pending").exists():
                     messages.info(request, "У вас уже есть заявка на вывод на рассмотрении.")
                     return redirect("dashboard")
                 if current_balance < withdrawal_min:
                     messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
                     return redirect("dashboard")
+                dept_label = "Дожим" if dept == "dozhim" else "Поиск"
                 WithdrawalRequest.objects.create(
                     user=user_refresh,
                     amount=current_balance,
-                    payout_details=payout_details,
+                    payout_details=f"[{dept_label}] {payout_details}",
                     status="pending",
                 )
-                user_refresh.balance = 0
-                user_refresh.save(update_fields=["balance"])
+                if dept == "dozhim":
+                    user_refresh.dozhim_balance = 0
+                    user_refresh.save(update_fields=["dozhim_balance"])
+                else:
+                    user_refresh.balance = 0
+                    user_refresh.save(update_fields=["balance"])
         messages.success(
             request,
             f"Заявка на вывод {current_balance} руб. отправлена. {'Баланс обнулён. ' if _role not in ('balance_admin', 'admin') else ''}Ожидайте решения администратора.",
@@ -774,6 +790,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             "balance": balance,
             "withdrawal_min_balance": withdrawal_min,
             "payout_details": "",
+            "dept": dept,
         },
     )
 

@@ -59,7 +59,11 @@ class User(AbstractUser):
     )
     balance = models.IntegerField(
         default=0,
-        help_text="Баланс пользователя (руб.). Начисляется вручную админом.",
+        help_text="Баланс пользователя за Отдел поиска (руб.).",
+    )
+    dozhim_balance = models.IntegerField(
+        default=0,
+        help_text="Баланс пользователя за Отдел дожима (руб.).",
     )
     balance_admin_rate = models.DecimalField(
         max_digits=6, decimal_places=2, default=5,

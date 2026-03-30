@@ -622,8 +622,12 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
                 partner.balance = (partner.balance or 0) + partner_earning
                 partner.save(update_fields=["balance"])
         lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
-        lead_owner.balance = (lead_owner.balance or 0) + reward
-        lead_owner.save(update_fields=["balance"])
+        if is_dozhim:
+            lead_owner.dozhim_balance = (lead_owner.dozhim_balance or 0) + reward
+            lead_owner.save(update_fields=["dozhim_balance"])
+        else:
+            lead_owner.balance = (lead_owner.balance or 0) + reward
+            lead_owner.save(update_fields=["balance"])
         # Сохраняем текущую ставку баланс-админа в логе
         _ba_rate = None
         _ba_user = User.objects.filter(role=User.Role.BALANCE_ADMIN).first()
@@ -683,8 +687,12 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                             partner.save(update_fields=["balance"])
                             pe.delete()
                     lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
-                    lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
-                    lead_owner.save(update_fields=["balance"])
+                    if _is_dz:
+                        lead_owner.dozhim_balance = max(0, (lead_owner.dozhim_balance or 0) - reward)
+                        lead_owner.save(update_fields=["dozhim_balance"])
+                    else:
+                        lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
+                        lead_owner.save(update_fields=["balance"])
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REJECTED)
             messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
@@ -734,8 +742,12 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                             partner.save(update_fields=["balance"])
                             pe.delete()
                     lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
-                    lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
-                    lead_owner.save(update_fields=["balance"])
+                    if _is_dz:
+                        lead_owner.dozhim_balance = max(0, (lead_owner.dozhim_balance or 0) - reward)
+                        lead_owner.save(update_fields=["dozhim_balance"])
+                    else:
+                        lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
+                        lead_owner.save(update_fields=["balance"])
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REWORK)
             messages.success(request, f"Лид #{lead_id} отправлен на доработку." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
