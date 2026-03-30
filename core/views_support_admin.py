@@ -1991,7 +1991,7 @@ def standalone_admin_report_approve(request: HttpRequest, report_id: int) -> Htt
         report_refresh.rework_comment = ""
         report_refresh.rejection_reason = ""
         report_refresh.save(update_fields=["status", "reviewed_at", "reviewed_by", "rework_comment", "rejection_reason", "updated_at"])
-        reward = report_refresh.reward or 150
+        reward = report_refresh.reward or 40
         worker = User.objects.select_for_update().get(pk=report_refresh.worker_id)
         worker.balance = (worker.balance or 0) + reward
         worker.save(update_fields=["balance"])
