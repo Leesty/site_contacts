@@ -931,16 +931,28 @@ def admin_user_balance(request: HttpRequest, user_id: int) -> HttpResponse:
             amount = 0
             action = None
         if amount > 0 and action in ("add", "subtract"):
+            dept = request.POST.get("dept", "search")
             with transaction.atomic():
                 user_locked = User.objects.select_for_update().get(pk=user_id)
-                current = user_locked.balance or 0
-                if action == "add":
-                    user_locked.balance = current + amount
+                if dept == "dozhim":
+                    current = user_locked.dozhim_balance or 0
+                    if action == "add":
+                        user_locked.dozhim_balance = current + amount
+                    else:
+                        user_locked.dozhim_balance = max(0, current - amount)
+                    user_locked.save(update_fields=["dozhim_balance"])
+                    new_bal = user_locked.dozhim_balance
                 else:
-                    user_locked.balance = max(0, current - amount)
-                user_locked.save(update_fields=["balance"])
+                    current = user_locked.balance or 0
+                    if action == "add":
+                        user_locked.balance = current + amount
+                    else:
+                        user_locked.balance = max(0, current - amount)
+                    user_locked.save(update_fields=["balance"])
+                    new_bal = user_locked.balance
+            dept_label = "Дожим" if dept == "dozhim" else "Поиск"
             msg = f"Начислено {amount} руб." if action == "add" else f"Списано {amount} руб."
-            messages.success(request, f"Баланс @{target_user.username}: {msg}. Текущий баланс: {user_locked.balance} руб.")
+            messages.success(request, f"[{dept_label}] @{target_user.username}: {msg}. Баланс: {new_bal} руб.")
             return redirect("admin_all_users")
         messages.warning(request, "Укажите положительное число и действие (начислить / списать).")
     return render(
@@ -1000,7 +1012,7 @@ def admin_all_users(request: HttpRequest) -> HttpResponse:
         )
     else:
         users_list = User.objects.all().order_by("-date_joined")
-    total_balance = User.objects.aggregate(s=Sum("balance"))["s"] or 0
+    total_balance = (User.objects.aggregate(s=Sum("balance"))["s"] or 0) + (User.objects.aggregate(s=Sum("dozhim_balance"))["s"] or 0)
     return render(
         request,
         "core/admin_all_users.html",
@@ -1239,8 +1251,13 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                         f"Вывод @{wreq.user.username} на {wreq.amount} руб. одобрен.",
                     )
                 else:
-                    wreq.user.balance = (wreq.user.balance or 0) + wreq.amount
-                    wreq.user.save(update_fields=["balance"])
+                    _is_dozhim_wr = wreq.payout_details and wreq.payout_details.startswith("[Дожим]")
+                    if _is_dozhim_wr:
+                        wreq.user.dozhim_balance = (wreq.user.dozhim_balance or 0) + wreq.amount
+                        wreq.user.save(update_fields=["dozhim_balance"])
+                    else:
+                        wreq.user.balance = (wreq.user.balance or 0) + wreq.amount
+                        wreq.user.save(update_fields=["balance"])
                     wreq.status = "rejected"
                     messages.info(request, f"Заявка от @{wreq.user.username} отклонена. Баланс восстановлен.")
                 wreq.processed_at = now
@@ -1264,8 +1281,13 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                         wreq.status = "approved"
                         approved_count += 1
                     else:
-                        wreq.user.balance = (wreq.user.balance or 0) + wreq.amount
-                        wreq.user.save(update_fields=["balance"])
+                        _is_dozhim_wr = wreq.payout_details and wreq.payout_details.startswith("[Дожим]")
+                        if _is_dozhim_wr:
+                            wreq.user.dozhim_balance = (wreq.user.dozhim_balance or 0) + wreq.amount
+                            wreq.user.save(update_fields=["dozhim_balance"])
+                        else:
+                            wreq.user.balance = (wreq.user.balance or 0) + wreq.amount
+                            wreq.user.save(update_fields=["balance"])
                         wreq.status = "rejected"
                         rejected_count += 1
                     wreq.processed_at = now

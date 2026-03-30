@@ -45,7 +45,8 @@
             <tr>
               <th>Пользователь</th>
               <th>Статус</th>
-              <th>Баланс</th>
+              <th>Поиск</th>
+              <th>Дожим</th>
               <th>Регистрация</th>
               <th style="width: 1%; white-space: nowrap;">Действия</th>
             </tr>
@@ -64,6 +65,7 @@
                   {% endif %}
                 </td>
                 <td>{{ u.balance|default:0 }}</td>
+                <td>{{ u.dozhim_balance|default:0 }}</td>
                 <td>{{ u.date_joined|date:"d.m.Y H:i" }}</td>
                 <td>
                   <div class="d-flex flex-wrap gap-1">

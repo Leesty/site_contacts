@@ -328,9 +328,11 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
         _admin_earned = int(_admin_actions * Decimal("2.5"))
         _admin_withdrawn = WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
         balance = max(0, _admin_earned - _admin_withdrawn)
+    dozhim_balance = getattr(user, "dozhim_balance", 0) or 0
     data = {
         "support_has_unread": False,
         "balance": balance,
+        "dozhim_balance": dozhim_balance,
         "leads_updated_at": None,
     }
     if _is_admin(user):
