@@ -13,4 +13,9 @@ class Migration(migrations.Migration):
             name="reward",
             field=models.PositiveIntegerField(default=40, help_text="Вознаграждение за одобренный лид (руб.)."),
         ),
+        migrations.AlterField(
+            model_name="workerreport",
+            name="reward",
+            field=models.PositiveIntegerField(default=40, help_text="Вознаграждение за одобренный отчёт (руб.)."),
+        ),
     ]
