@@ -235,6 +235,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         admin_withdrawal_pending = WithdrawalRequest.objects.filter(user=user, status="pending").exists()
         admin_can_withdraw = admin_balance >= getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500) and not admin_withdrawal_pending
 
+        from .models import SearchReport
+        search_pending_count = SearchReport.objects.filter(
+            search_link__bot_started=True, status=SearchReport.Status.PENDING
+        ).count()
+
         ctx = {
             "user": user,
             "pending_requests_count": pending_count,
@@ -248,6 +253,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "admin_actions": admin_actions,
             "admin_can_withdraw": admin_can_withdraw,
             "admin_withdrawal_pending": admin_withdrawal_pending,
+            "search_pending_count": search_pending_count,
         }
 
         if _is_main_admin(user):
