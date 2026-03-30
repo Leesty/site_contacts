@@ -602,6 +602,25 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         # Динамическая награда: дожим → 30р, поиск → 40р
         is_dozhim = lead.lead_type and lead.lead_type.slug == "dozhim"
         reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if is_dozhim else LEAD_APPROVE_REWARD
+        partner_earning = 0
+        # Партнёрская экономика — только для лидов из Отдела поиска (не дожим)
+        if not is_dozhim:
+            partner_owner_id = lead.user.partner_owner_id
+            if partner_owner_id:
+                from .models import PartnerEarning
+                partner = User.objects.select_for_update().get(pk=partner_owner_id)
+                if partner.role == User.Role.AFFILIATE:
+                    # Affiliate: ставка с ссылки
+                    link = lead.user.partner_link
+                    ref_reward = max(1, min(39, link.ref_reward if link else 20))
+                    reward = ref_reward  # реф получит ref_reward вместо стандартных 40
+                    partner_earning = LEAD_APPROVE_REWARD - ref_reward
+                else:
+                    # Старая система (role=partner)
+                    partner_earning = partner.partner_rate or 10
+                PartnerEarning.objects.create(partner=partner, lead=lead, amount=partner_earning)
+                partner.balance = (partner.balance or 0) + partner_earning
+                partner.save(update_fields=["balance"])
         lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
         lead_owner.balance = (lead_owner.balance or 0) + reward
         lead_owner.save(update_fields=["balance"])
@@ -615,16 +634,6 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
             action=LeadReviewLog.Action.APPROVED,
             balance_admin_rate_snapshot=_ba_rate,
         )
-        # Начислить партнёру — только для лидов из Отдела поиска (не дожим)
-        if not is_dozhim:
-            partner_owner_id = lead.user.partner_owner_id
-            if partner_owner_id:
-                from .models import PartnerEarning
-                partner = User.objects.select_for_update().get(pk=partner_owner_id)
-                rate = partner.partner_rate or 10
-                PartnerEarning.objects.create(partner=partner, lead=lead, amount=rate)
-                partner.balance = (partner.balance or 0) + rate
-                partner.save(update_fields=["balance"])
     msg = f"Лид #{lead_id} одобрен. Пользователю начислено {reward} руб."
     messages.success(request, msg)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -659,18 +668,23 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                 if was_approved:
                     _is_dz = lead_refresh.lead_type and lead_refresh.lead_type.slug == "dozhim"
                     reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if _is_dz else getattr(settings, "LEAD_APPROVE_REWARD", 40)
-                    lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
-                    lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
-                    lead_owner.save(update_fields=["balance"])
                     # Откат партнёрского заработка (только для лидов поиска)
                     if not _is_dz:
                         from .models import PartnerEarning
                         pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
                         if pe:
                             partner = User.objects.select_for_update().get(pk=pe.partner_id)
+                            # Для affiliate реф получил ref_reward, а не стандартные 40
+                            if partner.role == User.Role.AFFILIATE:
+                                reward = pe.amount + (LEAD_APPROVE_REWARD - pe.amount)  # = LEAD_APPROVE_REWARD - partner_cut + partner_cut... нет
+                                # pe.amount = partner_cut, ref получил LEAD_APPROVE_REWARD - partner_cut
+                                reward = LEAD_APPROVE_REWARD - pe.amount
                             partner.balance = max(0, (partner.balance or 0) - pe.amount)
                             partner.save(update_fields=["balance"])
                             pe.delete()
+                    lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
+                    lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
+                    lead_owner.save(update_fields=["balance"])
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REJECTED)
             messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
@@ -709,17 +723,19 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                 if was_approved:
                     _is_dz = lead_refresh.lead_type and lead_refresh.lead_type.slug == "dozhim"
                     reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 30) if _is_dz else getattr(settings, "LEAD_APPROVE_REWARD", 40)
-                    lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
-                    lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
-                    lead_owner.save(update_fields=["balance"])
                     if not _is_dz:
                         from .models import PartnerEarning
                         pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
                         if pe:
                             partner = User.objects.select_for_update().get(pk=pe.partner_id)
+                            if partner.role == User.Role.AFFILIATE:
+                                reward = LEAD_APPROVE_REWARD - pe.amount
                             partner.balance = max(0, (partner.balance or 0) - pe.amount)
                             partner.save(update_fields=["balance"])
                             pe.delete()
+                    lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
+                    lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
+                    lead_owner.save(update_fields=["balance"])
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REWORK)
             messages.success(request, f"Лид #{lead_id} отправлен на доработку." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme

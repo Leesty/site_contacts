@@ -32,6 +32,7 @@ class User(AbstractUser):
         BALANCE_ADMIN = "balance_admin", "Баланс‑админ"
         WORKER = "worker", "Исполнитель"
         PARTNER = "partner", "Партнёр"
+        AFFILIATE = "affiliate", "Партнёрка"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Ожидает одобрения"
@@ -83,12 +84,20 @@ class User(AbstractUser):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="partner_users",
-        limit_choices_to={"role": "partner"},
+        limit_choices_to={"role__in": ["partner", "affiliate"]},
         help_text="Партнёр, привлёкший этого пользователя.",
     )
     partner_rate = models.PositiveIntegerField(
         default=10,
         help_text="Ставка партнёра (руб.) за каждый одобренный лид реферала.",
+    )
+    partner_link = models.ForeignKey(
+        "PartnerLink",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="registered_users",
+        help_text="Реферальная ссылка, по которой зарегистрировался пользователь (для affiliate-ставки).",
     )
 
     def is_approved(self) -> bool:
@@ -799,11 +808,15 @@ class PartnerLink(TimeStampedModel):
         User,
         on_delete=models.CASCADE,
         related_name="partner_links",
-        limit_choices_to={"role": "partner"},
+        limit_choices_to={"role__in": ["partner", "affiliate"]},
     )
     code = models.CharField(max_length=32, unique=True, default=partner_link_code)
     is_active = models.BooleanField(default=True)
     note = models.CharField(max_length=100, blank=True, help_text="Заметка для идентификации ссылки.")
+    ref_reward = models.PositiveIntegerField(
+        default=20,
+        help_text="Ставка рефу за одобренный лид (руб.). Партнёр получает 40 - ref_reward.",
+    )
 
     class Meta:
         verbose_name = "Реферальная ссылка партнёра"

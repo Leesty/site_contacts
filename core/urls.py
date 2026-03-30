@@ -21,6 +21,13 @@ urlpatterns = [
     path("partner/links/create/", views_partner.partner_create_link, name="partner_create_link"),
     path("partner/links/<int:link_id>/toggle/", views_partner.partner_toggle_link, name="partner_toggle_link"),
     path("p/<str:code>/", views_partner.partner_ref_register, name="partner_ref_register"),
+    # Affiliate cabinet
+    path("affiliate/", views_partner.affiliate_dashboard, name="affiliate_dashboard"),
+    path("affiliate/referrals/", views_partner.affiliate_referrals, name="affiliate_referrals"),
+    path("affiliate/withdrawal/", views_partner.affiliate_withdrawal, name="affiliate_withdrawal"),
+    path("affiliate/links/create/", views_partner.affiliate_create_link, name="affiliate_create_link"),
+    path("affiliate/links/<int:link_id>/toggle/", views_partner.affiliate_toggle_link, name="affiliate_toggle_link"),
+    path("a/<str:code>/", views_partner.affiliate_ref_register, name="affiliate_ref_register"),
     # Dozhim department
     path("department/switch/", views.switch_department, name="switch_department"),
     path("dozhim/contacts/", views.dozhim_contacts, name="dozhim_contacts"),
