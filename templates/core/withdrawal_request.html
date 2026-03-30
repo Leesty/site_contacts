@@ -7,7 +7,7 @@
     <div>
       <h1 class="h4 mb-1">Запрос на вывод{% if dept == 'dozhim' %} (Дожим){% elif user.role == 'user' %} (Поиск){% endif %}</h1>
       <p class="text-muted small mb-0">
-        Баланс: <strong>{{ balance }}</strong> руб. Вывод от {{ withdrawal_min_balance }} руб.
+        Доступно: <strong>{{ balance }}</strong> руб. Вывод от {{ withdrawal_min_balance }} руб.
       </p>
     </div>
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
@@ -19,6 +19,13 @@
       <form method="post" action="">
         {% csrf_token %}
         <input type="hidden" name="dept" value="{{ dept }}">
+        {% if user.role == 'admin' or user.role == 'main_admin' %}
+          <div class="mb-3">
+            <label for="id_amount" class="form-label">Сумма вывода (руб.)</label>
+            <input type="number" id="id_amount" name="amount" class="form-control" min="{{ withdrawal_min_balance }}" max="{{ balance }}" value="{{ balance }}" required>
+            <div class="form-text">От {{ withdrawal_min_balance }} до {{ balance }} руб. Оставьте {{ balance }} чтобы вывести всё.</div>
+          </div>
+        {% endif %}
         <div class="mb-3">
           <label for="id_payout_details" class="form-label">Реквизиты для вывода</label>
           <textarea
@@ -33,7 +40,7 @@
             Укажите номер карты или телефона и банк. Эти данные увидит только администратор при обработке заявки.
           </div>
         </div>
-        <button type="submit" class="btn btn-success">Отправить заявку на вывод {{ balance }} руб.</button>
+        <button type="submit" class="btn btn-success w-100">Отправить заявку на вывод</button>
       </form>
     </div>
   </div>
