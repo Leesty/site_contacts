@@ -80,19 +80,33 @@ def worker_tasks(request: HttpRequest) -> HttpResponse:
     """Список назначенных задач исполнителя."""
     if not _require_worker(request):
         return HttpResponseForbidden("Только для исполнителей.")
+    from django.core.paginator import Paginator
+    from django.db.models import Q
     user = request.user
-    assignments = list(
+    assignments_qs = (
         LeadAssignment.objects.filter(worker=user)
         .select_related("lead", "lead__lead_type")
         .order_by("-created_at")
     )
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        assignments_qs = assignments_qs.filter(
+            Q(lead__raw_contact__icontains=q) | Q(lead__normalized_contact__icontains=q) | Q(lead__pk__icontains=q) | Q(pk__icontains=q)
+        )
+    paginator = Paginator(assignments_qs, 30)
+    try:
+        page_number = int(request.GET.get("page", 1))
+    except (TypeError, ValueError):
+        page_number = 1
+    page_obj = paginator.get_page(page_number)
+    assignments = list(page_obj)
     # Annotate each assignment with a safe report status to avoid RelatedObjectDoesNotExist in templates
     for a in assignments:
         try:
             a.report_obj = a.report
         except WorkerReport.DoesNotExist:
             a.report_obj = None
-    return render(request, "worker/tasks.html", {"assignments": assignments})
+    return render(request, "worker/tasks.html", {"assignments": assignments, "page_obj": page_obj, "q": q})
 
 
 @login_required
