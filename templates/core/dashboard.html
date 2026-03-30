@@ -11,8 +11,11 @@
       </p>
     </div>
     <div class="text-end d-flex flex-column flex-md-row align-items-end gap-2">
-      <span class="badge bg-primary fs-6 px-3 py-2">Поиск: {{ user.balance|default:0 }} ₽</span>
-      <span class="badge bg-info text-dark fs-6 px-3 py-2">Дожим: {{ user.dozhim_balance|default:0 }} ₽</span>
+      {% if department == 'dozhim' %}
+        <span class="badge bg-info text-dark fs-6 px-3 py-2">Баланс: {{ user.dozhim_balance|default:0 }} ₽</span>
+      {% else %}
+        <span class="badge bg-primary fs-6 px-3 py-2">Баланс: {{ user.balance|default:0 }} ₽</span>
+      {% endif %}
     </div>
   </div>
   {% if withdrawal_pending %}
@@ -21,17 +24,17 @@
       <div><strong>{{ withdrawal_pending_amount }} руб.</strong> находится на выводе. Вывод будет выполнен в течение 3 дней.</div>
     </div>
   {% else %}
-    <div class="d-flex gap-2 mb-3">
-      {% if can_request_withdrawal %}
-        <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}?dept=search">Вывести Поиск ({{ user.balance|default:0 }} ₽)</a>
-      {% endif %}
-      {% if can_withdraw_dozhim %}
-        <a class="btn btn-info btn-sm text-dark" href="{% url 'request_withdrawal_create' %}?dept=dozhim">Вывести Дожим ({{ user.dozhim_balance|default:0 }} ₽)</a>
-      {% endif %}
-      {% if not can_request_withdrawal and not can_withdraw_dozhim %}
-        <span class="text-muted small">Вывод от {{ withdrawal_min_balance }} руб.</span>
-      {% endif %}
-    </div>
+    {% if department == 'dozhim' and can_withdraw_dozhim %}
+      <div class="d-flex gap-2 mb-3">
+        <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}?dept=dozhim">Вывести {{ user.dozhim_balance|default:0 }} ₽</a>
+      </div>
+    {% elif department != 'dozhim' and can_request_withdrawal %}
+      <div class="d-flex gap-2 mb-3">
+        <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}?dept=search">Вывести {{ user.balance|default:0 }} ₽</a>
+      </div>
+    {% else %}
+      <p class="text-muted small mb-2">Вывод от {{ withdrawal_min_balance }} руб.</p>
+    {% endif %}
   {% endif %}
 
   {% if rework_leads_count %}
