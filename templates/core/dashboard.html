@@ -13,13 +13,18 @@
     <div class="text-end d-flex flex-column flex-md-row align-items-end gap-2">
       <span class="badge bg-primary fs-6 px-3 py-2">Баланс: {{ user.balance|default:0 }} руб.</span>
       {% if withdrawal_pending %}
-        <span class="badge bg-warning text-dark">Заявка на вывод на рассмотрении</span>
+        <span class="badge bg-warning text-dark">Вывод на рассмотрении</span>
       {% elif can_request_withdrawal %}
         <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}">Запросить вывод</a>
       {% endif %}
     </div>
   </div>
-  {% if can_request_withdrawal and not withdrawal_pending %}
+  {% if withdrawal_pending %}
+    <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
+      <span class="me-2">💸</span>
+      <div><strong>{{ withdrawal_pending_amount }} руб.</strong> находится на выводе. Вывод будет выполнен в течение 3 дней.</div>
+    </div>
+  {% elif can_request_withdrawal %}
     <p class="text-muted small mb-2">
       Вывод от {{ withdrawal_min_balance }} рублей. При подаче заявки баланс обнулится; после решения админа средства будут переведены или возвращены на баланс.
     </p>

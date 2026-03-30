@@ -280,7 +280,9 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         return render(request, "core/dashboard_admin.html", ctx)
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     balance = getattr(user, "balance", 0) or 0
-    withdrawal_pending = WithdrawalRequest.objects.filter(user=user, status="pending").exists()
+    pending_wr = WithdrawalRequest.objects.filter(user=user, status="pending").first()
+    withdrawal_pending = pending_wr is not None
+    withdrawal_pending_amount = pending_wr.amount if pending_wr else 0
     can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending
     # Есть ли непрочитанные сообщения от поддержки
     support_has_unread = False
@@ -301,6 +303,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "user": user,
             "withdrawal_min_balance": withdrawal_min,
             "withdrawal_pending": withdrawal_pending,
+            "withdrawal_pending_amount": withdrawal_pending_amount,
             "can_request_withdrawal": can_request_withdrawal,
             "support_has_unread": support_has_unread,
             "rework_leads_count": rework_leads_count,

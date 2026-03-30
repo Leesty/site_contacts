@@ -8,6 +8,13 @@
     <p class="text-muted small mb-0">Добро пожаловать, {{ user.username }}.</p>
   </div>
 
+  {% if withdrawal_pending %}
+    <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
+      <span class="me-2">💸</span>
+      <div><strong>{{ withdrawal_pending_amount }} руб.</strong> находится на выводе. Вывод будет выполнен в течение 3 дней.</div>
+    </div>
+  {% endif %}
+
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
       <div class="card shadow-sm text-center">

@@ -49,6 +49,13 @@
     </div>
   </div>
 
+  {% if withdrawal_pending %}
+    <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
+      <span class="me-2">💸</span>
+      <div><strong>{{ withdrawal_pending_amount }} руб.</strong> находится на выводе. Вывод будет выполнен в течение 3 дней.</div>
+    </div>
+  {% endif %}
+
   {# Создание ссылки #}
   <div class="card shadow-sm mb-3">
     <div class="card-header bg-transparent border-secondary py-2">

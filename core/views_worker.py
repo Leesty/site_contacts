@@ -57,7 +57,9 @@ def worker_dashboard(request: HttpRequest) -> HttpResponse:
     approved_count = WorkerReport.objects.filter(worker=user, status=WorkerReport.Status.APPROVED).count()
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     balance = getattr(user, "balance", 0) or 0
-    withdrawal_pending = WorkerWithdrawalRequest.objects.filter(worker=user, status="pending").exists()
+    pending_wr = WorkerWithdrawalRequest.objects.filter(worker=user, status="pending").first()
+    withdrawal_pending = pending_wr is not None
+    withdrawal_pending_amount = pending_wr.amount if pending_wr else 0
     can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending
     return render(request, "worker/dashboard.html", {
         "user": user,
@@ -68,6 +70,7 @@ def worker_dashboard(request: HttpRequest) -> HttpResponse:
         "balance": balance,
         "withdrawal_min_balance": withdrawal_min,
         "withdrawal_pending": withdrawal_pending,
+        "withdrawal_pending_amount": withdrawal_pending_amount,
         "can_request_withdrawal": can_request_withdrawal,
     })
 

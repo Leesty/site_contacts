@@ -51,7 +51,9 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         link = PartnerLink.objects.create(partner=user, code=uuid4().hex[:24])
 
     withdrawals = WithdrawalRequest.objects.filter(user=user).order_by("-created_at")
-    withdrawal_pending = withdrawals.filter(status="pending").exists()
+    pending_wr = withdrawals.filter(status="pending").first()
+    withdrawal_pending = pending_wr is not None
+    withdrawal_pending_amount = pending_wr.amount if pending_wr else 0
     can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending
 
     return render(request, "partner/dashboard.html", {
@@ -63,6 +65,7 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         "link": link,
         "withdrawals": withdrawals,
         "withdrawal_pending": withdrawal_pending,
+        "withdrawal_pending_amount": withdrawal_pending_amount,
         "can_request_withdrawal": can_request_withdrawal,
         "withdrawal_min_balance": withdrawal_min,
         "partner_rate": user.partner_rate or PARTNER_EARN_PER_LEAD_DEFAULT,
@@ -255,7 +258,9 @@ def affiliate_dashboard(request: HttpRequest) -> HttpResponse:
         link.partner_cut = LEAD_APPROVE_REWARD - link.ref_reward
 
     withdrawals = WithdrawalRequest.objects.filter(user=user).order_by("-created_at")
-    withdrawal_pending = withdrawals.filter(status="pending").exists()
+    pending_wr = withdrawals.filter(status="pending").first()
+    withdrawal_pending = pending_wr is not None
+    withdrawal_pending_amount = pending_wr.amount if pending_wr else 0
     can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending
 
     return render(request, "affiliate/dashboard.html", {
@@ -267,6 +272,7 @@ def affiliate_dashboard(request: HttpRequest) -> HttpResponse:
         "links": links,
         "withdrawals": withdrawals,
         "withdrawal_pending": withdrawal_pending,
+        "withdrawal_pending_amount": withdrawal_pending_amount,
         "can_request_withdrawal": can_request_withdrawal,
         "withdrawal_min_balance": withdrawal_min,
         "total_reward": LEAD_APPROVE_REWARD,
