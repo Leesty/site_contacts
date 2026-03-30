@@ -184,7 +184,6 @@ def partner_ref_register(request: HttpRequest, code: str) -> HttpResponse:
                 user = form.save(commit=False)
                 user.status = User.Status.APPROVED
                 user.partner_owner = ref_link.partner
-                user.balance = -25000
                 user.save()
                 messages.success(request, "Регистрация прошла успешно. Войдите в личный кабинет.")
                 return redirect("login")
@@ -393,7 +392,6 @@ def affiliate_ref_register(request: HttpRequest, code: str) -> HttpResponse:
                 user.status = User.Status.APPROVED
                 user.partner_owner = ref_link.partner
                 user.partner_link = ref_link
-                user.balance = -25000
                 user.save()
                 messages.success(request, "Регистрация прошла успешно. Войдите в личный кабинет.")
                 return redirect("login")

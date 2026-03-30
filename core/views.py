@@ -60,7 +60,6 @@ def register(request: HttpRequest) -> HttpResponse:
         try:
             if form.is_valid():
                 user = form.save(commit=False)
-                user.balance = -25000
                 try:
                     from .models import SiteSettings
                     site_settings = SiteSettings.get_settings()
