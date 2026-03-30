@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Мои ссылки — SearchLink{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Мои ссылки (SearchLink)</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  {# Создание ссылки #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Создать ссылку</strong>
+    </div>
+    <div class="card-body py-3">
+      <form method="post" action="{% url 'search_link_create' %}" class="d-flex gap-2">
+        {% csrf_token %}
+        <input type="text" class="form-control form-control-sm" name="lead_name" placeholder="Имя / ник лида" required maxlength="200">
+        <button type="submit" class="btn btn-primary btn-sm px-4">Создать</button>
+      </form>
+    </div>
+  </div>
+
+  {# Поиск #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <form method="get" class="d-flex gap-2">
+        <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск по имени или коду...">
+        <button type="submit" class="btn btn-primary btn-sm px-4">Найти</button>
+        {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'search_links_my' %}">Сбросить</a>{% endif %}
+      </form>
+    </div>
+  </div>
+
+  {# Таблица ссылок #}
+  {% if page_obj %}
+    <div class="card shadow-sm">
+      {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-header bg-transparent border-secondary d-flex justify-content-end">
+          <nav>
+            <ul class="pagination pagination-sm mb-0">
+              {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
+              {% endif %}
+              <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+              {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
+              {% endif %}
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Имя лида</th>
+                <th>Ссылка</th>
+                <th>Создано</th>
+                <th>Отчёт</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for link in page_obj %}
+                <tr>
+                  <td>{{ link.lead_name|truncatechars:30 }}</td>
+                  <td>
+                    <div class="d-flex align-items-center gap-1">
+                      <input type="text" class="form-control form-control-sm font-monospace" style="font-size: 11px; width: 200px;"
+                             value="{{ request.scheme }}://{{ request.get_host }}/s/{{ link.code }}/"
+                             readonly onclick="this.select();">
+                      <button class="btn btn-outline-secondary btn-sm py-0 px-1" type="button"
+                              onclick="var i=this.previousElementSibling;i.select();navigator.clipboard?navigator.clipboard.writeText(i.value):document.execCommand('copy');" title="Копировать">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/></svg>
+                      </button>
+                    </div>
+                  </td>
+                  <td class="text-muted small">{{ link.created_at|date:"d.m.Y H:i" }}</td>
+                  <td>
+                    {% with report=link.report_obj %}
+                      {% if report %}
+                        {% if report.status == 'pending' %}
+                          <span class="badge bg-secondary">На проверке</span>
+                        {% elif report.status == 'approved' %}
+                          <span class="badge bg-success">Одобрен +100₽</span>
+                        {% elif report.status == 'rejected' %}
+                          <span class="badge bg-danger">Отклонён</span>
+                        {% elif report.status == 'rework' %}
+                          <span class="badge bg-warning text-dark">На доработке</span>
+                        {% endif %}
+                      {% else %}
+                        <span class="text-muted small">—</span>
+                      {% endif %}
+                    {% endwith %}
+                  </td>
+                  <td>
+                    {% with report=link.report_obj %}
+                      {% if not report %}
+                        <a href="{% url 'search_report_create' link.code %}" class="btn btn-primary btn-sm py-0">Отчёт</a>
+                      {% elif report.status == 'rework' %}
+                        <a href="{% url 'search_report_redo' link.code %}" class="btn btn-warning btn-sm py-0">Доработать</a>
+                      {% endif %}
+                    {% endwith %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="card shadow-sm">
+      <div class="card-body text-center text-muted py-5">
+        {% if q %}По запросу «{{ q }}» ссылок не найдено.{% else %}У вас пока нет ссылок. Создайте первую выше.{% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

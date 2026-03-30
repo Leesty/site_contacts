@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Отчёты SearchLink — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Отчёты SearchLink {% if pending_count %}<span class="badge bg-danger">{{ pending_count }}</span>{% endif %}</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  {# Вкладки #}
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">Новые {% if pending_count %}<span class="badge bg-danger ms-1">{{ pending_count }}</span>{% endif %}</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">На доработке</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые</a>
+    </li>
+  </ul>
+
+  {% if page_obj %}
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Менеджер</th>
+                <th>Лид</th>
+                <th>Дата</th>
+                <th>Вложение</th>
+                <th>Статус</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for report in page_obj %}
+                <tr>
+                  <td class="text-muted">{{ report.id }}</td>
+                  <td>@{{ report.user.username }}</td>
+                  <td>{{ report.search_link.lead_name|truncatechars:25 }}</td>
+                  <td class="text-muted small">{{ report.lead_date|date:"d.m.Y" }}</td>
+                  <td>
+                    {% if report.attachment %}
+                      <a href="{% url 'admin_search_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm py-0">Файл</a>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td>
+                    {% if report.status == 'pending' %}
+                      <span class="badge bg-secondary">На проверке</span>
+                    {% elif report.status == 'approved' %}
+                      <span class="badge bg-success">Одобрен</span>
+                    {% elif report.status == 'rejected' %}
+                      <span class="badge bg-danger">Отклонён</span>
+                    {% elif report.status == 'rework' %}
+                      <span class="badge bg-warning text-dark">Доработка</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if report.status == 'pending' %}
+                      <form method="post" action="{% url 'admin_search_report_approve' report.id %}" class="d-inline" onsubmit="return confirm('Одобрить?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm py-0">Одобрить</button>
+                      </form>
+                      <form method="post" action="{% url 'admin_search_report_reject' report.id %}" class="d-inline" onsubmit="return confirm('Отклонить?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
+                      </form>
+                      <form method="post" action="{% url 'admin_search_report_rework' report.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="comment" value="">
+                        <button type="submit" class="btn btn-outline-warning btn-sm py-0">Доработка</button>
+                      </form>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer bg-transparent border-secondary d-flex justify-content-end">
+          <nav>
+            <ul class="pagination pagination-sm mb-0">
+              {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>
+              {% endif %}
+              <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+              {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>
+              {% endif %}
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="card shadow-sm">
+      <div class="card-body text-center text-muted py-5">Нет отчётов.</div>
+    </div>
+  {% endif %}
+{% endblock %}

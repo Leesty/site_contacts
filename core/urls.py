@@ -3,6 +3,7 @@ from django.urls import path
 
 from . import views
 from . import views_partner
+from . import views_search
 from . import views_support_admin
 from . import views_worker
 
@@ -317,6 +318,18 @@ urlpatterns = [
         views_support_admin.download_leads_excel,
         name="download_leads_excel",
     ),
+    # SearchLink system
+    path("s/<str:code>/", views_search.search_link_landing, name="search_link_landing"),
+    path("search/links/", views_search.search_links_my, name="search_links_my"),
+    path("search/links/create/", views_search.search_link_create, name="search_link_create"),
+    path("search/links/<str:code>/report/", views_search.search_report_create, name="search_report_create"),
+    path("search/links/<str:code>/report/redo/", views_search.search_report_redo, name="search_report_redo"),
+    path("api/search-bot-start/", views_search.search_bot_start_webhook, name="search_bot_start_webhook"),
+    path("staff/search-reports/", views_search.admin_search_reports_list, name="admin_search_reports_list"),
+    path("staff/search-reports/<int:report_id>/approve/", views_search.admin_search_report_approve, name="admin_search_report_approve"),
+    path("staff/search-reports/<int:report_id>/reject/", views_search.admin_search_report_reject, name="admin_search_report_reject"),
+    path("staff/search-reports/<int:report_id>/rework/", views_search.admin_search_report_rework, name="admin_search_report_rework"),
+    path("staff/search-reports/<int:report_id>/attachment/", views_search.admin_search_report_attachment, name="admin_search_report_attachment"),
     # Role management (main_admin only)
     path("staff/roles/", views_support_admin.admin_manage_roles, name="admin_manage_roles"),
     path("staff/roles/<int:user_id>/set-affiliate/", views_support_admin.admin_set_affiliate, name="admin_set_affiliate"),

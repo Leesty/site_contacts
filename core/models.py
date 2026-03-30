@@ -909,3 +909,144 @@ class SiteSettings(models.Model):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
 
+
+# ─── SearchLink система ───────────────────────────────────────────────────────
+
+import random
+
+SEARCH_BOT_POOL = [
+    "A0vqbot", "A1vqbot", "A2vqbot", "A3vqbot", "A4vqbot",
+    "A6vqbot", "A7vqbot", "A8vqbot", "A9vqbot", "B0vqbot",
+    "B1vqbot", "B2vqbot", "B5vqbot", "B10vqbot", "d4rcbot", "murzz_kl_bot",
+]
+
+
+def search_link_code() -> str:
+    """Генерирует уникальный код для SearchLink."""
+    return uuid4().hex[:16]
+
+
+def search_report_upload_to(instance: "SearchReport", filename: str) -> str:
+    """Путь для загрузки вложений к отчётам SearchLink."""
+    ext = filename.split(".")[-1] if "." in filename else "bin"
+    return f"search_reports/user_{instance.user_id}/{uuid4().hex}.{ext}"
+
+
+class SearchLink(TimeStampedModel):
+    """Ссылка для привлечения лидов через Telegram-бота (SearchLink-система)."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="search_links",
+        help_text="Менеджер, создавший ссылку.",
+    )
+    code = models.CharField(
+        max_length=32,
+        unique=True,
+        default=search_link_code,
+        db_index=True,
+        help_text="Уникальный код ссылки (/s/<code>/).",
+    )
+    lead_name = models.CharField(
+        max_length=200,
+        help_text="Имя/ник лида (для OG-тегов и персонализации).",
+    )
+    bot_username = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="Username бота из пула (без @).",
+    )
+    bot_started = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Лид запустил бота (подтверждено вебхуком).",
+    )
+    bot_started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Когда лид запустил бота.",
+    )
+    telegram_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Telegram ID лида (из вебхука).",
+    )
+
+    class Meta:
+        verbose_name = "SearchLink"
+        verbose_name_plural = "SearchLinks"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"SearchLink({self.code}) → {self.lead_name}"
+
+    @property
+    def deep_link(self) -> str:
+        return f"https://t.me/{self.bot_username}?start={self.code}"
+
+    def save(self, *args, **kwargs):
+        if not self.bot_username:
+            self.bot_username = random.choice(SEARCH_BOT_POOL)
+        super().save(*args, **kwargs)
+
+
+class SearchReport(TimeStampedModel):
+    """Отчёт менеджера, привязанный к SearchLink."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "На проверке"
+        APPROVED = "approved", "Одобрен"
+        REJECTED = "rejected", "Отклонён"
+        REWORK = "rework", "На доработке"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="search_reports",
+    )
+    search_link = models.OneToOneField(
+        SearchLink,
+        on_delete=models.CASCADE,
+        related_name="report",
+        help_text="К какому SearchLink привязан отчёт.",
+    )
+    lead_date = models.DateField(
+        default=timezone.now,
+        help_text="Дата отчёта.",
+    )
+    attachment = models.FileField(
+        upload_to=search_report_upload_to,
+        null=True,
+        blank=True,
+        help_text="Скриншот/видео подтверждения.",
+    )
+    comment = models.TextField(
+        blank=True,
+        help_text="Комментарий менеджера.",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    rejection_reason = models.TextField(blank=True)
+    rework_comment = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_search_reports",
+    )
+
+    class Meta:
+        verbose_name = "Отчёт SearchLink"
+        verbose_name_plural = "Отчёты SearchLink"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"SearchReport #{self.pk} (link={self.search_link.code})"
+

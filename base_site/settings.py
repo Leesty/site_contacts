@@ -193,6 +193,10 @@ WITHDRAWAL_MIN_BALANCE = int(os.getenv("WITHDRAWAL_MIN_BALANCE", "500"))
 DOZHIM_APPROVE_REWARD = int(os.getenv("DOZHIM_APPROVE_REWARD", "40"))
 DOZHIM_BATCH_SIZE = int(os.getenv("DOZHIM_BATCH_SIZE", "10"))
 
+# SearchLink система
+SEARCH_BOT_WEBHOOK_SECRET = os.getenv("SEARCH_BOT_WEBHOOK_SECRET", "")
+SEARCH_REPORT_REWARD = 100
+
 # Лимит загрузки файлов: вложения лидов (скрин/видео) до 30 МБ
 _DATA_UPLOAD_MAX = 33 * 1024 * 1024  # 33 МБ, чтобы 30 МБ файл проходил
 DATA_UPLOAD_MAX_MEMORY_SIZE = _DATA_UPLOAD_MAX
