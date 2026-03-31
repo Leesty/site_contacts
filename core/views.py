@@ -786,20 +786,35 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 if current_balance < withdrawal_min:
                     messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
                     return redirect("dashboard")
+                # Произвольная сумма вывода
+                try:
+                    requested_amount = int(request.POST.get("amount") or 0)
+                except (TypeError, ValueError):
+                    requested_amount = 0
+                if requested_amount >= withdrawal_min and requested_amount <= current_balance:
+                    withdraw_amount = requested_amount
+                else:
+                    withdraw_amount = current_balance
+                if withdraw_amount < withdrawal_min:
+                    messages.warning(request, f"Минимальная сумма вывода: {withdrawal_min} руб.")
+                    return redirect("dashboard")
+                if withdraw_amount > current_balance:
+                    messages.error(request, "Сумма превышает баланс.")
+                    return redirect("dashboard")
                 dept_label = "Дожим" if dept == "dozhim" else "Поиск"
                 WithdrawalRequest.objects.create(
                     user=user_refresh,
-                    amount=current_balance,
+                    amount=withdraw_amount,
                     payout_details=f"[{dept_label}] {payout_details}",
                     status="pending",
                 )
                 if dept == "dozhim":
-                    user_refresh.dozhim_balance = 0
+                    user_refresh.dozhim_balance = current_balance - withdraw_amount
                     user_refresh.save(update_fields=["dozhim_balance"])
                 else:
-                    user_refresh.balance = 0
+                    user_refresh.balance = current_balance - withdraw_amount
                     user_refresh.save(update_fields=["balance"])
-        _withdrawn_amount = withdraw_amount if _role in ("admin", "main_admin") else current_balance
+        _withdrawn_amount = withdraw_amount if _role in ("admin", "main_admin") else withdraw_amount
         messages.success(
             request,
             f"Заявка на вывод {_withdrawn_amount} руб. отправлена. {'Баланс обнулён. ' if _role not in ('balance_admin', 'admin', 'main_admin') else ''}Ожидайте решения администратора.",

@@ -336,6 +336,14 @@ urlpatterns = [
     path("staff/search-reports/<int:report_id>/reject/", views_search.admin_search_report_reject, name="admin_search_report_reject"),
     path("staff/search-reports/<int:report_id>/rework/", views_search.admin_search_report_rework, name="admin_search_report_rework"),
     path("staff/search-reports/<int:report_id>/attachment/", views_search.admin_search_report_attachment, name="admin_search_report_attachment"),
+    # Ban/unban
+    path("staff/users/<int:user_id>/toggle-ban/", views_support_admin.admin_toggle_ban, name="admin_toggle_ban"),
+    # Balance admin: payment
+    path("staff/payment/", views_support_admin.balance_admin_payment_list, name="balance_admin_payment_list"),
+    path("staff/payment/<int:user_id>/", views_support_admin.balance_admin_payment_detail, name="balance_admin_payment_detail"),
+    path("staff/payment/<int:user_id>/multiply/", views_support_admin.balance_admin_payment_multiply, name="balance_admin_payment_multiply"),
+    path("staff/payment/<int:user_id>/subtract/", views_support_admin.balance_admin_payment_subtract, name="balance_admin_payment_subtract"),
+    path("staff/payment/<int:user_id>/revert/", views_support_admin.balance_admin_payment_revert, name="balance_admin_payment_revert"),
     # Role management (main_admin only)
     path("staff/roles/", views_support_admin.admin_manage_roles, name="admin_manage_roles"),
     path("staff/roles/<int:user_id>/set-affiliate/", views_support_admin.admin_set_affiliate, name="admin_set_affiliate"),

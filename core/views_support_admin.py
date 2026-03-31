@@ -49,10 +49,10 @@ def _require_support(request: HttpRequest) -> bool:
 
 
 def _require_support_or_partner(request: HttpRequest) -> bool:
-    """Доступ для админов + партнёров (для баз, лидов, контактов)."""
+    """Доступ для админов + партнёров + affiliate (для баз, лидов, контактов)."""
     if _require_support(request):
         return True
-    return getattr(request.user, "role", None) == "partner"
+    return getattr(request.user, "role", None) in ("partner", "affiliate")
 
 
 def _require_standalone_admin(request: HttpRequest) -> bool:
@@ -2601,4 +2601,115 @@ def standalone_admin_refused(request: HttpRequest) -> HttpResponse:
     return render(request, "core/standalone_admin_refused.html", {
         "refused_list": refused_qs,
     })
+
+
+# ─── Бан/разбан пользователя ─────────────────────────────────────────────────
+
+@login_required
+@require_http_methods(["POST"])
+def admin_toggle_ban(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Забанить или разбанить пользователя."""
+    if not _require_support(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+    target = get_object_or_404(User, pk=user_id)
+    if target.role in ("main_admin", "admin", "support"):
+        messages.error(request, "Нельзя банить админов и саппортов.")
+        return redirect("admin_all_users")
+    if target.status == User.Status.BANNED:
+        target.status = User.Status.APPROVED
+        target.save(update_fields=["status"])
+        messages.success(request, f"@{target.username} разбанен.")
+    else:
+        target.status = User.Status.BANNED
+        target.save(update_fields=["status"])
+        messages.success(request, f"@{target.username} забанен.")
+    return redirect("admin_all_users")
+
+
+# ─── Оплата (баланс-админ) ───────────────────────────────────────────────────
+
+def _is_balance_admin_check(request: HttpRequest) -> bool:
+    return getattr(request.user, "role", None) == User.Role.BALANCE_ADMIN
+
+
+@login_required
+def balance_admin_payment_list(request: HttpRequest) -> HttpResponse:
+    """Список пользователей для оплаты (баланс-админ)."""
+    if not _is_balance_admin_check(request):
+        return HttpResponseForbidden("Только для баланс-админа.")
+    q = (request.GET.get("q") or "").strip().lstrip("@")[:50]
+    users_qs = User.objects.filter(role="user").order_by("-date_joined")
+    if q:
+        users_qs = users_qs.filter(username__icontains=q)
+    from django.core.paginator import Paginator
+    paginator = Paginator(users_qs, 30)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    return render(request, "core/balance_admin_payment_list.html", {
+        "page_obj": page_obj,
+        "q": q,
+    })
+
+
+@login_required
+def balance_admin_payment_detail(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Детали пользователя для оплаты: баланс, выводы, кнопки."""
+    if not _is_balance_admin_check(request):
+        return HttpResponseForbidden("Только для баланс-админа.")
+    target = get_object_or_404(User, pk=user_id, role="user")
+    pending_withdrawals = WithdrawalRequest.objects.filter(user=target, status="pending").order_by("-created_at")
+    prev_balance = request.session.get(f"prev_balance_{user_id}")
+    return render(request, "core/balance_admin_payment_detail.html", {
+        "target": target,
+        "pending_withdrawals": pending_withdrawals,
+        "prev_balance": prev_balance,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def balance_admin_payment_multiply(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Умножить баланс пользователя на 1.5."""
+    if not _is_balance_admin_check(request):
+        return HttpResponseForbidden()
+    with transaction.atomic():
+        target = User.objects.select_for_update().get(pk=user_id, role="user")
+        request.session[f"prev_balance_{user_id}"] = target.balance
+        target.balance = round(target.balance * 1.5)
+        target.save(update_fields=["balance"])
+    messages.success(request, f"@{target.username}: баланс ×1.5 → {target.balance} руб.")
+    return redirect("balance_admin_payment_detail", user_id=user_id)
+
+
+@login_required
+@require_http_methods(["POST"])
+def balance_admin_payment_subtract(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Вычесть 25000 из баланса пользователя."""
+    if not _is_balance_admin_check(request):
+        return HttpResponseForbidden()
+    with transaction.atomic():
+        target = User.objects.select_for_update().get(pk=user_id, role="user")
+        request.session[f"prev_balance_{user_id}"] = target.balance
+        target.balance = target.balance - 25000
+        target.save(update_fields=["balance"])
+    messages.success(request, f"@{target.username}: баланс −25000 → {target.balance} руб.")
+    return redirect("balance_admin_payment_detail", user_id=user_id)
+
+
+@login_required
+@require_http_methods(["POST"])
+def balance_admin_payment_revert(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Вернуть баланс к предыдущему значению."""
+    if not _is_balance_admin_check(request):
+        return HttpResponseForbidden()
+    prev = request.session.get(f"prev_balance_{user_id}")
+    if prev is None:
+        messages.error(request, "Нет сохранённого предыдущего баланса.")
+        return redirect("balance_admin_payment_detail", user_id=user_id)
+    with transaction.atomic():
+        target = User.objects.select_for_update().get(pk=user_id, role="user")
+        target.balance = prev
+        target.save(update_fields=["balance"])
+    del request.session[f"prev_balance_{user_id}"]
+    messages.success(request, f"@{target.username}: баланс возвращён → {prev} руб.")
+    return redirect("balance_admin_payment_detail", user_id=user_id)
 

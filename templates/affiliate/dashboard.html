@@ -8,6 +8,10 @@
     <p class="text-muted small mb-0">Добро пожаловать, {{ user.username }}. Создавайте ссылки с разными ставками, привлекайте пользователей и получайте доход.</p>
   </div>
 
+  <div class="d-flex gap-2 mb-3">
+    <a href="{% url 'admin_contact_requests' %}" class="btn btn-outline-primary btn-sm">Запросы контактов</a>
+  </div>
+
   {# Карточки статистики #}
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">

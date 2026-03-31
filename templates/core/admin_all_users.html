@@ -73,6 +73,16 @@
                     <a class="btn btn-outline-primary btn-sm" href="{% url 'support_thread_by_user' u.pk %}" title="Написать">Написать</a>
                     <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_user_lead_stats' u.pk %}" title="Статистика лидов">Статистика</a>
                     <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_user_leads_list' u.pk %}" title="Отчёты (лиды)">Отчёты</a>
+                    {% if u.role != 'admin' and u.role != 'main_admin' and u.role != 'support' %}
+                      <form method="post" action="{% url 'admin_toggle_ban' u.pk %}" class="d-inline" onsubmit="return confirm('{% if u.status == 'banned' %}Разбанить{% else %}Забанить{% endif %} @{{ u.username }}?');">
+                        {% csrf_token %}
+                        {% if u.status == 'banned' %}
+                          <button type="submit" class="btn btn-outline-success btn-sm">Разбанить</button>
+                        {% else %}
+                          <button type="submit" class="btn btn-outline-danger btn-sm">Забанить</button>
+                        {% endif %}
+                      </form>
+                    {% endif %}
                   </div>
                 </td>
               </tr>

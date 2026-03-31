@@ -19,13 +19,11 @@
       <form method="post" action="">
         {% csrf_token %}
         <input type="hidden" name="dept" value="{{ dept }}">
-        {% if user.role == 'admin' or user.role == 'main_admin' %}
-          <div class="mb-3">
-            <label for="id_amount" class="form-label">Сумма вывода (руб.)</label>
-            <input type="number" id="id_amount" name="amount" class="form-control" min="{{ withdrawal_min_balance }}" max="{{ balance }}" value="{{ balance }}" required>
-            <div class="form-text">От {{ withdrawal_min_balance }} до {{ balance }} руб. Оставьте {{ balance }} чтобы вывести всё.</div>
-          </div>
-        {% endif %}
+        <div class="mb-3">
+          <label for="id_amount" class="form-label">Сумма вывода (руб.)</label>
+          <input type="number" id="id_amount" name="amount" class="form-control" min="{{ withdrawal_min_balance }}" max="{{ balance }}" value="{{ balance }}" required>
+          <div class="form-text">От {{ withdrawal_min_balance }} до {{ balance }} руб.</div>
+        </div>
         <div class="mb-3">
           <label for="id_payout_details" class="form-label">Реквизиты для вывода</label>
           <textarea

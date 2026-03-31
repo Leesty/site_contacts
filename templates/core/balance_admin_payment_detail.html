@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Оплата @{{ target.username }} — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Оплата: @{{ target.username }}</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'balance_admin_payment_list' %}">← Список</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1">{{ target.balance }}</div>
+          <div class="small text-muted">Поиск (руб.)</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-3">
+          <div class="h3 mb-1">{{ target.dozhim_balance }}</div>
+          <div class="small text-muted">Дожим (руб.)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Действия #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Действия с балансом поиска</strong>
+    </div>
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2">
+        <form method="post" action="{% url 'balance_admin_payment_multiply' target.pk %}" class="d-inline" onsubmit="return confirm('Умножить баланс @{{ target.username }} ({{ target.balance }} ₽) на 1.5?');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary">×1.5 ({{ target.balance }} → {{ target.balance|floatformat:0 }})</button>
+        </form>
+        <form method="post" action="{% url 'balance_admin_payment_subtract' target.pk %}" class="d-inline" onsubmit="return confirm('Вычесть 25000 из баланса @{{ target.username }}?');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-warning text-dark">−25 000</button>
+        </form>
+        {% if prev_balance is not None %}
+          <form method="post" action="{% url 'balance_admin_payment_revert' target.pk %}" class="d-inline" onsubmit="return confirm('Вернуть баланс @{{ target.username }} к {{ prev_balance }} ₽?');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger">Вернуть ({{ prev_balance }} ₽)</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Активные выводы #}
+  <div class="card shadow-sm">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Активные выводы</strong>
+    </div>
+    <div class="card-body p-0">
+      {% if pending_withdrawals %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Сумма</th>
+                <th>Реквизиты</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for wr in pending_withdrawals %}
+                <tr>
+                  <td class="text-muted small">{{ wr.created_at|date:"d.m.Y H:i" }}</td>
+                  <td>{{ wr.amount }} ₽</td>
+                  <td style="max-width: 250px; white-space: pre-wrap;">{{ wr.payout_details }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted small p-3 mb-0">Нет активных выводов.</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
