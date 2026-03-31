@@ -2581,3 +2581,24 @@ def admin_set_role(request: HttpRequest, user_id: int) -> HttpResponse:
     q = request.GET.get("q") or target.username
     return redirect(f"/staff/roles/?q={q}")
 
+
+# ─── Отказы исполнителей (СС-админ) ──────────────────────────────────────────
+
+@login_required
+def standalone_admin_refused(request: HttpRequest) -> HttpResponse:
+    """Список заданий, где исполнитель отметил отказ лида."""
+    if not _require_standalone_admin(request):
+        return HttpResponseForbidden("Только для самостоятельного админа.")
+    from .models import LeadAssignment
+    refused_qs = (
+        LeadAssignment.objects.filter(
+            worker__standalone_admin_owner=request.user,
+            refused=True,
+        )
+        .select_related("lead", "lead__lead_type", "worker")
+        .order_by("-refused_at")
+    )
+    return render(request, "core/standalone_admin_refused.html", {
+        "refused_list": refused_qs,
+    })
+

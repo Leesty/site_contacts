@@ -622,6 +622,12 @@ class LeadAssignment(TimeStampedModel):
         related_name="assigned_leads_by",
     )
     task_description = models.TextField(blank=True, help_text="Описание задачи для исполнителя.")
+    refused = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Лид отказался, нужно связаться Артёму.",
+    )
+    refused_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ("lead", "worker")

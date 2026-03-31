@@ -93,6 +93,19 @@
     <div class="col-md-6 col-lg-4">
       <div class="card shadow-sm h-100">
         <div class="card-body">
+          <h2 class="h5 mb-2">Отказы
+            {% if refused_count %}<span class="badge bg-danger ms-1">{{ refused_count }}</span>{% endif %}
+          </h2>
+          <p class="text-muted small mb-3">
+            Лиды, где исполнитель отметил отказ. Нужно связаться.
+          </p>
+          <a class="btn btn-outline-danger" href="{% url 'standalone_admin_refused' %}">Посмотреть</a>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
           <h2 class="h5 mb-2">Управление ролями</h2>
           <p class="text-muted small mb-3">
             Поиск пользователей и назначение роли партнёра.

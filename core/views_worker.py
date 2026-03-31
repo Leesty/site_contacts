@@ -185,6 +185,22 @@ def worker_cancel_assignment(request: HttpRequest, assignment_id: int) -> HttpRe
 
 
 @login_required
+@require_http_methods(["POST"])
+def worker_mark_refused(request: HttpRequest, assignment_id: int) -> HttpResponse:
+    """Воркер помечает задание: лид отказался, нужно связаться Артёму."""
+    if not _require_worker(request):
+        return HttpResponseForbidden("Только для исполнителей.")
+    from django.utils import timezone
+    assignment = get_object_or_404(LeadAssignment, pk=assignment_id, worker=request.user)
+    if not assignment.refused:
+        assignment.refused = True
+        assignment.refused_at = timezone.now()
+        assignment.save(update_fields=["refused", "refused_at", "updated_at"])
+        messages.success(request, f"Лид #{assignment.lead_id} помечен. Артём свяжется.")
+    return redirect("worker_tasks")
+
+
+@login_required
 def worker_task_detail(request: HttpRequest, assignment_id: int) -> HttpResponse:
     """Детальная страница задания: контакт, описание задачи, форма отчёта (если ещё не отправлен)."""
     if not _require_worker(request):

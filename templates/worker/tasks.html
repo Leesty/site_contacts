@@ -86,7 +86,9 @@
                   </td>
                   <td>
                     {% with report=assignment.report_obj %}
-                      {% if report and report.status == 'rework' %}
+                      {% if assignment.refused %}
+                        <span class="badge bg-danger">Отказ → Артёму</span>
+                      {% elif report and report.status == 'rework' %}
                         <a href="{% url 'worker_report_redo' assignment.id %}" class="btn btn-warning btn-sm">Доработать</a>
                       {% elif not report %}
                         <a href="{% url 'worker_task_detail' assignment.id %}" class="btn btn-primary btn-sm me-1">Открыть</a>
@@ -94,8 +96,18 @@
                           {% csrf_token %}
                           <button type="submit" class="btn btn-outline-danger btn-sm">Отменить</button>
                         </form>
+                        <form method="post" action="{% url 'worker_mark_refused' assignment.id %}" style="display:inline" onsubmit="return confirm('Пометить что лид отказался?')">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-outline-warning btn-sm">Отказались, связаться Артёму</button>
+                        </form>
                       {% else %}
                         <a href="{% url 'worker_task_detail' assignment.id %}" class="btn btn-outline-secondary btn-sm">Детали</a>
+                        {% if not assignment.refused %}
+                          <form method="post" action="{% url 'worker_mark_refused' assignment.id %}" style="display:inline" onsubmit="return confirm('Пометить что лид отказался?')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-warning btn-sm">Отказались</button>
+                          </form>
+                        {% endif %}
                       {% endif %}
                     {% endwith %}
                   </td>

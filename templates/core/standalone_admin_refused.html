@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load support_extras %}
+
+{% block title %}Отказы — СС-админ{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Отказы лидов</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-3">Исполнители отметили, что эти лиды отказались. Нужно связаться.</p>
+
+  {% if refused_list %}
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Лид #</th>
+                <th>Контакт</th>
+                <th>Тип</th>
+                <th>Исполнитель</th>
+                <th>Дата отказа</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in refused_list %}
+                <tr>
+                  <td>#{{ a.lead.id }}</td>
+                  <td>{{ a.lead.raw_contact|default:"—" }}</td>
+                  <td>{{ a.lead.lead_type.name|default:"—" }}</td>
+                  <td>@{{ a.worker.username }}</td>
+                  <td class="text-muted small">{{ a.refused_at|date:"d.m.Y H:i" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="card shadow-sm">
+      <div class="card-body text-center text-muted py-5">Отказов нет.</div>
+    </div>
+  {% endif %}
+{% endblock %}
