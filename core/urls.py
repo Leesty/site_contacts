@@ -22,13 +22,12 @@ urlpatterns = [
     path("partner/links/create/", views_partner.partner_create_link, name="partner_create_link"),
     path("partner/links/<int:link_id>/toggle/", views_partner.partner_toggle_link, name="partner_toggle_link"),
     path("p/<str:code>/", views_partner.partner_ref_register, name="partner_ref_register"),
-    # Affiliate cabinet
-    path("affiliate/", views_partner.affiliate_dashboard, name="affiliate_dashboard"),
-    path("affiliate/referrals/", views_partner.affiliate_referrals, name="affiliate_referrals"),
-    path("affiliate/withdrawal/", views_partner.affiliate_withdrawal, name="affiliate_withdrawal"),
-    path("affiliate/links/create/", views_partner.affiliate_create_link, name="affiliate_create_link"),
-    path("affiliate/links/<int:link_id>/toggle/", views_partner.affiliate_toggle_link, name="affiliate_toggle_link"),
-    path("a/<str:code>/", views_partner.affiliate_ref_register, name="affiliate_ref_register"),
+    # Referral system (native for all users)
+    path("referrals/", views_partner.user_referrals, name="user_referrals"),
+    path("referrals/list/", views_partner.user_referral_list, name="user_referral_list"),
+    path("referrals/create/", views_partner.user_referral_create_link, name="user_referral_create_link"),
+    path("referrals/<int:link_id>/toggle/", views_partner.user_referral_toggle_link, name="user_referral_toggle_link"),
+    path("a/<str:code>/", views_partner.referral_ref_register, name="referral_ref_register"),
     # Dozhim department
     path("department/switch/", views.switch_department, name="switch_department"),
     path("dozhim/contacts/", views.dozhim_contacts, name="dozhim_contacts"),
@@ -344,9 +343,5 @@ urlpatterns = [
     path("staff/payment/<int:user_id>/multiply/", views_support_admin.balance_admin_payment_multiply, name="balance_admin_payment_multiply"),
     path("staff/payment/<int:user_id>/subtract/", views_support_admin.balance_admin_payment_subtract, name="balance_admin_payment_subtract"),
     path("staff/payment/<int:user_id>/revert/", views_support_admin.balance_admin_payment_revert, name="balance_admin_payment_revert"),
-    # Role management (main_admin only)
-    path("staff/roles/", views_support_admin.admin_manage_roles, name="admin_manage_roles"),
-    path("staff/roles/<int:user_id>/set-affiliate/", views_support_admin.admin_set_affiliate, name="admin_set_affiliate"),
-    path("staff/roles/<int:user_id>/set-role/", views_support_admin.admin_set_role, name="admin_set_role"),
 ]
 

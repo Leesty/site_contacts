@@ -49,10 +49,10 @@ def _require_support(request: HttpRequest) -> bool:
 
 
 def _require_support_or_partner(request: HttpRequest) -> bool:
-    """Доступ для админов + партнёров + affiliate (для баз, лидов, контактов)."""
+    """Доступ для админов + партнёров (для баз, лидов, контактов)."""
     if _require_support(request):
         return True
-    return getattr(request.user, "role", None) in ("partner", "affiliate")
+    return getattr(request.user, "role", None) == "partner"
 
 
 def _require_standalone_admin(request: HttpRequest) -> bool:
@@ -609,15 +609,15 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
             if partner_owner_id:
                 from .models import PartnerEarning
                 partner = User.objects.select_for_update().get(pk=partner_owner_id)
-                if partner.role == User.Role.AFFILIATE:
-                    # Affiliate: ставка с ссылки
+                if partner.role == User.Role.PARTNER:
+                    # Старая система (role=partner, Настя — фикс ставка)
+                    partner_earning = partner.partner_rate or 10
+                else:
+                    # Реферальная система: ставка с ссылки
                     link = lead.user.partner_link
                     ref_reward = max(1, min(39, link.ref_reward if link else 20))
                     reward = ref_reward  # реф получит ref_reward вместо стандартных 40
                     partner_earning = LEAD_APPROVE_REWARD - ref_reward
-                else:
-                    # Старая система (role=partner)
-                    partner_earning = partner.partner_rate or 10
                 PartnerEarning.objects.create(partner=partner, lead=lead, amount=partner_earning)
                 partner.balance = (partner.balance or 0) + partner_earning
                 partner.save(update_fields=["balance"])
@@ -736,7 +736,7 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                         pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
                         if pe:
                             partner = User.objects.select_for_update().get(pk=pe.partner_id)
-                            if partner.role == User.Role.AFFILIATE:
+                            if partner.role != User.Role.PARTNER:
                                 reward = LEAD_APPROVE_REWARD - pe.amount
                             partner.balance = max(0, (partner.balance or 0) - pe.amount)
                             partner.save(update_fields=["balance"])
@@ -2509,77 +2509,6 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
     })
 
 
-# ─── Управление ролями (только main_admin) ────────────────────────────────────
-
-def _can_manage_roles(request: HttpRequest) -> bool:
-    """Доступ к управлению ролями: main_admin, balance_admin, standalone_admin."""
-    return getattr(request.user, "role", None) in (
-        User.Role.MAIN_ADMIN, User.Role.BALANCE_ADMIN, User.Role.STANDALONE_ADMIN,
-    )
-
-
-@login_required
-def admin_manage_roles(request: HttpRequest) -> HttpResponse:
-    """Страница управления ролями: поиск пользователей, смена роли на affiliate."""
-    if not _can_manage_roles(request):
-        return HttpResponseForbidden("Недостаточно прав.")
-
-    q = (request.GET.get("q") or "").strip().lstrip("@")[:50]
-    users_list = None
-    if q:
-        users_list = User.objects.filter(username__icontains=q).order_by("-date_joined")[:50]
-
-    return render(request, "core/admin_manage_roles.html", {
-        "q": q,
-        "users_list": users_list,
-    })
-
-
-@login_required
-@require_http_methods(["POST"])
-def admin_set_affiliate(request: HttpRequest, user_id: int) -> HttpResponse:
-    """Сменить роль пользователя на affiliate. Баланс сохраняется."""
-    if not _can_manage_roles(request):
-        return HttpResponseForbidden("Недостаточно прав.")
-
-    target = get_object_or_404(User, pk=user_id)
-    if target.role == User.Role.MAIN_ADMIN:
-        messages.error(request, "Нельзя менять роль главного админа.")
-        return redirect("admin_manage_roles")
-
-    old_role = target.get_role_display()
-    target.role = User.Role.AFFILIATE
-    target.status = User.Status.APPROVED
-    target.save(update_fields=["role", "status"])
-    messages.success(request, f"@{target.username} — роль изменена с «{old_role}» на «Партнёрка». Баланс: {target.balance} руб.")
-    return redirect(f"/staff/roles/?q={target.username}")
-
-
-@login_required
-@require_http_methods(["POST"])
-def admin_set_role(request: HttpRequest, user_id: int) -> HttpResponse:
-    """Сменить роль пользователя на указанную. Баланс сохраняется."""
-    if not _can_manage_roles(request):
-        return HttpResponseForbidden("Недостаточно прав.")
-
-    target = get_object_or_404(User, pk=user_id)
-    if target.role == User.Role.MAIN_ADMIN:
-        messages.error(request, "Нельзя менять роль главного админа.")
-        return redirect("admin_manage_roles")
-
-    new_role = request.POST.get("role", "")
-    allowed_roles = {r.value for r in User.Role if r.value != "main_admin"}
-    if new_role not in allowed_roles:
-        messages.error(request, f"Недопустимая роль: {new_role}")
-        return redirect("admin_manage_roles")
-
-    old_role = target.get_role_display()
-    target.role = new_role
-    target.status = User.Status.APPROVED
-    target.save(update_fields=["role", "status"])
-    messages.success(request, f"@{target.username} — роль изменена с «{old_role}» на «{target.get_role_display()}». Баланс: {target.balance} руб.")
-    q = request.GET.get("q") or target.username
-    return redirect(f"/staff/roles/?q={q}")
 
 
 # ─── Отказы исполнителей (СС-админ) ──────────────────────────────────────────

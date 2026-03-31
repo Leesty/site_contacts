@@ -32,7 +32,6 @@ class User(AbstractUser):
         BALANCE_ADMIN = "balance_admin", "Баланс‑админ"
         WORKER = "worker", "Исполнитель"
         PARTNER = "partner", "Партнёр"
-        AFFILIATE = "affiliate", "Партнёрка"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Ожидает одобрения"
@@ -88,7 +87,7 @@ class User(AbstractUser):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="partner_users",
-        limit_choices_to={"role__in": ["partner", "affiliate"]},
+        limit_choices_to={"role__in": ["partner", "user"]},
         help_text="Партнёр, привлёкший этого пользователя.",
     )
     partner_rate = models.PositiveIntegerField(
@@ -818,7 +817,7 @@ class PartnerLink(TimeStampedModel):
         User,
         on_delete=models.CASCADE,
         related_name="partner_links",
-        limit_choices_to={"role__in": ["partner", "affiliate"]},
+        limit_choices_to={"role__in": ["partner", "user"]},
     )
     code = models.CharField(max_length=32, unique=True, default=partner_link_code)
     is_active = models.BooleanField(default=True)

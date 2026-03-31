@@ -5,7 +5,7 @@
 {% block content %}
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h4 mb-0">Рефералы <span class="text-muted small">({{ total }})</span></h1>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'affiliate_dashboard' %}">← Кабинет</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'user_referrals' %}">← Реферальная система</a>
   </div>
 
   <div class="card shadow-sm">
@@ -27,16 +27,12 @@
                 <tr>
                   <td>@{{ u.username }}</td>
                   <td class="text-muted small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
-                  <td>{% if u.partner_link %}{{ u.partner_link.ref_reward }} руб.{% else %}—{% endif %}</td>
-                  <td class="text-success">{% if u.partner_link %}{{ u.partner_cut }} руб.{% else %}—{% endif %}</td>
+                  <td>{% if u.partner_link %}{{ u.partner_link.ref_reward }} ₽{% else %}—{% endif %}</td>
+                  <td class="text-success">{% if u.partner_link %}{{ u.partner_cut }} ₽{% else %}—{% endif %}</td>
                   <td>
-                    {% if u.status == 'approved' %}
-                      <span class="badge bg-success">Одобрен</span>
-                    {% elif u.status == 'pending' %}
-                      <span class="badge bg-warning text-dark">На модерации</span>
-                    {% else %}
-                      <span class="badge bg-secondary">{{ u.status }}</span>
-                    {% endif %}
+                    {% if u.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                    {% elif u.status == 'pending' %}<span class="badge bg-warning text-dark">На модерации</span>
+                    {% else %}<span class="badge bg-secondary">{{ u.status }}</span>{% endif %}
                   </td>
                 </tr>
               {% endfor %}
@@ -47,19 +43,15 @@
           <div class="card-footer border-secondary d-flex justify-content-center py-2">
             <nav>
               <ul class="pagination pagination-sm mb-0">
-                {% if page_obj.has_previous %}
-                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a></li>
-                {% endif %}
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
                 <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-                {% if page_obj.has_next %}
-                  <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a></li>
-                {% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
               </ul>
             </nav>
           </div>
         {% endif %}
       {% else %}
-        <p class="text-muted small p-3 mb-0">Пока никто не зарегистрировался по вашим реферальным ссылкам.</p>
+        <p class="text-muted small p-3 mb-0">Пока никто не зарегистрировался по вашим ссылкам.</p>
       {% endif %}
     </div>
   </div>

@@ -129,9 +129,6 @@ def _is_partner(user) -> bool:
     return getattr(user, "role", None) == "partner"
 
 
-def _is_affiliate(user) -> bool:
-    """Пользователь — affiliate-партнёр (кабинет с настраиваемыми ставками)."""
-    return getattr(user, "role", None) == "affiliate"
 
 
 @login_required
@@ -148,8 +145,6 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         return redirect("worker_dashboard")
     if _is_partner(user):
         return redirect("partner_dashboard")
-    if _is_affiliate(user):
-        return redirect("affiliate_dashboard")
     if _is_balance_admin(user):
         from django.db.models import Sum
         from .models import LeadReviewLog
@@ -263,7 +258,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         if _is_main_admin(user):
             # Статистика всех админов для main_admin
             from .models import PartnerEarning
-            all_staff = User.objects.filter(role__in=("admin", "partner", "affiliate", "balance_admin")).exclude(pk=3).order_by("role", "username")
+            all_staff = User.objects.filter(role__in=("admin", "partner", "balance_admin")).exclude(pk=3).order_by("role", "username")
             admin_stats_list = []
             for a in all_staff:
                 if a.role in ("admin", "main_admin"):
@@ -271,12 +266,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                     a_earned = int(a_actions * Decimal("2.5"))
                     a_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
                     admin_stats_list.append({"user": a, "role_label": "Админ", "actions": a_actions, "earned": a_earned, "available": max(0, a_earned - a_withdrawn)})
-                elif a.role in ("partner", "affiliate"):
+                elif a.role == "partner":
                     p_earned = PartnerEarning.objects.filter(partner=a).aggregate(s=Sum("amount")).get("s") or 0
                     p_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
                     p_referrals = User.objects.filter(partner_owner=a).count()
-                    role_label = f"Партнёр ({a.partner_rate}₽)" if a.role == "partner" else "Партнёрка"
-                    admin_stats_list.append({"user": a, "role_label": role_label, "actions": p_referrals, "earned": p_earned, "available": max(0, (a.balance or 0))})
+                    admin_stats_list.append({"user": a, "role_label": f"Партнёр ({a.partner_rate}₽)", "actions": p_referrals, "earned": p_earned, "available": max(0, (a.balance or 0))})
                 elif a.role == "balance_admin":
                     ba_total = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, lead__user__partner_owner__isnull=True).count()
                     ba_rate = a.balance_admin_rate or Decimal("5")
