@@ -678,10 +678,7 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                         pe = PartnerEarning.objects.filter(lead=lead_refresh).select_related("partner").first()
                         if pe:
                             partner = User.objects.select_for_update().get(pk=pe.partner_id)
-                            # Для affiliate реф получил ref_reward, а не стандартные 40
-                            if partner.role == User.Role.AFFILIATE:
-                                reward = pe.amount + (LEAD_APPROVE_REWARD - pe.amount)  # = LEAD_APPROVE_REWARD - partner_cut + partner_cut... нет
-                                # pe.amount = partner_cut, ref получил LEAD_APPROVE_REWARD - partner_cut
+                            if partner.role != User.Role.PARTNER:
                                 reward = LEAD_APPROVE_REWARD - pe.amount
                             partner.balance = max(0, (partner.balance or 0) - pe.amount)
                             partner.save(update_fields=["balance"])
