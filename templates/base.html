@@ -93,7 +93,7 @@
               </li>
               {# Выход #}
               <li class="nav-item">
-                <form method="post" action="{% url 'logout' %}" class="d-inline m-0">{% csrf_token %}<button type="submit" class="btn btn-sm px-2 py-1 navbar-logout-btn" style="font-size: 12px; border: 1px solid rgba(255,255,255,0.25); border-radius: 6px;">Выйти</button></form>
+                <form method="post" action="{% url 'logout' %}" class="d-inline m-0">{% csrf_token %}<button type="submit" class="btn btn-sm px-2 py-1" style="font-size: 12px; border: 1px solid rgba(255,255,255,0.25); border-radius: 6px; color: #cbd5e1;">Выйти</button></form>
               </li>
             {% else %}
               {% if not hide_nav_auth %}
