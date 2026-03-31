@@ -51,7 +51,7 @@
 
   {% if withdrawal_pending %}
     <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
-      <span class="me-2">💸</span>
+      <span class="me-2" aria-hidden="true">💸</span>
       <div><strong>{{ withdrawal_pending_amount }} руб.</strong> находится на выводе. Вывод будет выполнен в течение 3 дней.</div>
     </div>
   {% endif %}
@@ -66,13 +66,13 @@
         <div class="card-body p-0">
           {% if earnings %}
             <div class="table-responsive">
-              <table class="table table-sm mb-0 align-middle table-dark-site">
+              <table class="table table-sm mb-0 align-middle table-dark-site" aria-label="История начислений">
                 <thead>
                   <tr>
-                    <th>Когда</th>
-                    <th>Лид</th>
-                    <th>Пользователь</th>
-                    <th>Сумма</th>
+                    <th scope="col">Когда</th>
+                    <th scope="col">Лид</th>
+                    <th scope="col">Пользователь</th>
+                    <th scope="col">Сумма</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -102,12 +102,12 @@
           <strong>Реферальная ссылка</strong>
         </div>
         <div class="card-body">
-          <p class="small text-muted mb-2">Отправьте эту ссылку пользователям. За каждый их одобренный лид вы получаете +{{ partner_rate }} руб.</p>
+          <p class="small text-muted mb-2" id="ref-url-help">Отправьте эту ссылку пользователям. За каждый их одобренный лид вы получаете +{{ partner_rate }} руб.</p>
           <div class="input-group input-group-sm">
             <input type="text" id="partner-ref-url" class="form-control font-monospace"
                    value="{{ request.scheme }}://{{ request.get_host }}{% url 'partner_ref_register' link.code %}"
-                   readonly>
-            <button class="btn btn-outline-secondary" type="button" onclick="copyPartnerLink()">Копировать</button>
+                   readonly aria-label="Реферальная ссылка" aria-describedby="ref-url-help">
+            <button class="btn btn-outline-secondary" type="button" onclick="copyPartnerLink()" aria-label="Скопировать реферальную ссылку">Копировать</button>
           </div>
           <div class="mt-2 d-flex align-items-center gap-2">
             {% if link.is_active %}
@@ -133,12 +133,12 @@
         <div class="card-body p-0">
           {% if withdrawals %}
             <div class="table-responsive">
-              <table class="table table-sm mb-0 align-middle table-dark-site">
+              <table class="table table-sm mb-0 align-middle table-dark-site" aria-label="Заявки на вывод">
                 <thead>
                   <tr>
-                    <th>Дата</th>
-                    <th>Сумма</th>
-                    <th>Статус</th>
+                    <th scope="col">Дата</th>
+                    <th scope="col">Сумма</th>
+                    <th scope="col">Статус</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -169,7 +169,7 @@
   </div>
 
   {# ═══ Инструменты админа ═══ #}
-  <h6 class="text-white-50 text-uppercase mt-4 mb-2" style="font-size: 11px; letter-spacing: 1px;">Управление базами</h6>
+  <h6 class="text-uppercase mt-4 mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Управление базами</h6>
   <div class="row row-cols-2 row-cols-md-4 g-3 mb-3">
     <div class="col">
       <div class="card h-100 shadow-sm">

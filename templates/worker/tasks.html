@@ -17,7 +17,7 @@
   <div class="card shadow-sm mb-3">
     <div class="card-body py-2">
       <form method="get" class="d-flex gap-2">
-        <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск по контакту или ID лида...">
+        <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск по контакту или ID лида..." aria-label="Поиск">
         <button type="submit" class="btn btn-primary btn-sm px-4">Найти</button>
         {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'worker_tasks' %}">Сбросить</a>{% endif %}
       </form>
@@ -35,11 +35,11 @@
           <nav>
             <ul class="pagination pagination-sm mb-0">
               {% if page_obj.has_previous %}
-                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Предыдущая страница">←</a></li>
               {% endif %}
               <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
               {% if page_obj.has_next %}
-                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Следующая страница">→</a></li>
               {% endif %}
             </ul>
           </nav>
@@ -122,11 +122,11 @@
           <nav>
             <ul class="pagination pagination-sm mb-0">
               {% if page_obj.has_previous %}
-                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Предыдущая страница">←</a></li>
               {% endif %}
               <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
               {% if page_obj.has_next %}
-                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Следующая страница">→</a></li>
               {% endif %}
             </ul>
           </nav>

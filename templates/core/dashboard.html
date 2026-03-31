@@ -20,7 +20,7 @@
   </div>
   {% if withdrawal_pending %}
     <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
-      <span class="me-2">💸</span>
+      <span class="me-2" aria-hidden="true">💸</span>
       <div><strong>{{ withdrawal_pending_amount }} руб.</strong> находится на выводе. Вывод будет выполнен в течение 3 дней.</div>
     </div>
   {% else %}
@@ -39,7 +39,7 @@
 
   {% if rework_leads_count %}
     <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
-      <span class="me-2">⚠️</span>
+      <span class="me-2" aria-hidden="true">⚠️</span>
       <div class="flex-grow-1">
         <strong>Есть отчёты на доработке.</strong>
         Администратор отправил на доработку {{ rework_leads_count }} отчёт(ов). Зайдите в «Мои лиды», доработайте и загрузите заново.
@@ -53,7 +53,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon contacts mb-2">🔄</div>
+          <div class="card-icon contacts mb-2" aria-hidden="true">🔄</div>
           <h2 class="h5 mb-2">Лиды для дожима</h2>
           <p class="text-muted small mb-3">
             Получите одобренные лиды из Отдела поиска для дожима.
@@ -65,7 +65,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon leads mb-2">📋</div>
+          <div class="card-icon leads mb-2" aria-hidden="true">📋</div>
           <h2 class="h5 mb-2">Мои лиды (Дожим)</h2>
           <p class="text-muted small mb-3">
             Ваши отчёты по дожиму. Оплата за одобренный — 40 руб.
@@ -77,7 +77,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon report mb-2">📄</div>
+          <div class="card-icon report mb-2" aria-hidden="true">📄</div>
           <h2 class="h5 mb-2">Отчёт (Дожим)</h2>
           <p class="text-muted small mb-3">
             Отправьте отчёт по дожиму — контакт, видео, комментарий.
@@ -89,7 +89,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon stats mb-2">📊</div>
+          <div class="card-icon stats mb-2" aria-hidden="true">📊</div>
           <h2 class="h5 mb-2">Статистика (Дожим)</h2>
           <p class="text-muted small mb-3">
             Сводка по вашим дожим-лидам за сегодня, вчера и всего.
@@ -102,7 +102,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon contacts mb-2">📦</div>
+          <div class="card-icon contacts mb-2" aria-hidden="true">📦</div>
           <h2 class="h5 mb-2">Получить списки контактов</h2>
           <p class="text-muted small mb-3">
             Выдача новых контактов из доступных баз с учётом лимитов и дополнительных квот.
@@ -114,7 +114,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon leads mb-2">📋</div>
+          <div class="card-icon leads mb-2" aria-hidden="true">📋</div>
           <h2 class="h5 mb-2">Мои лиды</h2>
           <p class="text-muted small mb-3">
             Список ваших лидов, статусы проверки. Одобренные лиды оплачиваются автоматически.
@@ -126,7 +126,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon report mb-2">📄</div>
+          <div class="card-icon report mb-2" aria-hidden="true">📄</div>
           <h2 class="h5 mb-2">Отчёт по лидам</h2>
           <p class="text-muted small mb-3">
             Загрузка файлов и скриншотов, фиксация результатов работы по каждому контакту.
@@ -138,7 +138,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon stats mb-2">📊</div>
+          <div class="card-icon stats mb-2" aria-hidden="true">📊</div>
           <h2 class="h5 mb-2">Статистика лидов</h2>
           <p class="text-muted small mb-3">
             Сводка по вашим лидам за сегодня, вчера и всё время с учётом «сдвинутого» дня.
@@ -152,7 +152,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon mb-2">👥</div>
+          <div class="card-icon mb-2" aria-hidden="true">👥</div>
           <h2 class="h5 mb-2">Реферальная система</h2>
           <p class="text-muted small mb-3">
             Создавайте ссылки, приглашайте пользователей и получайте доход с их одобренных лидов.
@@ -165,7 +165,7 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="card-icon support mb-2">
+          <div class="card-icon support mb-2" aria-hidden="true">
             💬
           </div>
           <h2 class="h5 mb-2">

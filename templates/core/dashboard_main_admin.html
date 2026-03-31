@@ -9,7 +9,7 @@
   </div>
 
   {# ═══ Отчёты ═══ #}
-  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Отчёты</h6>
+  <h6 class="text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Отчёты</h6>
   <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
     <div class="col">
       <div class="card h-100 shadow-sm">
@@ -44,7 +44,7 @@
   </div>
 
   {# ═══ Управление ═══ #}
-  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Управление</h6>
+  <h6 class="text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Управление</h6>
   <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 g-3 mb-4">
     <div class="col">
       <div class="card h-100 shadow-sm">
@@ -104,19 +104,19 @@
 
   {# ═══ Статистика админов ═══ #}
   {% if admin_stats_list %}
-  <h6 class="text-white-50 text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px;">Заработок команды</h6>
+  <h6 class="text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Заработок команды</h6>
   <div class="card shadow-sm mb-4">
     <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table table-sm mb-0 align-middle table-dark-site">
+        <table class="table table-sm mb-0 align-middle table-dark-site" aria-label="Заработок команды">
           <thead>
             <tr>
-              <th>Имя</th>
-              <th>Роль</th>
-              <th>Действий / рефералов</th>
-              <th>Заработано</th>
-              <th>Доступно</th>
-              <th></th>
+              <th scope="col">Имя</th>
+              <th scope="col">Роль</th>
+              <th scope="col">Действий / рефералов</th>
+              <th scope="col">Заработано</th>
+              <th scope="col">Доступно</th>
+              <th scope="col"><span class="visually-hidden">Действия</span></th>
             </tr>
           </thead>
           <tbody>
@@ -139,8 +139,8 @@
 
   {# ═══ Инструменты ═══ #}
   <div class="mb-3">
-    <a class="text-white-50 text-decoration-none" style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; cursor: pointer;" data-bs-toggle="collapse" href="#mainAdminTools" role="button" aria-expanded="false">
-      Инструменты и настройки ▾
+    <a class="text-decoration-none" style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; color: #94a3b8;" data-bs-toggle="collapse" href="#mainAdminTools" role="button" aria-expanded="false" aria-controls="mainAdminTools">
+      Инструменты и настройки <span aria-hidden="true">▾</span>
     </a>
   </div>
   <div class="collapse" id="mainAdminTools">
