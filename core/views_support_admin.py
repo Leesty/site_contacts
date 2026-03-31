@@ -981,7 +981,7 @@ def admin_user_search(request: HttpRequest) -> HttpResponse:
 @login_required
 def admin_all_users(request: HttpRequest) -> HttpResponse:
     """Список всех пользователей сайта с вкладками: все, активные за сегодня, активные за вчера."""
-    if not _require_support(request):
+    if not _require_support(request) and getattr(request.user, "role", None) != User.Role.BALANCE_ADMIN:
         return HttpResponseForbidden("Недостаточно прав.")
     show = request.GET.get("show", "all")
     today_start, today_end, yesterday_start, yesterday_end = _day_bounds_lead_stats()
@@ -2609,7 +2609,7 @@ def standalone_admin_refused(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["POST"])
 def admin_toggle_ban(request: HttpRequest, user_id: int) -> HttpResponse:
     """Забанить или разбанить пользователя."""
-    if not _require_support(request):
+    if not _require_support(request) and getattr(request.user, "role", None) != User.Role.BALANCE_ADMIN:
         return HttpResponseForbidden("Недостаточно прав.")
     target = get_object_or_404(User, pk=user_id)
     if target.role in ("main_admin", "admin", "support"):
