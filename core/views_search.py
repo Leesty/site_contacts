@@ -304,7 +304,7 @@ def admin_search_report_reject(request: HttpRequest, report_id: int) -> HttpResp
         report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
         if was_approved:
             lead_owner = User.objects.select_for_update().get(pk=report.user_id)
-            lead_owner.balance = max(0, (lead_owner.balance or 0) - SEARCH_REPORT_REWARD)
+            lead_owner.balance = (lead_owner.balance or 0) - SEARCH_REPORT_REWARD
             lead_owner.save(update_fields=["balance"])
 
     messages.success(request, f"Отчёт #{report_id} отклонён.")
@@ -331,7 +331,7 @@ def admin_search_report_rework(request: HttpRequest, report_id: int) -> HttpResp
         report.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by"])
         if was_approved:
             lead_owner = User.objects.select_for_update().get(pk=report.user_id)
-            lead_owner.balance = max(0, (lead_owner.balance or 0) - SEARCH_REPORT_REWARD)
+            lead_owner.balance = (lead_owner.balance or 0) - SEARCH_REPORT_REWARD
             lead_owner.save(update_fields=["balance"])
 
     messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")

@@ -680,15 +680,15 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                             partner = User.objects.select_for_update().get(pk=pe.partner_id)
                             if partner.role != User.Role.PARTNER:
                                 reward = LEAD_APPROVE_REWARD - pe.amount
-                            partner.balance = max(0, (partner.balance or 0) - pe.amount)
+                            partner.balance = (partner.balance or 0) - pe.amount
                             partner.save(update_fields=["balance"])
                             pe.delete()
                     lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
                     if _is_dz:
-                        lead_owner.dozhim_balance = max(0, (lead_owner.dozhim_balance or 0) - reward)
+                        lead_owner.dozhim_balance = (lead_owner.dozhim_balance or 0) - reward
                         lead_owner.save(update_fields=["dozhim_balance"])
                     else:
-                        lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
+                        lead_owner.balance = (lead_owner.balance or 0) - reward
                         lead_owner.save(update_fields=["balance"])
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REJECTED)
             messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
@@ -735,15 +735,15 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                             partner = User.objects.select_for_update().get(pk=pe.partner_id)
                             if partner.role != User.Role.PARTNER:
                                 reward = LEAD_APPROVE_REWARD - pe.amount
-                            partner.balance = max(0, (partner.balance or 0) - pe.amount)
+                            partner.balance = (partner.balance or 0) - pe.amount
                             partner.save(update_fields=["balance"])
                             pe.delete()
                     lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
                     if _is_dz:
-                        lead_owner.dozhim_balance = max(0, (lead_owner.dozhim_balance or 0) - reward)
+                        lead_owner.dozhim_balance = (lead_owner.dozhim_balance or 0) - reward
                         lead_owner.save(update_fields=["dozhim_balance"])
                     else:
-                        lead_owner.balance = max(0, (lead_owner.balance or 0) - reward)
+                        lead_owner.balance = (lead_owner.balance or 0) - reward
                         lead_owner.save(update_fields=["balance"])
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REWORK)
             messages.success(request, f"Лид #{lead_id} отправлен на доработку." + (" Баланс уменьшен." if was_approved else ""))
@@ -936,7 +936,7 @@ def admin_user_balance(request: HttpRequest, user_id: int) -> HttpResponse:
                     if action == "add":
                         user_locked.dozhim_balance = current + amount
                     else:
-                        user_locked.dozhim_balance = max(0, current - amount)
+                        user_locked.dozhim_balance = current - amount
                     user_locked.save(update_fields=["dozhim_balance"])
                     new_bal = user_locked.dozhim_balance
                 else:
@@ -944,7 +944,7 @@ def admin_user_balance(request: HttpRequest, user_id: int) -> HttpResponse:
                     if action == "add":
                         user_locked.balance = current + amount
                     else:
-                        user_locked.balance = max(0, current - amount)
+                        user_locked.balance = current - amount
                     user_locked.save(update_fields=["balance"])
                     new_bal = user_locked.balance
             dept_label = "Дожим" if dept == "dozhim" else "Поиск"
@@ -2296,7 +2296,7 @@ def standalone_admin_worker_self_lead_reject(request: HttpRequest, self_lead_id:
 
         if was_approved:
             worker = User.objects.select_for_update().get(pk=self_lead.worker_id)
-            worker.balance = max(0, (worker.balance or 0) - self_lead.reward)
+            worker.balance = (worker.balance or 0) - self_lead.reward
             worker.save(update_fields=["balance"])
 
     from django.contrib import messages
@@ -2336,7 +2336,7 @@ def standalone_admin_worker_self_lead_rework(request: HttpRequest, self_lead_id:
 
         if was_approved:
             worker = User.objects.select_for_update().get(pk=self_lead.worker_id)
-            worker.balance = max(0, (worker.balance or 0) - self_lead.reward)
+            worker.balance = (worker.balance or 0) - self_lead.reward
             worker.save(update_fields=["balance"])
 
     from django.contrib import messages
