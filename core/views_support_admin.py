@@ -35,6 +35,7 @@ from .models import (
     UserBaseLimit,
     WithdrawalRequest,
     WorkerSelfLead,
+    log_balance_change,
 )
 
 
@@ -619,15 +620,23 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
                     reward = ref_reward  # реф получит ref_reward вместо стандартных 40
                     partner_earning = LEAD_APPROVE_REWARD - ref_reward
                 PartnerEarning.objects.create(partner=partner, lead=lead, amount=partner_earning)
-                partner.balance = (partner.balance or 0) + partner_earning
+                from .models import log_balance_change
+                _old_pb = partner.balance or 0
+                partner.balance = _old_pb + partner_earning
                 partner.save(update_fields=["balance"])
+                log_balance_change(partner, "balance", _old_pb, partner.balance, f"partner_earning lead#{lead_id}", request.user)
         lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
+        from .models import log_balance_change
         if is_dozhim:
-            lead_owner.dozhim_balance = (lead_owner.dozhim_balance or 0) + reward
+            _old = lead_owner.dozhim_balance or 0
+            lead_owner.dozhim_balance = _old + reward
             lead_owner.save(update_fields=["dozhim_balance"])
+            log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"lead_approve#{lead_id} dozhim +{reward}", request.user)
         else:
-            lead_owner.balance = (lead_owner.balance or 0) + reward
+            _old = lead_owner.balance or 0
+            lead_owner.balance = _old + reward
             lead_owner.save(update_fields=["balance"])
+            log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"lead_approve#{lead_id} +{reward}", request.user)
         # Сохраняем текущую ставку баланс-админа в логе
         _ba_rate = None
         _ba_user = User.objects.filter(role=User.Role.BALANCE_ADMIN).first()
@@ -680,16 +689,22 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                             partner = User.objects.select_for_update().get(pk=pe.partner_id)
                             if partner.role != User.Role.PARTNER:
                                 reward = LEAD_APPROVE_REWARD - pe.amount
-                            partner.balance = (partner.balance or 0) - pe.amount
+                            _old_pb = partner.balance or 0
+                            partner.balance = _old_pb - pe.amount
                             partner.save(update_fields=["balance"])
+                            log_balance_change(partner, "balance", _old_pb, partner.balance, f"lead_reject#{lead_id} partner_rollback -{pe.amount}", request.user)
                             pe.delete()
                     lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
                     if _is_dz:
-                        lead_owner.dozhim_balance = (lead_owner.dozhim_balance or 0) - reward
+                        _old = lead_owner.dozhim_balance or 0
+                        lead_owner.dozhim_balance = _old - reward
                         lead_owner.save(update_fields=["dozhim_balance"])
+                        log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"lead_reject#{lead_id} dozhim -{reward}", request.user)
                     else:
-                        lead_owner.balance = (lead_owner.balance or 0) - reward
+                        _old = lead_owner.balance or 0
+                        lead_owner.balance = _old - reward
                         lead_owner.save(update_fields=["balance"])
+                        log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"lead_reject#{lead_id} -{reward}", request.user)
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REJECTED)
             messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
@@ -735,16 +750,22 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                             partner = User.objects.select_for_update().get(pk=pe.partner_id)
                             if partner.role != User.Role.PARTNER:
                                 reward = LEAD_APPROVE_REWARD - pe.amount
-                            partner.balance = (partner.balance or 0) - pe.amount
+                            _old_pb = partner.balance or 0
+                            partner.balance = _old_pb - pe.amount
                             partner.save(update_fields=["balance"])
+                            log_balance_change(partner, "balance", _old_pb, partner.balance, f"lead_rework#{lead_id} partner_rollback", request.user)
                             pe.delete()
                     lead_owner = User.objects.select_for_update().get(pk=lead_refresh.user_id)
                     if _is_dz:
-                        lead_owner.dozhim_balance = (lead_owner.dozhim_balance or 0) - reward
+                        _old = lead_owner.dozhim_balance or 0
+                        lead_owner.dozhim_balance = _old - reward
                         lead_owner.save(update_fields=["dozhim_balance"])
+                        log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"lead_rework#{lead_id} dozhim -{reward}", request.user)
                     else:
-                        lead_owner.balance = (lead_owner.balance or 0) - reward
+                        _old = lead_owner.balance or 0
+                        lead_owner.balance = _old - reward
                         lead_owner.save(update_fields=["balance"])
+                        log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"lead_rework#{lead_id} -{reward}", request.user)
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REWORK)
             messages.success(request, f"Лид #{lead_id} отправлен на доработку." + (" Баланс уменьшен." if was_approved else ""))
             from django.utils.http import url_has_allowed_host_and_scheme
@@ -1250,11 +1271,15 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                 else:
                     _is_dozhim_wr = wreq.payout_details and wreq.payout_details.startswith("[Дожим]")
                     if _is_dozhim_wr:
-                        wreq.user.dozhim_balance = (wreq.user.dozhim_balance or 0) + wreq.amount
+                        _old = wreq.user.dozhim_balance or 0
+                        wreq.user.dozhim_balance = _old + wreq.amount
                         wreq.user.save(update_fields=["dozhim_balance"])
+                        log_balance_change(wreq.user, "dozhim_balance", _old, wreq.user.dozhim_balance, f"withdrawal_reject#{wreq.pk} +{wreq.amount}", request.user)
                     else:
-                        wreq.user.balance = (wreq.user.balance or 0) + wreq.amount
+                        _old = wreq.user.balance or 0
+                        wreq.user.balance = _old + wreq.amount
                         wreq.user.save(update_fields=["balance"])
+                        log_balance_change(wreq.user, "balance", _old, wreq.user.balance, f"withdrawal_reject#{wreq.pk} +{wreq.amount}", request.user)
                     wreq.status = "rejected"
                     messages.info(request, f"Заявка от @{wreq.user.username} отклонена. Баланс восстановлен.")
                 wreq.processed_at = now
@@ -2599,9 +2624,11 @@ def balance_admin_payment_multiply(request: HttpRequest, user_id: int) -> HttpRe
         return HttpResponseForbidden()
     with transaction.atomic():
         target = User.objects.select_for_update().get(pk=user_id, role="user")
-        request.session[f"prev_balance_{user_id}"] = target.balance
-        target.balance = round(target.balance * 1.5)
+        _old = target.balance
+        request.session[f"prev_balance_{user_id}"] = _old
+        target.balance = round(_old * 1.5)
         target.save(update_fields=["balance"])
+        log_balance_change(target, "balance", _old, target.balance, "payment_multiply x1.5", request.user)
     messages.success(request, f"@{target.username}: баланс ×1.5 → {target.balance} руб.")
     return redirect("balance_admin_payment_detail", user_id=user_id)
 
@@ -2614,9 +2641,11 @@ def balance_admin_payment_subtract(request: HttpRequest, user_id: int) -> HttpRe
         return HttpResponseForbidden()
     with transaction.atomic():
         target = User.objects.select_for_update().get(pk=user_id, role="user")
-        request.session[f"prev_balance_{user_id}"] = target.balance
-        target.balance = target.balance - 25000
+        _old = target.balance
+        request.session[f"prev_balance_{user_id}"] = _old
+        target.balance = _old - 25000
         target.save(update_fields=["balance"])
+        log_balance_change(target, "balance", _old, target.balance, "payment_subtract -25000", request.user)
     messages.success(request, f"@{target.username}: баланс −25000 → {target.balance} руб.")
     return redirect("balance_admin_payment_detail", user_id=user_id)
 
@@ -2633,8 +2662,10 @@ def balance_admin_payment_revert(request: HttpRequest, user_id: int) -> HttpResp
         return redirect("balance_admin_payment_detail", user_id=user_id)
     with transaction.atomic():
         target = User.objects.select_for_update().get(pk=user_id, role="user")
+        _old = target.balance
         target.balance = prev
         target.save(update_fields=["balance"])
+        log_balance_change(target, "balance", _old, prev, "payment_revert", request.user)
     del request.session[f"prev_balance_{user_id}"]
     messages.success(request, f"@{target.username}: баланс возвращён → {prev} руб.")
     return redirect("balance_admin_payment_detail", user_id=user_id)

@@ -915,6 +915,55 @@ class SiteSettings(models.Model):
         return obj
 
 
+class BalanceLog(models.Model):
+    """Лог всех операций с балансом пользователя."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="balance_logs",
+    )
+    field = models.CharField(
+        max_length=20,
+        default="balance",
+        help_text="Какой баланс: balance или dozhim_balance.",
+    )
+    old_value = models.IntegerField(help_text="Баланс до операции.")
+    new_value = models.IntegerField(help_text="Баланс после операции.")
+    delta = models.IntegerField(help_text="Изменение (+ или -).")
+    reason = models.CharField(max_length=255, help_text="Причина изменения.")
+    actor = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="balance_actions",
+        help_text="Кто выполнил действие (админ, система).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Лог баланса"
+        verbose_name_plural = "Логи баланса"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.user.username}: {self.field} {self.old_value}→{self.new_value} ({self.reason})"
+
+
+def log_balance_change(user, field, old_value, new_value, reason, actor=None):
+    """Записать изменение баланса в лог."""
+    BalanceLog.objects.create(
+        user=user,
+        field=field,
+        old_value=old_value,
+        new_value=new_value,
+        delta=new_value - old_value,
+        reason=reason,
+        actor=actor,
+    )
+
+
 # ─── SearchLink система ───────────────────────────────────────────────────────
 
 import random

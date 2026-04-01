@@ -802,12 +802,15 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     payout_details=f"[{dept_label}] {payout_details}",
                     status="pending",
                 )
+                from .models import log_balance_change
                 if dept == "dozhim":
                     user_refresh.dozhim_balance = current_balance - withdraw_amount
                     user_refresh.save(update_fields=["dozhim_balance"])
+                    log_balance_change(user_refresh, "dozhim_balance", current_balance, user_refresh.dozhim_balance, f"withdrawal -{withdraw_amount}", None)
                 else:
                     user_refresh.balance = current_balance - withdraw_amount
                     user_refresh.save(update_fields=["balance"])
+                    log_balance_change(user_refresh, "balance", current_balance, user_refresh.balance, f"withdrawal -{withdraw_amount}", None)
         _withdrawn_amount = withdraw_amount if _role in ("admin", "main_admin") else withdraw_amount
         messages.success(
             request,
