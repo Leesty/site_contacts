@@ -56,6 +56,11 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
     withdrawal_pending_amount = pending_wr.amount if pending_wr else 0
     can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending
 
+    from .models import Lead
+    dozhim_pending_count = Lead.objects.filter(
+        user__partner_owner=user, lead_type__slug="dozhim", status=Lead.Status.PENDING
+    ).count()
+
     return render(request, "partner/dashboard.html", {
         "user": user,
         "balance": balance,
@@ -68,6 +73,7 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         "withdrawal_pending_amount": withdrawal_pending_amount,
         "can_request_withdrawal": can_request_withdrawal,
         "withdrawal_min_balance": withdrawal_min,
+        "dozhim_pending_count": dozhim_pending_count,
         "partner_rate": user.partner_rate or PARTNER_EARN_PER_LEAD_DEFAULT,
     })
 
@@ -220,6 +226,178 @@ def partner_referrals(request: HttpRequest) -> HttpResponse:
         "page_obj": page_obj,
         "total": users_qs.count(),
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Проверка дожим-лидов партнёром
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from django.views.decorators.http import require_http_methods
+
+
+@login_required
+def partner_dozhim_leads(request: HttpRequest) -> HttpResponse:
+    """Список дожим-лидов рефералов партнёра для модерации."""
+    if not _require_partner(request):
+        return HttpResponseForbidden("Только для партнёров.")
+
+    from .models import Lead, LeadType
+    from django.core.paginator import Paginator as Pag
+
+    tab = request.GET.get("tab", "new")
+    leads_qs = Lead.objects.filter(
+        user__partner_owner=request.user,
+        lead_type__slug="dozhim",
+    ).select_related("user", "lead_type").order_by("-created_at")
+
+    if tab == "approved":
+        leads_qs = leads_qs.filter(status=Lead.Status.APPROVED)
+    elif tab == "rejected":
+        leads_qs = leads_qs.filter(status=Lead.Status.REJECTED)
+    elif tab == "rework":
+        leads_qs = leads_qs.filter(status=Lead.Status.REWORK)
+    else:
+        leads_qs = leads_qs.filter(status__in=(Lead.Status.PENDING, Lead.Status.REWORK))
+
+    pending_count = Lead.objects.filter(
+        user__partner_owner=request.user,
+        lead_type__slug="dozhim",
+        status=Lead.Status.PENDING,
+    ).count()
+
+    paginator = Pag(leads_qs, 30)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    lead_approve_reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+
+    return render(request, "partner/dozhim_leads.html", {
+        "page_obj": page_obj,
+        "tab": tab,
+        "pending_count": pending_count,
+        "lead_approve_reward": lead_approve_reward,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def partner_dozhim_lead_approve(request: HttpRequest, lead_id: int) -> HttpResponse:
+    """Партнёр одобряет дожим-лид своего реферала."""
+    if not _require_partner(request):
+        return HttpResponseForbidden()
+
+    from .models import Lead, log_balance_change
+    from django.utils import timezone
+
+    with transaction.atomic():
+        lead = Lead.objects.select_for_update().select_related("user").filter(
+            pk=lead_id, user__partner_owner=request.user, lead_type__slug="dozhim"
+        ).first()
+        if not lead:
+            messages.error(request, "Лид не найден или не принадлежит вашим рефералам.")
+            return redirect("partner_dozhim_leads")
+        if lead.status == Lead.Status.APPROVED:
+            messages.info(request, "Лид уже одобрен.")
+            return redirect("partner_dozhim_leads")
+
+        reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+        lead.status = Lead.Status.APPROVED
+        lead.reviewed_at = timezone.now()
+        lead.reviewed_by = request.user
+        lead.save(update_fields=["status", "reviewed_at", "reviewed_by"])
+
+        lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
+        _old = lead_owner.dozhim_balance or 0
+        lead_owner.dozhim_balance = _old + reward
+        lead_owner.save(update_fields=["dozhim_balance"])
+        log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_approve#{lead_id} +{reward}", request.user)
+
+    messages.success(request, f"Лид #{lead_id} одобрен. +{reward} руб. пользователю @{lead.user.username}.")
+    return redirect("partner_dozhim_leads")
+
+
+@login_required
+@require_http_methods(["POST"])
+def partner_dozhim_lead_reject(request: HttpRequest, lead_id: int) -> HttpResponse:
+    """Партнёр отклоняет дожим-лид."""
+    if not _require_partner(request):
+        return HttpResponseForbidden()
+
+    from .models import Lead, log_balance_change
+    from django.utils import timezone
+
+    reason = (request.POST.get("reason") or "").strip()
+    with transaction.atomic():
+        lead = Lead.objects.select_for_update().select_related("user").filter(
+            pk=lead_id, user__partner_owner=request.user, lead_type__slug="dozhim"
+        ).first()
+        if not lead:
+            return redirect("partner_dozhim_leads")
+
+        was_approved = lead.status == Lead.Status.APPROVED
+        lead.status = Lead.Status.REJECTED
+        lead.rejection_reason = reason
+        lead.reviewed_at = timezone.now()
+        lead.reviewed_by = request.user
+        lead.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
+
+        if was_approved:
+            reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+            lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
+            _old = lead_owner.dozhim_balance or 0
+            lead_owner.dozhim_balance = _old - reward
+            lead_owner.save(update_fields=["dozhim_balance"])
+            log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_reject#{lead_id} -{reward}", request.user)
+
+    messages.success(request, f"Лид #{lead_id} отклонён.")
+    return redirect("partner_dozhim_leads")
+
+
+@login_required
+@require_http_methods(["POST"])
+def partner_dozhim_lead_rework(request: HttpRequest, lead_id: int) -> HttpResponse:
+    """Партнёр отправляет дожим-лид на доработку."""
+    if not _require_partner(request):
+        return HttpResponseForbidden()
+
+    from .models import Lead, log_balance_change
+    from django.utils import timezone
+
+    comment = (request.POST.get("comment") or "").strip()
+    with transaction.atomic():
+        lead = Lead.objects.select_for_update().select_related("user").filter(
+            pk=lead_id, user__partner_owner=request.user, lead_type__slug="dozhim"
+        ).first()
+        if not lead:
+            return redirect("partner_dozhim_leads")
+
+        was_approved = lead.status == Lead.Status.APPROVED
+        lead.status = Lead.Status.REWORK
+        lead.rework_comment = comment
+        lead.reviewed_at = timezone.now()
+        lead.reviewed_by = request.user
+        lead.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by"])
+
+        if was_approved:
+            reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+            lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
+            _old = lead_owner.dozhim_balance or 0
+            lead_owner.dozhim_balance = _old - reward
+            lead_owner.save(update_fields=["dozhim_balance"])
+            log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_rework#{lead_id} -{reward}", request.user)
+
+    messages.success(request, f"Лид #{lead_id} отправлен на доработку.")
+    return redirect("partner_dozhim_leads")
+
+
+@login_required
+def partner_dozhim_lead_attachment(request: HttpRequest, lead_id: int) -> HttpResponse:
+    """Просмотр вложения дожим-лида."""
+    if not _require_partner(request):
+        return HttpResponseForbidden()
+    from .models import Lead
+    lead = get_object_or_404(Lead, pk=lead_id, user__partner_owner=request.user, lead_type__slug="dozhim")
+    if not lead.attachment:
+        return HttpResponse("Нет вложения.", status=404)
+    return redirect(lead.attachment.url)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

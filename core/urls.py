@@ -22,6 +22,12 @@ urlpatterns = [
     path("partner/links/create/", views_partner.partner_create_link, name="partner_create_link"),
     path("partner/links/<int:link_id>/toggle/", views_partner.partner_toggle_link, name="partner_toggle_link"),
     path("p/<str:code>/", views_partner.partner_ref_register, name="partner_ref_register"),
+    # Partner dozhim lead review
+    path("partner/dozhim/leads/", views_partner.partner_dozhim_leads, name="partner_dozhim_leads"),
+    path("partner/dozhim/leads/<int:lead_id>/approve/", views_partner.partner_dozhim_lead_approve, name="partner_dozhim_lead_approve"),
+    path("partner/dozhim/leads/<int:lead_id>/reject/", views_partner.partner_dozhim_lead_reject, name="partner_dozhim_lead_reject"),
+    path("partner/dozhim/leads/<int:lead_id>/rework/", views_partner.partner_dozhim_lead_rework, name="partner_dozhim_lead_rework"),
+    path("partner/dozhim/leads/<int:lead_id>/attachment/", views_partner.partner_dozhim_lead_attachment, name="partner_dozhim_lead_attachment"),
     # Referral system (native for all users)
     path("referrals/", views_partner.user_referrals, name="user_referrals"),
     path("referrals/list/", views_partner.user_referral_list, name="user_referral_list"),

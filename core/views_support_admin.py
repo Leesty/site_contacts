@@ -458,6 +458,8 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
     dept = request.GET.get("dept", "")
     try:
         base = Lead.objects.select_related("user", "lead_type", "base_type", "reviewed_by")
+        # Исключить дожим-лиды рефов партнёров (проверяются партнёром, не админами)
+        base = base.exclude(lead_type__slug="dozhim", user__partner_owner__role="partner")
         if dept == "dozhim":
             base = base.filter(lead_type__slug="dozhim")
         elif dept == "search":
