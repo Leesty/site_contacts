@@ -214,7 +214,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         from decimal import Decimal
         from django.db.models import Sum
         pending_count = User.objects.filter(status=User.Status.PENDING).count()
-        unread_threads_count = SupportThread.objects.filter(
+        unread_threads_count = SupportThread.objects.annotate(
+            msg_count=Count("messages")
+        ).filter(
+            msg_count__gt=0,
+        ).filter(
             Q(last_read_at__isnull=True) | Q(updated_at__gt=F("last_read_at"))
         ).count()
         contact_requests_pending_count = ContactRequest.objects.filter(status="pending").count()
@@ -343,7 +347,11 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
         # Счётчики для админ-панели и метка обновления диалогов (для перезагрузки страницы при новом сообщении)
         threads_agg = SupportThread.objects.aggregate(m=Max("updated_at"))
         data["admin"] = {
-            "unread_threads_count": SupportThread.objects.filter(
+            "unread_threads_count": SupportThread.objects.annotate(
+                msg_count=Count("messages")
+            ).filter(
+                msg_count__gt=0,
+            ).filter(
                 Q(last_read_at__isnull=True) | Q(updated_at__gt=F("last_read_at"))
             ).count(),
             "pending_requests_count": User.objects.filter(status=User.Status.PENDING).count(),

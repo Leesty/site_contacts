@@ -270,6 +270,7 @@ def support_threads_list(request: HttpRequest) -> HttpResponse:
             last_message_at=Max("messages__created_at"),
             messages_count=Count("messages"),
             is_unread=Case(
+                When(Q(messages_count=0), then=Value(0)),
                 When(Q(last_read_at__isnull=True), then=Value(1)),
                 When(updated_at__gt=F("last_read_at"), then=Value(1)),
                 default=Value(0),
