@@ -281,7 +281,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                     ba_offset = a.balance_admin_earnings_offset or Decimal("0")
                     ba_earned = int(ba_total * ba_rate + ba_offset)
                     ba_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
-                    admin_stats_list.append({"user": a, "role_label": f"Баланс-админ ({ba_rate}₽)", "actions": ba_total, "earned": ba_earned, "available": max(0, ba_earned - ba_withdrawn)})
+                    admin_stats_list.append({"user": a, "role_label": f"Баланс-админ ({ba_rate}₽)", "actions": "—", "earned": ba_earned, "available": max(0, ba_earned - ba_withdrawn)})
             ctx["admin_stats_list"] = admin_stats_list
             return render(request, "core/dashboard_main_admin.html", ctx)
 
