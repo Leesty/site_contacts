@@ -212,7 +212,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     if _is_admin(user):
         from .models import LeadReviewLog
         from decimal import Decimal
-        from django.db.models import Sum
+        from django.db.models import Count, Sum
         pending_count = User.objects.filter(status=User.Status.PENDING).count()
         unread_threads_count = SupportThread.objects.annotate(
             msg_count=Count("messages")
@@ -330,7 +330,7 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
     # Для role=admin/main_admin баланс считается из LeadReviewLog
     if getattr(user, "role", None) in ("admin", "main_admin"):
         from .models import LeadReviewLog
-        from django.db.models import Sum
+        from django.db.models import Count, Sum
         from decimal import Decimal
         _admin_actions = LeadReviewLog.objects.filter(admin=user).count()
         _admin_earned = int(_admin_actions * Decimal("2.5"))
