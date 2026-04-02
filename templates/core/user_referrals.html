@@ -74,7 +74,6 @@
                 <th>Ссылка</th>
                 <th class="text-center">Рефу</th>
                 <th class="text-center">Вам</th>
-                <th class="text-center">Рефы</th>
                 <th class="text-center">Статус</th>
                 <th class="text-center" style="width: 70px;"></th>
               </tr>
@@ -95,7 +94,6 @@
                   </td>
                   <td class="text-center text-nowrap">{{ link.ref_reward }} ₽</td>
                   <td class="text-center text-nowrap text-success fw-semibold">{{ link.partner_cut }} ₽</td>
-                  <td class="text-center">{{ link.ref_count }}</td>
                   <td class="text-center">
                     {% if link.is_active %}<span class="badge bg-success">Активна</span>
                     {% else %}<span class="badge bg-secondary">Откл.</span>{% endif %}
