@@ -1038,7 +1038,11 @@ def leads_my_list(request: HttpRequest) -> HttpResponse:
         except (TypeError, ValueError):
             page_number = 1
         page_obj = paginator.get_page(page_number)
-        lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
+        # Если пользователь — реф (partner_link), показываем его ставку, иначе стандартные 40
+        if user.partner_link_id and user.partner_owner_id:
+            lead_approve_reward = user.partner_link.ref_reward if user.partner_link else getattr(settings, "LEAD_APPROVE_REWARD", 40)
+        else:
+            lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
         agg = Lead.objects.filter(user=user).exclude(lead_type__slug="dozhim").aggregate(m=Max("updated_at"))
         leads_updated_at = agg.get("m").isoformat() if agg.get("m") else ""
         return render(
