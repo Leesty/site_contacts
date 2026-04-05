@@ -56,6 +56,10 @@ class User(AbstractUser):
         unique=True,
         help_text="При необходимости — связка с Telegram-пользователем.",
     )
+    is_accredited = models.BooleanField(
+        default=False,
+        help_text="Аккредитирован (галочка для вывода средств).",
+    )
     balance = models.IntegerField(
         default=0,
         help_text="Баланс пользователя за Отдел поиска (руб.).",

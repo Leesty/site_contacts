@@ -1323,7 +1323,9 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
             if rejected_count:
                 messages.info(request, f"Отклонено заявок: {rejected_count}. Балансы восстановлены.")
             return redirect("admin_withdrawal_requests")
-    pending = WithdrawalRequest.objects.filter(status="pending").select_related("user").order_by("created_at")
+    all_pending = WithdrawalRequest.objects.filter(status="pending").select_related("user").order_by("created_at")
+    pending_regular = [r for r in all_pending if not r.user.partner_owner_id]
+    pending_referrals = [r for r in all_pending if r.user.partner_owner_id]
     history = (
         WithdrawalRequest.objects.exclude(status="pending")
         .select_related("user", "processed_by")
@@ -1340,7 +1342,9 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
         request,
         "core/admin_withdrawal_requests.html",
         {
-            "pending_requests": pending,
+            "pending_regular": pending_regular,
+            "pending_referrals": pending_referrals,
+            "pending_requests": list(all_pending),
             "history_requests": history,
             "total_user_withdrawals": total_user_withdrawals,
             "total_worker_withdrawals": total_worker_withdrawals,
@@ -2534,6 +2538,22 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
     })
 
 
+
+
+# ─── Аккредитация пользователя ─────────────────────────────────────────────
+
+@login_required
+@require_http_methods(["POST"])
+def admin_toggle_accredited(request: HttpRequest, user_id: int) -> HttpResponse:
+    """Переключить галочку аккредитации пользователя."""
+    if not _require_support(request) and getattr(request.user, "role", None) != User.Role.BALANCE_ADMIN:
+        return HttpResponseForbidden("Недостаточно прав.")
+    target = get_object_or_404(User, pk=user_id)
+    target.is_accredited = not target.is_accredited
+    target.save(update_fields=["is_accredited"])
+    status = "аккредитирован" if target.is_accredited else "не аккредитирован"
+    messages.success(request, f"@{target.username} — {status}.")
+    return redirect("admin_all_users")
 
 
 # ─── Отказы исполнителей (СС-админ) ──────────────────────────────────────────
