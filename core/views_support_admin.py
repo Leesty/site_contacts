@@ -640,6 +640,10 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
             lead_owner.balance = _old + reward
             lead_owner.save(update_fields=["balance"])
             log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"lead_approve#{lead_id} +{reward}", request.user)
+        # Авто-аккредитация: баланс был в минусе и перешёл в плюс
+        if not lead_owner.is_accredited and _old < 0 and (lead_owner.balance if not is_dozhim else lead_owner.dozhim_balance) >= 0:
+            lead_owner.is_accredited = True
+            lead_owner.save(update_fields=["is_accredited"])
         # Сохраняем текущую ставку баланс-админа в логе
         _ba_rate = None
         _ba_user = User.objects.filter(role=User.Role.BALANCE_ADMIN).first()
@@ -2545,9 +2549,9 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_http_methods(["POST"])
 def admin_toggle_accredited(request: HttpRequest, user_id: int) -> HttpResponse:
-    """Переключить галочку аккредитации пользователя."""
-    if not _require_support(request) and getattr(request.user, "role", None) != User.Role.BALANCE_ADMIN:
-        return HttpResponseForbidden("Недостаточно прав.")
+    """Переключить галочку аккредитации пользователя. Только main_admin."""
+    if getattr(request.user, "role", None) != User.Role.MAIN_ADMIN:
+        return HttpResponseForbidden("Только для главного админа.")
     target = get_object_or_404(User, pk=user_id)
     target.is_accredited = not target.is_accredited
     target.save(update_fields=["is_accredited"])

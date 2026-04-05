@@ -309,6 +309,10 @@ def partner_dozhim_lead_approve(request: HttpRequest, lead_id: int) -> HttpRespo
         lead_owner.dozhim_balance = _old + reward
         lead_owner.save(update_fields=["dozhim_balance"])
         log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_approve#{lead_id} +{reward}", request.user)
+        # Авто-аккредитация: баланс дожима был в минусе и перешёл в плюс
+        if not lead_owner.is_accredited and _old < 0 and lead_owner.dozhim_balance >= 0:
+            lead_owner.is_accredited = True
+            lead_owner.save(update_fields=["is_accredited"])
 
     messages.success(request, f"Лид #{lead_id} одобрен. +{reward} руб. пользователю @{lead.user.username}.")
     return redirect("partner_dozhim_leads")

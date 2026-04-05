@@ -66,12 +66,16 @@
                   {% endif %}
                 </td>
                 <td>
-                  <form method="post" action="{% url 'admin_toggle_accredited' u.pk %}" class="d-inline">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-sm py-0 px-1 {% if u.is_accredited %}btn-success{% else %}btn-outline-secondary{% endif %}" style="font-size: 11px;" title="{% if u.is_accredited %}Аккредитирован{% else %}Не аккредитирован{% endif %}">
-                      {% if u.is_accredited %}✓{% else %}—{% endif %}
-                    </button>
-                  </form>
+                  {% if user.role == 'main_admin' %}
+                    <form method="post" action="{% url 'admin_toggle_accredited' u.pk %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm py-0 px-1 {% if u.is_accredited %}btn-success{% else %}btn-outline-secondary{% endif %}" style="font-size: 11px;">
+                        {% if u.is_accredited %}✓{% else %}—{% endif %}
+                      </button>
+                    </form>
+                  {% else %}
+                    {% if u.is_accredited %}<span class="badge bg-success" style="font-size:10px;">✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                  {% endif %}
                 </td>
                 <td>{{ u.balance|default:0 }}</td>
                 <td>{{ u.dozhim_balance|default:0 }}</td>
