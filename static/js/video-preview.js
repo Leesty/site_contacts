@@ -1,9 +1,10 @@
 /**
- * Предпросмотр видео: загрузка только по клику.
+ * Предпросмотр видео с фоновой предзагрузкой.
  *
- * Если кнопка имеет data-s3-url — используем прямой S3 URL (без AJAX к Django).
- * Если нет — резолвим через Django AJAX (fallback).
- * Видео НЕ предзагружается — не забиваем канал и gunicorn workers.
+ * - S3 URL берётся из data-s3-url (без AJAX к Django).
+ * - Предзагрузка: по 1 видео, пауза 2 сек между ними — не забиваем канал.
+ * - Кнопка становится btn-primary когда видео прогрузилось.
+ * - При клике: если видео в кеше → моментальный autoplay, иначе стримим.
  *
  * Требования к HTML:
  *   - Кнопки: .js-video-preview[data-video-url][data-lead-id]
@@ -22,6 +23,12 @@
   var downloadLink = document.getElementById('videoDownloadLink');
   var buttons = document.querySelectorAll('.js-video-preview');
   if (!buttons.length) return;
+
+  // Кэш: url → скрытый <video>
+  var videoCache = {};
+  var preloadQueue = [];
+  var preloading = false;
+  var PRELOAD_DELAY = 2000; // пауза между предзагрузками (мс)
 
   // ---------- CSS ----------
 
@@ -52,16 +59,14 @@
     if (spinnerOverlay.parentElement) spinnerOverlay.remove();
   }
 
-  // ---------- резолв S3-URL (fallback для кнопок без data-s3-url) ----------
+  // ---------- резолв URL ----------
 
   var urlCache = {};
 
-  function resolveUrl(btn, cb) {
-    // Приоритет: data-s3-url (прямой URL, без AJAX)
+  function getVideoUrl(btn, cb) {
     var s3url = btn.getAttribute('data-s3-url');
     if (s3url) return cb(s3url);
 
-    // Fallback: AJAX к Django
     var djangoUrl = btn.getAttribute('data-video-url');
     if (urlCache[djangoUrl]) return cb(urlCache[djangoUrl]);
 
@@ -78,13 +83,60 @@
       });
   }
 
+  // ---------- фоновая предзагрузка (по 1, с паузой) ----------
+
+  function preloadNext() {
+    if (preloading || preloadQueue.length === 0) return;
+    preloading = true;
+
+    var item = preloadQueue.shift();
+
+    getVideoUrl(item.btn, function (url) {
+      if (videoCache[url]) {
+        markReady(item.btn);
+        preloading = false;
+        setTimeout(preloadNext, 100);
+        return;
+      }
+
+      var hv = document.createElement('video');
+      hv.preload = 'auto';
+      hv.muted = true;
+      hv.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
+      hv.src = url;
+      document.body.appendChild(hv);
+      videoCache[url] = hv;
+
+      function done() {
+        hv.removeEventListener('canplaythrough', onReady);
+        hv.removeEventListener('error', onError);
+        preloading = false;
+        setTimeout(preloadNext, PRELOAD_DELAY);
+      }
+      function onReady() { markReady(item.btn); done(); }
+      function onError() { done(); }
+
+      hv.addEventListener('canplaythrough', onReady);
+      hv.addEventListener('error', onError);
+    });
+  }
+
+  function markReady(btn) {
+    btn.classList.remove('btn-outline-primary');
+    btn.classList.add('btn-primary');
+  }
+
   // ---------- открытие видео ----------
 
   function openVideo(url, leadId) {
     if (leadIdSpan) leadIdSpan.textContent = leadId || '';
     if (downloadLink) downloadLink.href = url;
 
-    showSpinner();
+    var cached = videoCache[url];
+    var isReady = cached && cached.readyState >= 3;
+
+    if (!isReady) showSpinner();
+
     player.preload = 'auto';
     player.src = url;
     player.autoplay = true;
@@ -105,16 +157,21 @@
   });
   player.addEventListener('error', hideSpinner);
 
-  // ---------- подписка на кнопки ----------
+  // ---------- инициализация ----------
 
   buttons.forEach(function (btn) {
+    preloadQueue.push({ btn: btn });
+
     btn.addEventListener('click', function () {
       var leadId = btn.getAttribute('data-lead-id') || '';
-      resolveUrl(btn, function (url) {
+      getVideoUrl(btn, function (url) {
         openVideo(url, leadId);
       });
     });
   });
+
+  // Старт предзагрузки через 1 сек после загрузки страницы
+  setTimeout(preloadNext, 1000);
 
   // ---------- очистка при закрытии ----------
 
