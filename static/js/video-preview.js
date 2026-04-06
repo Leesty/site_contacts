@@ -1,15 +1,13 @@
 /**
- * Моментальный предпросмотр видео: фоновая предзагрузка через скрытые <video>,
- * мгновенное воспроизведение при клике, автоплей без задержек.
+ * Предпросмотр видео: загрузка только по клику.
  *
- * Логика:
- *   1. При загрузке страницы — резолвим S3-URL и создаём скрытые <video preload="auto">
- *      (по 2 параллельно, чтобы не забить канал).
- *   2. Кнопка становится btn-primary когда видео полностью прогрузилось.
- *   3. При клике — если видео в кеше → моментальный autoplay. Если ещё грузится → стримим.
+ * Если кнопка имеет data-s3-url — используем прямой S3 URL (без AJAX к Django).
+ * Если нет — резолвим через Django AJAX (fallback).
+ * Видео НЕ предзагружается — не забиваем канал и gunicorn workers.
  *
  * Требования к HTML:
  *   - Кнопки: .js-video-preview[data-video-url][data-lead-id]
+ *   - Опционально: data-s3-url (прямой S3 URL, встроен в шаблон)
  *   - Модалка: #videoPreviewModal с <video id="videoPreviewPlayer">
  *   - Опционально: #videoLeadId (span), #videoDownloadLink (a)
  */
@@ -24,15 +22,6 @@
   var downloadLink = document.getElementById('videoDownloadLink');
   var buttons = document.querySelectorAll('.js-video-preview');
   if (!buttons.length) return;
-
-  // Кэш: djangoUrl → s3Url
-  var urlCache = {};
-  // Кэш: s3Url → скрытый <video> (предзагруженный)
-  var videoCache = {};
-  // Очередь кнопок для предзагрузки
-  var preloadQueue = [];
-  var activePreloads = 0;
-  var MAX_PARALLEL = 2;
 
   // ---------- CSS ----------
 
@@ -63,133 +52,69 @@
     if (spinnerOverlay.parentElement) spinnerOverlay.remove();
   }
 
-  // ---------- резолв S3-URL ----------
+  // ---------- резолв S3-URL (fallback для кнопок без data-s3-url) ----------
 
-  var pendingFetches = {};
+  var urlCache = {};
 
-  function resolveS3Url(djangoUrl, cb) {
+  function resolveUrl(btn, cb) {
+    // Приоритет: data-s3-url (прямой URL, без AJAX)
+    var s3url = btn.getAttribute('data-s3-url');
+    if (s3url) return cb(s3url);
+
+    // Fallback: AJAX к Django
+    var djangoUrl = btn.getAttribute('data-video-url');
     if (urlCache[djangoUrl]) return cb(urlCache[djangoUrl]);
-    if (pendingFetches[djangoUrl]) {
-      pendingFetches[djangoUrl].push(cb);
-      return;
-    }
-    pendingFetches[djangoUrl] = [cb];
+
     fetch(djangoUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        var s3url = data.url || djangoUrl;
-        urlCache[djangoUrl] = s3url;
-        var cbs = pendingFetches[djangoUrl] || [];
-        delete pendingFetches[djangoUrl];
-        cbs.forEach(function (fn) { fn(s3url); });
+        var url = data.url || djangoUrl;
+        urlCache[djangoUrl] = url;
+        cb(url);
       })
       .catch(function () {
         urlCache[djangoUrl] = djangoUrl;
-        var cbs = pendingFetches[djangoUrl] || [];
-        delete pendingFetches[djangoUrl];
-        cbs.forEach(function (fn) { fn(djangoUrl); });
+        cb(djangoUrl);
       });
-  }
-
-  // ---------- фоновая предзагрузка ----------
-
-  function preloadNext() {
-    while (activePreloads < MAX_PARALLEL && preloadQueue.length > 0) {
-      var item = preloadQueue.shift();
-      startPreload(item.btn, item.djangoUrl);
-    }
-  }
-
-  function startPreload(btn, djangoUrl) {
-    activePreloads++;
-    resolveS3Url(djangoUrl, function (s3url) {
-      if (videoCache[s3url]) {
-        markReady(btn);
-        activePreloads--;
-        preloadNext();
-        return;
-      }
-      var hiddenVideo = document.createElement('video');
-      hiddenVideo.preload = 'auto';
-      hiddenVideo.muted = true;
-      hiddenVideo.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
-      hiddenVideo.src = s3url;
-      document.body.appendChild(hiddenVideo);
-      videoCache[s3url] = hiddenVideo;
-
-      hiddenVideo.addEventListener('canplaythrough', function onReady() {
-        hiddenVideo.removeEventListener('canplaythrough', onReady);
-        markReady(btn);
-        activePreloads--;
-        preloadNext();
-      });
-      hiddenVideo.addEventListener('error', function () {
-        activePreloads--;
-        preloadNext();
-      });
-    });
-  }
-
-  function markReady(btn) {
-    btn.classList.remove('btn-outline-primary');
-    btn.classList.add('btn-primary');
   }
 
   // ---------- открытие видео ----------
 
-  function openVideo(s3url, leadId) {
+  function openVideo(url, leadId) {
     if (leadIdSpan) leadIdSpan.textContent = leadId || '';
-    if (downloadLink) downloadLink.href = s3url;
+    if (downloadLink) downloadLink.href = url;
 
-    var cached = videoCache[s3url];
-    var isReady = cached && cached.readyState >= 3;
-
-    if (!isReady) showSpinner();
-
+    showSpinner();
     player.preload = 'auto';
-    player.src = s3url;
+    player.src = url;
     player.autoplay = true;
 
     var bsModal = bootstrap.Modal.getOrCreateInstance(modal);
     bsModal.show();
 
-    // Пробуем играть сразу
     var playPromise = player.play();
     if (playPromise && playPromise.catch) {
-      playPromise.catch(function () {
-        // Автоплей заблокирован браузером — пользователь нажмёт play сам
-      });
+      playPromise.catch(function () {});
     }
   }
 
   player.addEventListener('canplay', function () {
     hideSpinner();
-    // Ещё раз пробуем play на случай если при открытии не сработало
     var p = player.play();
     if (p && p.catch) p.catch(function () {});
   });
   player.addEventListener('error', hideSpinner);
 
-  // ---------- инициализация: подписка на кнопки + очередь предзагрузки ----------
+  // ---------- подписка на кнопки ----------
 
   buttons.forEach(function (btn) {
-    var djangoUrl = btn.getAttribute('data-video-url');
-    if (!djangoUrl) return;
-
-    // Добавляем в очередь предзагрузки
-    preloadQueue.push({ btn: btn, djangoUrl: djangoUrl });
-
-    // Клик
     btn.addEventListener('click', function () {
       var leadId = btn.getAttribute('data-lead-id') || '';
-      resolveS3Url(djangoUrl, function (s3url) {
-        openVideo(s3url, leadId);
+      resolveUrl(btn, function (url) {
+        openVideo(url, leadId);
       });
     });
   });
-
-  // Запускаем предзагрузку
-  preloadNext();
 
   // ---------- очистка при закрытии ----------
 

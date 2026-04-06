@@ -70,7 +70,8 @@
                       {% if lead.attachment|lead_attachment_is_video %}
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm js-video-preview"
-                                data-video-url="{% url 'standalone_admin_worker_self_lead_attachment' lead.id %}">
+                                data-video-url="{% url 'standalone_admin_worker_self_lead_attachment' lead.id %}"
+                                data-s3-url="{{ lead.attachment|attachment_s3_url }}">
                           ▶ Видео
                         </button>
                       {% else %}

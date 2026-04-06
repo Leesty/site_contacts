@@ -149,7 +149,7 @@
                 <td class="text-break small">
                   {% if lead.attachment %}
                     {% if lead.attachment|lead_attachment_is_video %}
-                      <button type="button" class="btn btn-outline-primary btn-sm js-video-preview" data-video-url="{% url 'admin_lead_attachment' lead.user_id lead.id %}" data-lead-id="{{ lead.id }}">Видео</button>
+                      <button type="button" class="btn btn-outline-primary btn-sm js-video-preview" data-video-url="{% url 'admin_lead_attachment' lead.user_id lead.id %}" data-s3-url="{{ lead.attachment|attachment_s3_url }}" data-lead-id="{{ lead.id }}">Видео</button>
                     {% else %}
                       <a href="{% url 'admin_lead_attachment' lead.user_id lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Открыть</a>
                     {% endif %}

@@ -19,8 +19,8 @@ def contact_link(value):
     url = raw_contact_to_url(text)
     if url:
         return mark_safe(
-            '<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>'
-            % (escape(url), escape(text))
+            '<a href="%s" target="_blank" rel="noopener noreferrer" aria-label="Открыть контакт %s (новое окно)">%s</a>'
+            % (escape(url), escape(text), escape(text))
         )
     return escape(text)
 
@@ -50,3 +50,14 @@ def worker_report_attachment_is_video(attachment) -> bool:
         return False
     ext = (attachment.name or "").rsplit(".", 1)[-1].lower()
     return ext in VIDEO_EXTENSIONS
+
+
+@register.filter
+def attachment_s3_url(attachment) -> str:
+    """Возвращает прямой URL вложения (S3 или локальный). Для data-атрибутов в шаблоне."""
+    if not attachment or not getattr(attachment, "name", None):
+        return ""
+    try:
+        return attachment.url
+    except Exception:
+        return ""

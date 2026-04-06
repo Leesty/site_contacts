@@ -76,6 +76,7 @@
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm js-video-preview"
                                 data-video-url="{% url 'standalone_admin_lead_attachment' lead.id %}"
+                                data-s3-url="{{ lead.attachment|attachment_s3_url }}"
                                 data-lead-id="{{ lead.id }}">
                           Видео
                         </button>
