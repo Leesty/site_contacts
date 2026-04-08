@@ -43,7 +43,7 @@
             </thead>
             <tbody>
               {% for link in links %}
-                {% with full_url=request.scheme|add:"://"|add:request.get_host|add:"/ref/"|add:link.code|add:"/" %}
+                {% with full_url=site_url|add:"/ref/"|add:link.code|add:"/" %}
                 <tr>
                   <td>{{ link.note|default:"—" }}</td>
                   <td class="text-break small">

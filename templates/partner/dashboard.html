@@ -105,7 +105,7 @@
           <p class="small text-muted mb-2" id="ref-url-help">Отправьте эту ссылку пользователям. За каждый их одобренный лид вы получаете +{{ partner_rate }} руб.</p>
           <div class="input-group input-group-sm">
             <input type="text" id="partner-ref-url" class="form-control font-monospace"
-                   value="{{ request.scheme }}://{{ request.get_host }}{% url 'partner_ref_register' link.code %}"
+                   value="{{ site_url }}{% url 'partner_ref_register' link.code %}"
                    readonly aria-label="Реферальная ссылка" aria-describedby="ref-url-help">
             <button class="btn btn-outline-secondary" type="button" onclick="copyPartnerLink()" aria-label="Скопировать реферальную ссылку">Копировать</button>
           </div>

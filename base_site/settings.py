@@ -31,6 +31,8 @@ for _h in ALLOWED_HOSTS:
         _origins.extend((f"https://{_h}", f"http://{_h}"))
 CSRF_TRUSTED_ORIGINS = _origins
 
+# Основной домен сайта (для реферальных ссылок и т.д.)
+SITE_URL = os.getenv("SITE_URL", "https://rupartnerka.ru")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -73,6 +75,7 @@ TEMPLATES = [
                 "core.context_processors.rework_leads",
                 "core.context_processors.admin_balance_context",
                 "core.context_processors.department_context",
+                "core.context_processors.site_url",
             ],
         },
     },

@@ -51,3 +51,9 @@ def department_context(request):
     if getattr(request.user, "role", None) != "user":
         return {"department": "search"}
     return {"department": request.session.get("department", "search")}
+
+
+def site_url(request):
+    """Основной домен сайта (SITE_URL) для реферальных ссылок."""
+    from django.conf import settings
+    return {"site_url": getattr(settings, "SITE_URL", f"{request.scheme}://{request.get_host()}")}
