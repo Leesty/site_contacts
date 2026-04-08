@@ -147,7 +147,8 @@ if USE_S3_MEDIA_ENV and _s3_bucket and _s3_access and _s3_secret:
         "signature_version": "s3v4",
         "addressing_style": "path",  # Timeweb: URL вида /bucket/key, не virtual-hosted
         "object_parameters": {"CacheControl": "max-age=86400"},
-        "default_acl": None,
+        "default_acl": "public-read",
+        "querystring_auth": False,
         "location": "media",
     }
     if _s3_endpoint:

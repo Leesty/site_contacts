@@ -81,6 +81,9 @@ def _build_s3_opts(config):
         "region_name": (config.region_name or "").strip() or "ru-1",
         "signature_version": "s3v4",
         "addressing_style": "path",
+        "default_acl": "public-read",
+        "querystring_auth": False,
+        "object_parameters": {"CacheControl": "max-age=86400"},
     }
     if endpoint:
         opts["endpoint_url"] = endpoint
