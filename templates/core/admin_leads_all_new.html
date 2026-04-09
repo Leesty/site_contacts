@@ -171,7 +171,7 @@
                   <div class="d-flex flex-wrap gap-1">
                     {% if lead.status == 'approved' or tab == 'approved' %}
                       <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">Отменить</a>
-                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">На доработку</a>
+                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-toggle" data-rework-url="{% url 'admin_lead_rework' lead.user_id lead.id %}">На доработку</button>
                     {% elif lead.status == 'rework' or tab == 'rework' %}
                       <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" class="d-inline js-lead-approve-form">
                         {% csrf_token %}
@@ -188,7 +188,7 @@
                         <button type="submit" class="btn btn-success btn-sm" title="+{{ lead_approve_reward }} руб. пользователю">Одобрить</button>
                       </form>
                       <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">Отклонить</a>
-                      <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}">На доработку</a>
+                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-toggle" data-rework-url="{% url 'admin_lead_rework' lead.user_id lead.id %}">На доработку</button>
                     {% endif %}
                   </div>
                 </td>
@@ -322,6 +322,80 @@
       td.querySelector('.js-truncated').classList.remove('d-none');
     });
   });
+  })();
+  </script>
+  <script>
+  (function() {
+    var toast = document.getElementById('lead-approve-toast');
+    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!csrfToken) return;
+    csrfToken = csrfToken.value;
+
+    document.querySelectorAll('.js-rework-toggle').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var td = btn.closest('td');
+        // Закрыть другие открытые формы
+        document.querySelectorAll('.js-rework-inline').forEach(function(f) { f.remove(); });
+
+        var url = btn.getAttribute('data-rework-url');
+        var wrap = document.createElement('div');
+        wrap.className = 'js-rework-inline mt-1';
+        wrap.innerHTML =
+          '<div class="input-group input-group-sm">' +
+            '<input type="text" class="form-control" placeholder="Причина доработки" autofocus>' +
+            '<button class="btn btn-warning text-dark" type="button">Отправить</button>' +
+            '<button class="btn btn-outline-secondary" type="button" title="Отмена">✕</button>' +
+          '</div>';
+        td.appendChild(wrap);
+
+        var input = wrap.querySelector('input');
+        var sendBtn = wrap.querySelector('.btn-warning');
+        var cancelBtn = wrap.querySelector('.btn-outline-secondary');
+
+        input.focus();
+
+        function submit() {
+          var comment = input.value.trim();
+          if (!comment) { input.classList.add('is-invalid'); return; }
+          sendBtn.disabled = true;
+          sendBtn.textContent = '…';
+
+          var body = new FormData();
+          body.append('csrfmiddlewaretoken', csrfToken);
+          body.append('rework_comment', comment);
+
+          fetch(url, { method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(res) {
+              if (res.ok && res.data.success) {
+                var row = btn.closest('tr');
+                row.style.transition = 'opacity 0.25s';
+                row.style.opacity = '0';
+                setTimeout(function() { row.remove(); }, 250);
+                if (toast && res.data.message) {
+                  toast.textContent = res.data.message;
+                  toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-warning py-2 px-3 mb-0 shadow-sm';
+                  toast.style.display = 'block';
+                  toast.style.zIndex = '1100';
+                  setTimeout(function() { toast.style.display = 'none'; toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm'; }, 3000);
+                }
+              } else {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Отправить';
+                input.classList.add('is-invalid');
+              }
+            })
+            .catch(function() {
+              sendBtn.disabled = false;
+              sendBtn.textContent = 'Отправить';
+            });
+        }
+
+        sendBtn.addEventListener('click', submit);
+        input.addEventListener('keydown', function(e) { if (e.key === 'Enter') submit(); if (e.key === 'Escape') wrap.remove(); });
+        cancelBtn.addEventListener('click', function() { wrap.remove(); });
+      });
+    });
   })();
   </script>
 {% endblock %}
