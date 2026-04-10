@@ -220,8 +220,8 @@ def _get_video_duration(ffmpeg_exe: str, path: str) -> float | None:
     return None
 
 
-def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 300) -> bool:
-    """Сжимает видео через ffmpeg: H.264, CRF 26, макс. 720p. Мягкое сжатие."""
+def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 600) -> bool:
+    """Сжимает видео через ffmpeg: H.264, CRF 26, макс. 720p. Низкий приоритет CPU."""
     ffmpeg_exe = _get_ffmpeg_path()
     if not ffmpeg_exe:
         logger.warning("ffmpeg не найден (imageio-ffmpeg или системный) — сжатие видео пропущено")
@@ -231,8 +231,10 @@ def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 300
     orig_duration = _get_video_duration(ffmpeg_exe, input_path)
 
     cmd = [
+        "nice", "-n", "19",
         ffmpeg_exe,
         "-y",
+        "-threads", "1",
         "-i",
         input_path,
         "-vf",
@@ -243,6 +245,7 @@ def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 300
         "26",
         "-preset",
         "medium",
+        "-threads", "1",
         "-c:a",
         "aac",
         "-b:a",

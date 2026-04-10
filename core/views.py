@@ -30,7 +30,7 @@ from .models import BaseType, Contact, ContactRequest, DozhimIssuedLead, Lead, L
 
 logger = logging.getLogger(__name__)
 
-_bg_executor = ThreadPoolExecutor(max_workers=4)
+_bg_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def health_check(request: HttpRequest) -> HttpResponse:
