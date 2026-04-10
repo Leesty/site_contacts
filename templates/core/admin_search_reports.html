@@ -45,7 +45,10 @@
                 <tr>
                   <td class="text-muted">{{ report.id }}</td>
                   <td>@{{ report.user.username }}</td>
-                  <td>{{ report.search_link.lead_name|truncatechars:25 }}</td>
+                  <td>
+                    {{ report.search_link.lead_name|truncatechars:25 }}
+                    {% if report.search_link.self_click %}<span class="badge bg-danger ms-1" title="IP создателя совпал с IP посетителя">НАКРУТКА</span>{% endif %}
+                  </td>
                   <td class="text-muted small">{{ report.lead_date|date:"d.m.Y" }}</td>
                   <td>
                     {% if report.attachment %}

@@ -1030,6 +1030,21 @@ class SearchLink(TimeStampedModel):
         blank=True,
         help_text="Telegram ID лида (из вебхука).",
     )
+    creator_ip = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text="IP менеджера при создании ссылки.",
+    )
+    visitor_ip = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text="IP посетителя при клике на лендинг.",
+    )
+    self_click = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="IP менеджера совпал с IP посетителя — подозрение на накрутку.",
+    )
 
     class Meta:
         verbose_name = "SearchLink"

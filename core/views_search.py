@@ -18,6 +18,14 @@ from .models import SearchLink, SearchReport, User
 
 logger = logging.getLogger(__name__)
 
+
+def _get_client_ip(request: HttpRequest) -> str:
+    """Получить IP клиента (учитывая X-Forwarded-For за прокси)."""
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
 SEARCH_REPORT_REWARD = getattr(settings, "SEARCH_REPORT_REWARD", 100)
 
 
@@ -84,7 +92,9 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
         messages.error(request, "Укажите имя/ник лида.")
         return redirect("search_links_my")
 
-    link = SearchLink.objects.create(user=request.user, lead_name=lead_name)
+    link = SearchLink.objects.create(
+        user=request.user, lead_name=lead_name, creator_ip=_get_client_ip(request),
+    )
     messages.success(request, f"Ссылка создана для «{lead_name}».")
     return redirect("search_links_my")
 
@@ -99,6 +109,22 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
 
     if link.bot_started:
         return render(request, "search/unavailable.html")
+
+    # Сохраняем IP посетителя и проверяем совпадение с IP создателя
+    visitor_ip = _get_client_ip(request)
+    update_fields = []
+    if not link.visitor_ip:
+        link.visitor_ip = visitor_ip
+        update_fields.append("visitor_ip")
+    if link.creator_ip and link.creator_ip == visitor_ip and not link.self_click:
+        link.self_click = True
+        update_fields.append("self_click")
+        logger.warning(
+            "SearchLink self-click: link=%s user=%s ip=%s",
+            link.code, link.user_id, visitor_ip,
+        )
+    if update_fields:
+        link.save(update_fields=update_fields)
 
     return render(request, "search/landing.html", {
         "lead_name": link.lead_name,
@@ -269,6 +295,18 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
             return redirect("admin_search_reports_list")
         if not report.search_link.bot_started:
             messages.error(request, "Бот не стартован — нельзя одобрить.")
+            return redirect("admin_search_reports_list")
+        if report.search_link.self_click:
+            messages.error(
+                request,
+                f"Отчёт #{report_id} аннулирован: IP менеджера совпал с IP посетителя (накрутка). "
+                f"IP: {report.search_link.creator_ip}",
+            )
+            report.status = SearchReport.Status.REJECTED
+            report.rejection_reason = "Автоотклонение: IP создателя ссылки совпал с IP посетителя."
+            report.reviewed_at = timezone.now()
+            report.reviewed_by = request.user
+            report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
             return redirect("admin_search_reports_list")
 
         report.status = SearchReport.Status.APPROVED
