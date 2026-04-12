@@ -192,6 +192,7 @@
           e.preventDefault();
           return;
         }
+        e.preventDefault();
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Загрузка файла...';
 
@@ -210,6 +211,34 @@
             clearInterval(progressInterval);
           }
         }, 1000);
+
+        var formData = new FormData(form);
+        fetch(form.action || window.location.href, {
+          method: 'POST',
+          body: formData,
+          credentials: 'same-origin'
+        }).then(function(response) {
+          clearInterval(progressInterval);
+          if (response.redirected) {
+            window.location.href = response.url;
+          } else {
+            return response.text().then(function(html) {
+              document.open();
+              document.write(html);
+              document.close();
+            });
+          }
+        }).catch(function(err) {
+          clearInterval(progressInterval);
+          var msg = err.message || String(err);
+          if (msg.indexOf('UPLOAD_FILE_CHANGED') !== -1 || msg.indexOf('Failed to fetch') !== -1 || msg.indexOf('NetworkError') !== -1) {
+            setStatus('Ошибка загрузки: файл был изменён или недоступен. Попробуйте выбрать файл заново. Если файл в облаке (Google Drive, iCloud) — скопируйте его в обычную папку.', true);
+          } else {
+            setStatus('Ошибка сети при загрузке: ' + msg + '. Попробуйте ещё раз.', true);
+          }
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = 'Отправить отчёт';
+        });
       });
     }
   })();
