@@ -90,7 +90,7 @@
                   <div class="d-flex flex-wrap align-items-center gap-1">
                     {% if lead.status == 'approved' %}
                       <span class="badge bg-success">Одобрен</span>
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">Отменить</a>
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-toggle" data-reject-url="{% url 'admin_lead_reject' target_user.pk lead.id %}">Отменить</button>
                       <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">На доработку</a>
                     {% elif lead.status == 'rejected' %}
                       <span class="badge bg-danger">Отклонён</span>
@@ -100,14 +100,14 @@
                         {% csrf_token %}
                         <button type="submit" class="btn btn-success btn-sm" title="Одобрить без доработки">Одобрить без доработки</button>
                       </form>
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">Отклонить</a>
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-toggle" data-reject-url="{% url 'admin_lead_reject' target_user.pk lead.id %}">Отклонить</button>
                     {% else %}
                       <span class="badge bg-secondary">На проверке</span>
                       <form method="post" action="{% url 'admin_lead_approve' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}" class="d-inline">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-success btn-sm">Одобрить</button>
                       </form>
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_lead_reject' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">Отклонить</a>
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-toggle" data-reject-url="{% url 'admin_lead_reject' target_user.pk lead.id %}">Отклонить</button>
                       <a class="btn btn-warning btn-sm text-dark" href="{% url 'admin_lead_rework' target_user.pk lead.id %}?next={% url 'admin_user_leads_list' target_user.pk %}%3Ftab%3D{{ tab }}">На доработку</a>
                     {% endif %}
                   </div>
@@ -219,6 +219,84 @@
       td.querySelector('.js-truncated').classList.remove('d-none');
     });
   });
+  })();
+  </script>
+
+  <div id="lead-action-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index: 1100; display: none;" role="alert"></div>
+
+  <script>
+  (function() {
+    var toast = document.getElementById('lead-action-toast');
+    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!csrfToken) return;
+    csrfToken = csrfToken.value;
+
+    document.querySelectorAll('.js-reject-toggle').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var td = btn.closest('td') || btn.closest('div');
+        document.querySelectorAll('.js-reject-inline').forEach(function(f) { f.remove(); });
+
+        var url = btn.getAttribute('data-reject-url');
+        var wrap = document.createElement('div');
+        wrap.className = 'js-reject-inline mt-1';
+        wrap.innerHTML =
+          '<div class="d-flex flex-column gap-1" style="min-width:220px;">' +
+            '<textarea class="form-control form-control-sm" rows="2" placeholder="Причина отклонения" style="resize:vertical;min-height:52px;" autofocus></textarea>' +
+            '<div class="d-flex gap-1">' +
+              '<button class="btn btn-danger btn-sm flex-grow-1" type="button">Отклонить</button>' +
+              '<button class="btn btn-outline-secondary btn-sm" type="button" title="Отмена">✕</button>' +
+            '</div>' +
+          '</div>';
+        td.appendChild(wrap);
+
+        var input = wrap.querySelector('textarea');
+        var sendBtn = wrap.querySelector('.btn-danger');
+        var cancelBtn = wrap.querySelector('.btn-outline-secondary');
+
+        input.focus();
+
+        function submit() {
+          var reason = input.value.trim();
+          if (!reason) { input.classList.add('is-invalid'); return; }
+          sendBtn.disabled = true;
+          sendBtn.textContent = '…';
+
+          var body = new FormData();
+          body.append('csrfmiddlewaretoken', csrfToken);
+          body.append('rejection_reason', reason);
+
+          fetch(url, { method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(res) {
+              if (res.ok && res.data.success) {
+                var row = btn.closest('tr');
+                row.style.transition = 'opacity 0.25s';
+                row.style.opacity = '0';
+                setTimeout(function() { row.remove(); }, 250);
+                if (toast && res.data.message) {
+                  toast.textContent = res.data.message;
+                  toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-danger py-2 px-3 mb-0 shadow-sm';
+                  toast.style.display = 'block';
+                  toast.style.zIndex = '1100';
+                  setTimeout(function() { toast.style.display = 'none'; toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm'; }, 3000);
+                }
+              } else {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Отклонить';
+                input.classList.add('is-invalid');
+              }
+            })
+            .catch(function() {
+              sendBtn.disabled = false;
+              sendBtn.textContent = 'Отклонить';
+            });
+        }
+
+        sendBtn.addEventListener('click', submit);
+        input.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } if (e.key === 'Escape') wrap.remove(); });
+        cancelBtn.addEventListener('click', function() { wrap.remove(); });
+      });
+    });
   })();
   </script>
 {% endblock %}

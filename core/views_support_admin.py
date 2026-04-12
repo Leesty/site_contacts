@@ -713,12 +713,18 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
                         lead_owner.save(update_fields=["balance"])
                         log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"lead_reject#{lead_id} -{reward}", request.user)
                 LeadReviewLog.objects.create(lead=lead_refresh, admin=request.user, action=LeadReviewLog.Action.REJECTED)
-            messages.success(request, f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else ""))
+            msg = f"Лид #{lead_id} отклонён." + (" Баланс уменьшен." if was_approved else "")
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"success": True, "message": msg})
+            messages.success(request, msg)
             from django.utils.http import url_has_allowed_host_and_scheme
             next_url = request.GET.get("next") or request.POST.get("next")
             if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
                 return redirect(next_url)
             return redirect("admin_user_leads_list", user_id=user_id)
+        else:
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"success": False, "errors": form.errors}, status=400)
     else:
         form = LeadRejectForm()
     return render(
