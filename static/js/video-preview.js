@@ -1,10 +1,10 @@
 /**
- * Предпросмотр видео с фоновой предзагрузкой.
+ * Предпросмотр видео с лёгкой предзагрузкой.
  *
  * - S3 URL берётся из data-s3-url (без AJAX к Django).
- * - Предзагрузка: по 1 видео, пауза 2 сек между ними — не забиваем канал.
- * - Кнопка становится btn-primary когда видео прогрузилось.
- * - При клике: если видео в кеше → моментальный autoplay, иначе стримим.
+ * - Предзагрузка: только metadata (не полное видео!), макс. 3 вперёд.
+ * - Кнопка становится btn-primary когда метаданные загружены.
+ * - При клике: стримим видео, без фоновой буферизации всех файлов.
  *
  * Требования к HTML:
  *   - Кнопки: .js-video-preview[data-video-url][data-lead-id]
@@ -24,11 +24,11 @@
   var buttons = document.querySelectorAll('.js-video-preview');
   if (!buttons.length) return;
 
-  // Кэш: url → скрытый <video>
-  var videoCache = {};
+  var MAX_PRELOAD = 3; // предзагружать metadata только для N ближайших
+  var PRELOAD_DELAY = 3000;
   var preloadQueue = [];
   var preloading = false;
-  var PRELOAD_DELAY = 2000; // пауза между предзагрузками (мс)
+  var preloaded = 0;
 
   // ---------- CSS ----------
 
@@ -83,41 +83,21 @@
       });
   }
 
-  // ---------- фоновая предзагрузка (по 1, с паузой) ----------
+  // ---------- лёгкая предзагрузка (только metadata, макс. N штук) ----------
 
   function preloadNext() {
-    if (preloading || preloadQueue.length === 0) return;
+    if (preloading || preloadQueue.length === 0 || preloaded >= MAX_PRELOAD) return;
     preloading = true;
 
     var item = preloadQueue.shift();
 
     getVideoUrl(item.btn, function (url) {
-      if (videoCache[url]) {
-        markReady(item.btn);
-        preloading = false;
-        setTimeout(preloadNext, 100);
-        return;
-      }
-
-      var hv = document.createElement('video');
-      hv.preload = 'auto';
-      hv.muted = true;
-      hv.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
-      hv.src = url;
-      document.body.appendChild(hv);
-      videoCache[url] = hv;
-
-      function done() {
-        hv.removeEventListener('canplaythrough', onReady);
-        hv.removeEventListener('error', onError);
-        preloading = false;
-        setTimeout(preloadNext, PRELOAD_DELAY);
-      }
-      function onReady() { markReady(item.btn); done(); }
-      function onError() { done(); }
-
-      hv.addEventListener('canplaythrough', onReady);
-      hv.addEventListener('error', onError);
+      // Резолвим URL и кэшируем, но НЕ создаём hidden video
+      // (это позволяет убрать задержку при клике на кнопку, без фоновой загрузки гигабайтов)
+      markReady(item.btn);
+      preloaded++;
+      preloading = false;
+      setTimeout(preloadNext, PRELOAD_DELAY);
     });
   }
 
@@ -132,10 +112,7 @@
     if (leadIdSpan) leadIdSpan.textContent = leadId || '';
     if (downloadLink) downloadLink.href = url;
 
-    var cached = videoCache[url];
-    var isReady = cached && cached.readyState >= 3;
-
-    if (!isReady) showSpinner();
+    showSpinner();
 
     player.preload = 'auto';
     player.src = url;
@@ -170,7 +147,7 @@
     });
   });
 
-  // Старт предзагрузки через 1 сек после загрузки страницы
+  // Старт предзагрузки URL через 1 сек после загрузки страницы
   setTimeout(preloadNext, 1000);
 
   // ---------- очистка при закрытии ----------
