@@ -1,5 +1,5 @@
 import logging
-from concurrent.futures import ThreadPoolExecutor  # kept for potential future use
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone as dt_utc
 from zoneinfo import ZoneInfo
 
@@ -948,10 +948,18 @@ def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
                         contact_qs = contact_qs.filter(base_type=lead.base_type)
                     lead.contact = contact_qs.first()
                     lead.save()
-                    # Сжатие изображений — синхронно (быстро). Видео — НЕ сжимаем
-                    # (фоновое сжатие создаёт постоянный поток запросов к S3 и тормозит загрузку видео у админа).
                     ext = _get_attachment_extension(lead.attachment)
-                    if ext not in LEAD_VIDEO_EXTENSIONS:
+                    if ext in LEAD_VIDEO_EXTENSIONS:
+                        lead_id = lead.id
+                        def _compress_video_bg(lid=lead_id):
+                            try:
+                                l = Lead.objects.filter(pk=lid).select_related().first()
+                                if l and l.attachment:
+                                    compress_lead_attachment(l)
+                            except Exception as e:
+                                logger.warning("Фоновая компрессия видео (lead %s): %s", lid, e)
+                        _bg_executor.submit(_compress_video_bg)
+                    else:
                         compress_lead_attachment(lead)
                     messages.success(request, "Лид сохранён. Можете добавить ещё один.")
                     form = LeadReportForm()
@@ -1097,7 +1105,17 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                         lead.rework_comment = ""
                         lead.save(update_fields=update_fields)
                         ext = _get_attachment_extension(lead.attachment) if lead.attachment else None
-                        if ext not in LEAD_VIDEO_EXTENSIONS and lead.attachment:
+                        if ext in LEAD_VIDEO_EXTENSIONS:
+                            lead_id = lead.id
+                            def _compress_rework_bg(lid=lead_id):
+                                try:
+                                    l = Lead.objects.filter(pk=lid).select_related().first()
+                                    if l and l.attachment:
+                                        compress_lead_attachment(l)
+                                except Exception as e:
+                                    logger.warning("Фоновая компрессия видео (rework lead %s): %s", lid, e)
+                            _bg_executor.submit(_compress_rework_bg)
+                        elif lead.attachment:
                             compress_lead_attachment(lead)
                         messages.success(request, "Лид отправлен на повторную проверку.")
                         return redirect("leads_my_list")
@@ -1401,7 +1419,17 @@ def dozhim_leads_report(request: HttpRequest) -> HttpResponse:
                     # needs_team_contact берётся из формы
                     lead.save()
                     ext = _get_attachment_extension(lead.attachment)
-                    if ext not in LEAD_VIDEO_EXTENSIONS:
+                    if ext in LEAD_VIDEO_EXTENSIONS:
+                        lead_id = lead.id
+                        def _compress_bg(lid=lead_id):
+                            try:
+                                l = Lead.objects.filter(pk=lid).first()
+                                if l and l.attachment:
+                                    compress_lead_attachment(l)
+                            except Exception as e:
+                                logger.warning("Компрессия видео (dozhim lead %s): %s", lid, e)
+                        _bg_executor.submit(_compress_bg)
+                    else:
                         compress_lead_attachment(lead)
                     messages.success(request, "Отчёт (дожим) отправлен на проверку.")
                     form = DozhimLeadReportForm()
@@ -1498,7 +1526,17 @@ def dozhim_lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                 lead.save()
                 if lead.attachment:
                     ext = _get_attachment_extension(lead.attachment)
-                    if ext not in LEAD_VIDEO_EXTENSIONS:
+                    if ext in LEAD_VIDEO_EXTENSIONS:
+                        lid = lead.id
+                        def _compress_redo_bg(lid=lid):
+                            try:
+                                l = Lead.objects.filter(pk=lid).first()
+                                if l and l.attachment:
+                                    compress_lead_attachment(l)
+                            except Exception as e:
+                                logger.warning("Компрессия видео (dozhim redo %s): %s", lid, e)
+                        _bg_executor.submit(_compress_redo_bg)
+                    else:
                         compress_lead_attachment(lead)
                 messages.success(request, "Отчёт отправлен на повторную проверку.")
                 return redirect("dozhim_leads_my_list")
