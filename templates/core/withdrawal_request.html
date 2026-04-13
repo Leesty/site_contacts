@@ -15,28 +15,22 @@
 
   <div class="card shadow-sm" style="max-width: 32rem;">
     <div class="card-body">
-      <h2 class="h6 mb-3">Укажите способ вывода</h2>
+      <h2 class="h6 mb-3">Заявка на вывод</h2>
+      {% if user.smz_fio %}
+        <div class="alert alert-info py-2 small mb-3">
+          <strong>ФИО:</strong> {{ user.smz_fio }}
+          {% if user.smz_not_self %}<span class="badge bg-warning text-dark ms-1">Приём не на себя</span>{% endif %}
+          <a href="{% url 'smz_registration' %}?edit=1" class="ms-2 small">Изменить</a>
+        </div>
+      {% endif %}
       <form method="post" action="">
         {% csrf_token %}
         <input type="hidden" name="dept" value="{{ dept }}">
+        <input type="hidden" name="payout_details" value="{{ payout_details }}">
         <div class="mb-3">
           <label for="id_amount" class="form-label">Сумма вывода (руб.)</label>
           <input type="number" id="id_amount" name="amount" class="form-control" min="{{ withdrawal_min_balance }}" max="{{ balance }}" value="{{ balance }}" required>
           <div class="form-text">От {{ withdrawal_min_balance }} до {{ balance }} руб.</div>
-        </div>
-        <div class="mb-3">
-          <label for="id_payout_details" class="form-label">Реквизиты для вывода</label>
-          <textarea
-            id="id_payout_details"
-            name="payout_details"
-            class="form-control"
-            rows="3"
-            placeholder="Например: карта 2200 **** **** 1234, Банк Тинькофф; или номер телефона +7..., Сбербанк"
-            required
-          >{{ payout_details }}</textarea>
-          <div class="form-text">
-            Укажите номер карты или телефона и банк. Эти данные увидит только администратор при обработке заявки.
-          </div>
         </div>
         <button type="submit" class="btn btn-success w-100">Отправить заявку на вывод</button>
       </form>
