@@ -35,6 +35,11 @@ def _require_approved_user(request: HttpRequest) -> bool:
     user = request.user
     if not user.is_authenticated:
         return False
+    # Админы и саппорт тоже могут использовать SearchLink
+    if getattr(user, "is_support", False) or user.is_staff or user.is_superuser:
+        return True
+    if getattr(user, "role", None) in ("admin", "support", "balance_admin"):
+        return True
     return getattr(user, "role", None) == "user" and getattr(user, "status", None) == "approved"
 
 
