@@ -133,6 +133,28 @@
         </div>
       </div>
     </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">📋 СМЗ заявки</span>
+            {% if smz_pending_count %}<span class="badge bg-danger">{{ smz_pending_count }}</span>{% endif %}
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_smz_requests' %}">Заявки</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">🧾 Чеки</span>
+            {% if unchecked_receipts_count %}<span class="badge bg-danger">{{ unchecked_receipts_count }}</span>{% endif %}
+          </div>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_receipts' %}">Проверить</a>
+        </div>
+      </div>
+    </div>
   </div>
 
   {# ═══ Секция 4: Инструменты (свёрнуты) ═══ #}

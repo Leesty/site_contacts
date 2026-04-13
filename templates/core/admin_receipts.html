@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% load support_extras %}
+
+{% block title %}Чеки — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Чеки СМЗ</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert py-2 mb-3 {% if message.tags == 'error' %}alert-danger{% else %}alert-success{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'unchecked' %}active{% endif %}" href="?tab=unchecked">
+        Непроверенные {% if unchecked_count %}<span class="badge bg-danger">{{ unchecked_count }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all">Все</a>
+    </li>
+  </ul>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Пользователь</th>
+              <th>Сумма</th>
+              <th>Реквизиты</th>
+              <th>Загружен</th>
+              <th>Чек</th>
+              <th>Статус</th>
+              {% if tab == 'unchecked' %}<th>Действие</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for wr in page_obj %}
+              <tr>
+                <td class="text-muted">{{ wr.pk }}</td>
+                <td>@{{ wr.user.username }}</td>
+                <td>{{ wr.amount }} руб.</td>
+                <td class="small text-break" style="max-width: 200px;">{{ wr.payout_details|truncatechars:40 }}</td>
+                <td class="text-muted small">{{ wr.receipt_uploaded_at|date:"d.m.Y H:i" }}</td>
+                <td>
+                  {% if wr.receipt %}
+                    <a href="{{ wr.receipt.url }}" target="_blank" class="btn btn-outline-primary btn-sm py-0">Открыть</a>
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  {% if wr.receipt_checked %}
+                    <span class="badge bg-success">Проверен</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Не проверен</span>
+                  {% endif %}
+                </td>
+                {% if tab == 'unchecked' %}
+                <td>
+                  <form method="post" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="wr_id" value="{{ wr.pk }}">
+                    <button type="submit" class="btn btn-success btn-sm py-0">Проверен</button>
+                  </form>
+                </td>
+                {% endif %}
+              </tr>
+            {% empty %}
+              <tr><td colspan="8" class="text-muted text-center py-4">Нет чеков.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

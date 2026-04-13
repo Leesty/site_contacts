@@ -71,7 +71,9 @@ urlpatterns = [
     path("contacts/view/", views.contacts_view, name="contacts_view"),
     path("contacts/download/", views.download_my_contacts_txt, name="download_my_contacts_txt"),
     path("contacts/request/", views.request_contact_create, name="request_contact_create"),
+    path("balance/smz/", views.smz_registration, name="smz_registration"),
     path("balance/withdraw/", views.request_withdrawal_create, name="request_withdrawal_create"),
+    path("balance/withdraw/<int:wr_id>/receipt/", views.receipt_upload, name="receipt_upload"),
     path("leads/report/", views.leads_report_placeholder, name="leads_report"),
     path("leads/my/", views.leads_my_list, name="leads_my_list"),
     path("leads/<int:lead_id>/redo/", views.lead_redo, name="lead_redo"),
@@ -99,6 +101,8 @@ urlpatterns = [
         views_support_admin.admin_withdrawal_requests,
         name="admin_withdrawal_requests",
     ),
+    path("staff/smz-requests/", views_support_admin.admin_smz_requests, name="admin_smz_requests"),
+    path("staff/receipts/", views_support_admin.admin_receipts, name="admin_receipts"),
     path(
         "staff/users/",
         views_support_admin.admin_all_users,

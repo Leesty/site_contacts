@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}СМЗ заявки — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">СМЗ заявки</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert py-2 mb-3 {% if message.tags == 'error' %}alert-danger{% else %}alert-success{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">
+        Новые {% if pending_count %}<span class="badge bg-danger">{{ pending_count }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые</a>
+    </li>
+  </ul>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Пользователь</th>
+              <th>ФИО</th>
+              <th>Не на себя</th>
+              <th>Подано</th>
+              {% if tab == 'pending' %}<th>Действия</th>{% endif %}
+              {% if tab == 'rejected' %}<th>Причина</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in page_obj %}
+              <tr>
+                <td>@{{ u.username }}</td>
+                <td>{{ u.smz_fio }}</td>
+                <td>{% if u.smz_not_self %}<span class="badge bg-warning text-dark">Не на себя</span>{% else %}—{% endif %}</td>
+                <td class="text-muted small">{{ u.smz_submitted_at|date:"d.m.Y H:i" }}</td>
+                {% if tab == 'pending' %}
+                <td>
+                  <div class="d-flex gap-1">
+                    <form method="post" class="d-inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="user_id" value="{{ u.pk }}">
+                      <input type="hidden" name="action" value="approve">
+                      <button type="submit" class="btn btn-success btn-sm py-0">Одобрить</button>
+                    </form>
+                    <form method="post" class="d-inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="user_id" value="{{ u.pk }}">
+                      <input type="hidden" name="action" value="reject">
+                      <input type="text" name="reason" placeholder="Причина" class="form-control form-control-sm d-inline-block" style="width: 150px;">
+                      <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
+                    </form>
+                  </div>
+                </td>
+                {% endif %}
+                {% if tab == 'rejected' %}
+                <td class="small text-break">{{ u.smz_reject_reason|default:"—" }}</td>
+                {% endif %}
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="text-muted text-center py-4">Нет заявок.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

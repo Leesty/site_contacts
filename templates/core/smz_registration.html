@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Самозанятость (СМЗ) — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Верификация самозанятости</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert py-2 mb-3 {% if message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-success{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  {% if user.smz_status == 'pending' %}
+    <div class="alert alert-info mb-3">
+      <strong>Заявка на рассмотрении.</strong> Ваше ФИО отправлено администратору. Ожидайте подтверждения — после этого вы сможете выводить средства.
+    </div>
+  {% endif %}
+
+  {% if user.smz_status == 'rejected' %}
+    <div class="alert alert-danger mb-3">
+      <strong>Заявка отклонена.</strong>
+      {% if user.smz_reject_reason %}Причина: {{ user.smz_reject_reason }}{% endif %}
+      Вы можете исправить данные и отправить заново.
+    </div>
+  {% endif %}
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Информация о самозанятости</strong>
+    </div>
+    <div class="card-body">
+      <p class="small mb-2">
+        Для получения выплат необходимо оформить самозанятость и прикрепить свои данные СМЗ.
+      </p>
+      <ul class="small mb-2">
+        <li><a href="https://www.nalog.gov.ru/rn53/news/activities_fts/16491143/" target="_blank" rel="noopener">Как открыть самозанятого</a></li>
+        <li><a href="https://www.nalog.gov.ru/rn46/news/activities_fts/16536156/" target="_blank" rel="noopener">Как сформировать чек для самозанятости</a></li>
+        <li><strong><a href="https://link.tbank.ru/4fGMlWP2o3A" target="_blank" rel="noopener">Прикрепить самозанятого для выплаты (обязательно)</a></strong></li>
+      </ul>
+      <div class="alert alert-warning py-2 small mb-0">
+        <strong>Важно:</strong> Если вы получили выплату, но не прикрепили чек — следующую выплату вам не сделают.
+        После загрузки данных они автоматически подтягиваются и не нужно будет заполнять повторно.
+      </div>
+    </div>
+  </div>
+
+  {% if user.smz_status != 'pending' %}
+  <div class="card shadow-sm" style="max-width: 32rem;">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>{% if user.smz_status == 'approved' %}Редактировать данные{% else %}Заполнить данные для выплат{% endif %}</strong>
+    </div>
+    <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label for="smz_fio" class="form-label">ФИО (полностью)</label>
+          <input type="text" id="smz_fio" name="smz_fio" class="form-control" value="{{ user.smz_fio }}" required maxlength="255" placeholder="Иванов Иван Иванович">
+        </div>
+        <div class="mb-3 form-check">
+          <input type="checkbox" id="smz_not_self" name="smz_not_self" class="form-check-input" {% if user.smz_not_self %}checked{% endif %}>
+          <label for="smz_not_self" class="form-check-label">Приём не на себя (указываю чужие реквизиты)</label>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">
+          {% if user.smz_status == 'approved' %}Сохранить изменения{% else %}Отправить на проверку{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+{% endblock %}

@@ -2709,3 +2709,84 @@ def balance_admin_payment_revert(request: HttpRequest, user_id: int) -> HttpResp
     messages.success(request, f"@{target.username}: баланс возвращён → {prev} руб.")
     return redirect("balance_admin_payment_detail", user_id=user_id)
 
+
+# ─── СМЗ заявки ──────────────────────────────────────────────────────────────
+
+@login_required
+def admin_smz_requests(request: HttpRequest) -> HttpResponse:
+    """Список заявок на СМЗ-верификацию для одобрения главным админом."""
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
+
+    if request.method == "POST":
+        user_id = request.POST.get("user_id")
+        action = request.POST.get("action")
+        target = User.objects.filter(pk=user_id).first()
+        if target:
+            if action == "approve":
+                target.smz_status = "approved"
+                target.smz_reject_reason = ""
+                target.save(update_fields=["smz_status", "smz_reject_reason"])
+                messages.success(request, f"СМЗ @{target.username} одобрена.")
+            elif action == "reject":
+                reason = (request.POST.get("reason") or "").strip()
+                target.smz_status = "rejected"
+                target.smz_reject_reason = reason
+                target.save(update_fields=["smz_status", "smz_reject_reason"])
+                messages.success(request, f"СМЗ @{target.username} отклонена.")
+        return redirect("admin_smz_requests")
+
+    tab = request.GET.get("tab", "pending")
+    if tab == "pending":
+        qs = User.objects.filter(smz_status="pending").order_by("-smz_submitted_at")
+    elif tab == "approved":
+        qs = User.objects.filter(smz_status="approved").exclude(smz_fio="").order_by("-smz_submitted_at")
+    elif tab == "rejected":
+        qs = User.objects.filter(smz_status="rejected").order_by("-smz_submitted_at")
+    else:
+        qs = User.objects.exclude(smz_status="none").order_by("-smz_submitted_at")
+
+    paginator = Paginator(qs, 50)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    pending_count = User.objects.filter(smz_status="pending").count()
+
+    return render(request, "core/admin_smz_requests.html", {
+        "page_obj": page_obj,
+        "tab": tab,
+        "pending_count": pending_count,
+    })
+
+
+# ─── Чеки ────────────────────────────────────────────────────────────────────
+
+@login_required
+def admin_receipts(request: HttpRequest) -> HttpResponse:
+    """Список загруженных чеков для проверки."""
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
+
+    if request.method == "POST":
+        wr_id = request.POST.get("wr_id")
+        wr = WithdrawalRequest.objects.filter(pk=wr_id).first()
+        if wr:
+            wr.receipt_checked = True
+            wr.save(update_fields=["receipt_checked", "updated_at"])
+            messages.success(request, f"Чек #{wr.pk} отмечен как проверенный.")
+        return redirect("admin_receipts")
+
+    tab = request.GET.get("tab", "unchecked")
+    qs = WithdrawalRequest.objects.exclude(Q(receipt="") | Q(receipt__isnull=True)).select_related("user")
+    if tab == "unchecked":
+        qs = qs.filter(receipt_checked=False)
+    qs = qs.order_by("-receipt_uploaded_at")
+
+    paginator = Paginator(qs, 50)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    unchecked_count = WithdrawalRequest.objects.exclude(Q(receipt="") | Q(receipt__isnull=True)).filter(receipt_checked=False).count()
+
+    return render(request, "core/admin_receipts.html", {
+        "page_obj": page_obj,
+        "tab": tab,
+        "unchecked_count": unchecked_count,
+    })
+

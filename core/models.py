@@ -107,6 +107,18 @@ class User(AbstractUser):
         help_text="Реферальная ссылка, по которой зарегистрировался пользователь (для affiliate-ставки).",
     )
 
+    # СМЗ (самозанятость) — верификация для выплат
+    smz_fio = models.CharField(max_length=255, blank=True, help_text="ФИО для СМЗ.")
+    smz_not_self = models.BooleanField(default=False, help_text="Приём не на себя (чужие реквизиты).")
+    smz_status = models.CharField(
+        max_length=20,
+        choices=[("none", "Не подано"), ("pending", "На проверке"), ("approved", "Одобрено"), ("rejected", "Отклонено")],
+        default="none",
+        help_text="Статус верификации СМЗ.",
+    )
+    smz_submitted_at = models.DateTimeField(null=True, blank=True, help_text="Дата подачи заявки на СМЗ.")
+    smz_reject_reason = models.TextField(blank=True, help_text="Причина отклонения СМЗ.")
+
     def is_approved(self) -> bool:
         return self.status == self.Status.APPROVED
 
@@ -517,6 +529,14 @@ class WithdrawalRequest(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="processed_withdrawals",
     )
+    receipt = models.FileField(
+        upload_to="receipts/",
+        null=True,
+        blank=True,
+        help_text="Чек СМЗ (скриншот).",
+    )
+    receipt_uploaded_at = models.DateTimeField(null=True, blank=True, help_text="Дата загрузки чека.")
+    receipt_checked = models.BooleanField(default=False, help_text="Чек проверен админом.")
 
     class Meta:
         verbose_name = "Заявка на вывод"

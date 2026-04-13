@@ -242,6 +242,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         search_pending_count = SearchReport.objects.filter(
             search_link__bot_started=True, status=SearchReport.Status.PENDING
         ).count()
+        smz_pending_count = User.objects.filter(smz_status="pending").count()
+        from django.db.models import Q as _Q
+        unchecked_receipts_count = WithdrawalRequest.objects.exclude(
+            _Q(receipt="") | _Q(receipt__isnull=True)
+        ).filter(receipt_checked=False).count()
 
         ctx = {
             "user": user,
@@ -257,6 +262,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "admin_can_withdraw": admin_can_withdraw,
             "admin_withdrawal_pending": admin_withdrawal_pending,
             "search_pending_count": search_pending_count,
+            "smz_pending_count": smz_pending_count,
+            "unchecked_receipts_count": unchecked_receipts_count,
         }
 
         if _is_main_admin(user):
@@ -306,6 +313,12 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             ).exists()
     # Лиды, отправленные админом на доработку — показываем уведомление на главной
     rework_leads_count = Lead.objects.filter(user=user, status=Lead.Status.REWORK).count()
+    from django.db.models import Q as _Q
+    receiptless_withdrawals = list(
+        WithdrawalRequest.objects.filter(user=user, status="approved")
+        .filter(_Q(receipt="") | _Q(receipt__isnull=True))
+        .order_by("-created_at")[:5]
+    )
     return render(
         request,
         "core/dashboard.html",
@@ -318,6 +331,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "can_withdraw_dozhim": can_withdraw_dozhim,
             "support_has_unread": support_has_unread,
             "rework_leads_count": rework_leads_count,
+            "receiptless_withdrawals": receiptless_withdrawals,
         },
     )
 
@@ -633,6 +647,59 @@ def download_my_contacts_txt(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def smz_registration(request: HttpRequest) -> HttpResponse:
+    """Страница верификации СМЗ: заполнение ФИО для выплат."""
+    if not _ensure_user_approved(request):
+        return redirect("dashboard")
+    user = request.user
+
+    if request.method == "POST":
+        fio = (request.POST.get("smz_fio") or "").strip()
+        not_self = request.POST.get("smz_not_self") == "on"
+        if not fio:
+            messages.error(request, "Укажите ФИО.")
+            return render(request, "core/smz_registration.html", {"user": user})
+        user.smz_fio = fio
+        user.smz_not_self = not_self
+        # Если уже одобрен — просто обновляем ФИО без сброса статуса
+        if user.smz_status != "approved":
+            user.smz_status = "pending"
+            user.smz_submitted_at = timezone.now()
+            user.smz_reject_reason = ""
+        user.save(update_fields=["smz_fio", "smz_not_self", "smz_status", "smz_submitted_at", "smz_reject_reason"])
+        if user.smz_status == "approved":
+            messages.success(request, "Данные обновлены.")
+            return redirect("request_withdrawal_create")
+        messages.success(request, "Заявка на СМЗ отправлена. Ожидайте подтверждения администратора.")
+        return redirect("smz_registration")
+
+    # Если уже одобрен и не редактирует — отправляем на вывод
+    if user.smz_status == "approved" and not request.GET.get("edit"):
+        return redirect("request_withdrawal_create")
+
+    return render(request, "core/smz_registration.html", {"user": user})
+
+
+@login_required
+def receipt_upload(request: HttpRequest, wr_id: int) -> HttpResponse:
+    """Загрузка чека для выплаты."""
+    if request.method != "POST":
+        return redirect("dashboard")
+    user = request.user
+    from django.db.models import Q
+    wr = get_object_or_404(WithdrawalRequest, pk=wr_id, user=user, status="approved")
+    attachment = request.FILES.get("receipt")
+    if not attachment:
+        messages.error(request, "Прикрепите файл чека.")
+        return redirect("dashboard")
+    wr.receipt = attachment
+    wr.receipt_uploaded_at = timezone.now()
+    wr.save(update_fields=["receipt", "receipt_uploaded_at", "updated_at"])
+    messages.success(request, "Чек загружен.")
+    return redirect("dashboard")
+
+
+@login_required
 def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
     """Создать заявку на вывод средств (доступно при балансе >= WITHDRAWAL_MIN_BALANCE).
 
@@ -642,6 +709,20 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
     if not _ensure_user_approved(request):
         return redirect("dashboard")
     user = request.user
+
+    # СМЗ-гейт: только для обычных пользователей
+    if getattr(user, "role", None) == "user":
+        if getattr(user, "smz_status", "none") != "approved":
+            return redirect("smz_registration")
+        # Блокировка: есть выплата без чека
+        from django.db.models import Q
+        has_receiptless = WithdrawalRequest.objects.filter(
+            user=user, status="approved",
+        ).filter(Q(receipt="") | Q(receipt__isnull=True)).exists()
+        if has_receiptless:
+            messages.warning(request, "Загрузите чек по предыдущей выплате, прежде чем создать новую заявку.")
+            return redirect("dashboard")
+
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     dept = request.GET.get("dept") or request.POST.get("dept") or "search"
 
@@ -834,7 +915,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             "user": user,
             "balance": balance,
             "withdrawal_min_balance": withdrawal_min,
-            "payout_details": "",
+            "payout_details": getattr(user, "smz_fio", "") or "",
             "dept": dept,
         },
     )
