@@ -116,7 +116,9 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
     if not link.visitor_ip:
         link.visitor_ip = visitor_ip
         update_fields.append("visitor_ip")
-    if link.creator_ip and link.creator_ip == visitor_ip and not link.self_click:
+    # Тестовый аккаунт (user_id=285, username=5) — пропускаем IP-проверку
+    skip_ip_check = link.user_id == 285
+    if not skip_ip_check and link.creator_ip and link.creator_ip == visitor_ip and not link.self_click:
         link.self_click = True
         update_fields.append("self_click")
         logger.warning(
