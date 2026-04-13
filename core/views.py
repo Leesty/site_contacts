@@ -146,7 +146,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     if _is_partner(user):
         return redirect("partner_dashboard")
     if _is_balance_admin(user):
-        from django.db.models import Sum
+        from django.db.models import Sum, Q as _Q
         from .models import LeadReviewLog
 
         # Всего одобрений лидов (все админы, все времена), кроме лидов партнёрских пользователей
@@ -184,6 +184,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 "withdrawals": withdrawals,
                 "withdrawal_min_balance": getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500),
                 "current_rate": rate,
+                "receiptless_withdrawals": list(
+                    WithdrawalRequest.objects.filter(user=user, status="approved")
+                    .filter(_Q(receipt="") | _Q(receipt__isnull=True))
+                    .order_by("-created_at")[:5]
+                ),
             },
         )
     if _is_standalone_admin(user):
@@ -264,6 +269,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "search_pending_count": search_pending_count,
             "smz_pending_count": smz_pending_count,
             "unchecked_receipts_count": unchecked_receipts_count,
+            "receiptless_withdrawals": list(
+                WithdrawalRequest.objects.filter(user=user, status="approved")
+                .filter(_Q(receipt="") | _Q(receipt__isnull=True))
+                .order_by("-created_at")[:5]
+            ),
         }
 
         if _is_main_admin(user):
