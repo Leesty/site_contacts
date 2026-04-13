@@ -61,6 +61,13 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         user__partner_owner=user, lead_type__slug="dozhim", status=Lead.Status.PENDING
     ).count()
 
+    from django.db.models import Q
+    receiptless_withdrawals = list(
+        WithdrawalRequest.objects.filter(user=user, status="approved")
+        .filter(Q(receipt="") | Q(receipt__isnull=True))
+        .order_by("-created_at")[:5]
+    )
+
     return render(request, "partner/dashboard.html", {
         "user": user,
         "balance": balance,
@@ -75,6 +82,7 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         "withdrawal_min_balance": withdrawal_min,
         "dozhim_pending_count": dozhim_pending_count,
         "partner_rate": user.partner_rate or PARTNER_EARN_PER_LEAD_DEFAULT,
+        "receiptless_withdrawals": receiptless_withdrawals,
     })
 
 
