@@ -22,16 +22,44 @@
     </div>
   </div>
 
+  {# Вкладки #}
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all">Все ссылки</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">
+        На проверке {% if pending_count %}<span class="badge bg-secondary">{{ pending_count }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">
+        На доработке {% if rework_count %}<span class="badge bg-warning text-dark">{{ rework_count }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">
+        Отклонённые {% if rejected_count %}<span class="badge bg-danger">{{ rejected_count }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a>
+    </li>
+  </ul>
+
   {# Поиск #}
+  {% if tab == 'all' %}
   <div class="card shadow-sm mb-3">
     <div class="card-body py-2">
       <form method="get" class="d-flex gap-2">
+        <input type="hidden" name="tab" value="all">
         <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск по имени или коду..." aria-label="Поиск">
         <button type="submit" class="btn btn-primary btn-sm px-4">Найти</button>
-        {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'search_links_my' %}">Сбросить</a>{% endif %}
+        {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'search_links_my' %}?tab=all">Сбросить</a>{% endif %}
       </form>
     </div>
   </div>
+  {% endif %}
 
   {# Таблица ссылок #}
   {% if page_obj %}
@@ -41,11 +69,11 @@
           <nav>
             <ul class="pagination pagination-sm mb-0">
               {% if page_obj.has_previous %}
-                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Предыдущая страница">←</a></li>
+                <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Предыдущая страница">←</a></li>
               {% endif %}
               <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
               {% if page_obj.has_next %}
-                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Следующая страница">→</a></li>
+                <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Следующая страница">→</a></li>
               {% endif %}
             </ul>
           </nav>
@@ -88,8 +116,14 @@
                           <span class="badge bg-success">Одобрен +100₽</span>
                         {% elif report.status == 'rejected' %}
                           <span class="badge bg-danger">Отклонён</span>
+                          {% if report.rejection_reason %}
+                            <div class="small text-danger mt-1">{{ report.rejection_reason|truncatechars:80 }}</div>
+                          {% endif %}
                         {% elif report.status == 'rework' %}
                           <span class="badge bg-warning text-dark">На доработке</span>
+                          {% if report.rework_comment %}
+                            <div class="small text-warning mt-1">{{ report.rework_comment|truncatechars:80 }}</div>
+                          {% endif %}
                         {% endif %}
                       {% else %}
                         <span class="text-muted small">—</span>

@@ -51,16 +51,33 @@ def _require_support(request: HttpRequest) -> bool:
 
 @login_required
 def search_links_my(request: HttpRequest) -> HttpResponse:
-    """Список SearchLink-ов менеджера с формой создания."""
+    """Список SearchLink-ов менеджера с формой создания и вкладками по статусу."""
     if not _require_approved_user(request):
         return HttpResponseForbidden("Доступ запрещён.")
 
+    tab = request.GET.get("tab", "all")
     q = (request.GET.get("q") or "").strip()
     links_qs = SearchLink.objects.filter(user=request.user)
+
+    if tab == "rework":
+        links_qs = links_qs.filter(report__status=SearchReport.Status.REWORK)
+    elif tab == "rejected":
+        links_qs = links_qs.filter(report__status=SearchReport.Status.REJECTED)
+    elif tab == "pending":
+        links_qs = links_qs.filter(report__status=SearchReport.Status.PENDING)
+    elif tab == "approved":
+        links_qs = links_qs.filter(report__status=SearchReport.Status.APPROVED)
+
     if q:
         from django.db.models import Q
         links_qs = links_qs.filter(Q(lead_name__icontains=q) | Q(code__icontains=q))
     links_qs = links_qs.order_by("-created_at")
+
+    # Счётчики для бейджей
+    user_links = SearchLink.objects.filter(user=request.user)
+    rework_count = user_links.filter(report__status=SearchReport.Status.REWORK).count()
+    rejected_count = user_links.filter(report__status=SearchReport.Status.REJECTED).count()
+    pending_count = user_links.filter(report__status=SearchReport.Status.PENDING).count()
 
     paginator = Paginator(links_qs, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
@@ -75,6 +92,10 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
     return render(request, "search/my_links.html", {
         "page_obj": page_obj,
         "q": q,
+        "tab": tab,
+        "rework_count": rework_count,
+        "rejected_count": rejected_count,
+        "pending_count": pending_count,
     })
 
 
