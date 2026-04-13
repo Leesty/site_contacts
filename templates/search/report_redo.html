@@ -21,6 +21,10 @@
           <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
             <div class="mb-3">
+              <label class="form-label" for="raw_contact">Контакт / ссылка на клиента</label>
+              <input type="text" class="form-control" id="raw_contact" name="raw_contact" value="{{ report.raw_contact }}" placeholder="Ссылка, телефон, @username" required maxlength="500">
+            </div>
+            <div class="mb-3">
               <label class="form-label" for="attachment">Новый скриншот / видео</label>
               <input type="file" class="form-control" id="attachment" name="attachment" accept="image/*,video/*">
               <div class="form-text text-muted">Загрузите новый файл или оставьте пустым чтобы сохранить старый.</div>

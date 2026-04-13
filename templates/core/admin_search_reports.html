@@ -34,6 +34,7 @@
                 <th>#</th>
                 <th>Менеджер</th>
                 <th>Лид</th>
+                <th>Контакт</th>
                 <th>Дата</th>
                 <th>Вложение</th>
                 <th>Статус</th>
@@ -49,6 +50,7 @@
                     {{ report.search_link.lead_name|truncatechars:25 }}
                     {% if report.search_link.self_click %}<span class="badge bg-danger ms-1" title="IP создателя совпал с IP посетителя">НАКРУТКА</span>{% endif %}
                   </td>
+                  <td class="text-break small">{{ report.raw_contact|default:"—" }}</td>
                   <td class="text-muted small">{{ report.lead_date|date:"d.m.Y" }}</td>
                   <td>
                     {% if report.attachment %}

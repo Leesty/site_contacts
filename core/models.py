@@ -1094,6 +1094,11 @@ class SearchReport(TimeStampedModel):
         blank=True,
         help_text="Скриншот/видео подтверждения.",
     )
+    raw_contact = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Контакт / ссылка на клиента.",
+    )
     comment = models.TextField(
         blank=True,
         help_text="Комментарий менеджера.",

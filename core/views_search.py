@@ -155,9 +155,13 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
 
     if request.method == "POST":
         lead_date = request.POST.get("lead_date")
+        raw_contact = (request.POST.get("raw_contact") or "").strip()
         attachment = request.FILES.get("attachment")
         comment = (request.POST.get("comment") or "").strip()
 
+        if not raw_contact:
+            messages.error(request, "Укажите контакт или ссылку на клиента.")
+            return render(request, "search/report_form.html", {"link": link})
         if not attachment:
             messages.error(request, "Приложите скриншот или видео.")
             return render(request, "search/report_form.html", {"link": link})
@@ -166,6 +170,7 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
             user=request.user,
             search_link=link,
             lead_date=lead_date or timezone.now().date(),
+            raw_contact=raw_contact,
             attachment=attachment,
             comment=comment,
         )
@@ -192,16 +197,19 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
         return redirect("search_links_my")
 
     if request.method == "POST":
+        raw_contact = (request.POST.get("raw_contact") or "").strip()
         attachment = request.FILES.get("attachment")
         comment = (request.POST.get("comment") or "").strip()
 
+        if raw_contact:
+            report.raw_contact = raw_contact
         if attachment:
             report.attachment = attachment
         if comment:
             report.comment = comment
         report.status = SearchReport.Status.PENDING
         report.rework_comment = ""
-        report.save(update_fields=["attachment", "comment", "status", "rework_comment", "updated_at"])
+        report.save(update_fields=["raw_contact", "attachment", "comment", "status", "rework_comment", "updated_at"])
         messages.success(request, "Отчёт доработан и отправлен повторно.")
         return redirect("search_links_my")
 

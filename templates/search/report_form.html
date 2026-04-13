@@ -8,6 +8,12 @@
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'search_links_my' %}">← Мои ссылки</a>
   </div>
 
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert py-2 mb-3 {% if message.tags == 'error' %}alert-danger{% else %}alert-success{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
   <div class="row justify-content-center">
     <div class="col-md-6">
       <div class="card shadow-sm">
@@ -19,9 +25,14 @@
               <input type="date" class="form-control" id="lead_date" name="lead_date" required>
             </div>
             <div class="mb-3">
+              <label class="form-label" for="raw_contact">Контакт / ссылка на клиента</label>
+              <input type="text" class="form-control" id="raw_contact" name="raw_contact" placeholder="Ссылка, телефон, @username" required maxlength="500">
+              <div class="form-text text-muted">Ссылка на профиль клиента, телефон или юзернейм.</div>
+            </div>
+            <div class="mb-3">
               <label class="form-label" for="attachment">Скриншот / видео</label>
               <input type="file" class="form-control" id="attachment" name="attachment" accept="image/*,video/*" required>
-              <div class="form-text text-muted">Запись экрана или скриншот подтверждения.</div>
+              <div class="form-text text-muted">Запись экрана или скриншот подтверждения. Максимум 30 МБ.</div>
             </div>
             <div class="mb-3">
               <label class="form-label" for="comment">Комментарий (необязательно)</label>
