@@ -3,21 +3,7 @@
 {% block title %}Главный админ — Партнёрка{% endblock %}
 
 {% block content %}
-  {% if receiptless_withdrawals %}
-    <div class="alert alert-danger mb-3">
-      <strong>Загрузите чек по предыдущим выплатам:</strong>
-      {% for wr in receiptless_withdrawals %}
-        <div class="d-flex align-items-center gap-2 mt-2">
-          <span class="small">Вывод #{{ wr.pk }} — {{ wr.amount }} руб.</span>
-          <form method="post" action="{% url 'receipt_upload' wr.pk %}" enctype="multipart/form-data" class="d-flex gap-1">
-            {% csrf_token %}
-            <input type="file" name="receipt" accept="image/*" required class="form-control form-control-sm" style="max-width: 200px;">
-            <button type="submit" class="btn btn-danger btn-sm">Загрузить чек</button>
-          </form>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
+  {% include "core/partials/receipt_alert.html" %}
   <div class="mb-4">
     <h1 class="h4 mb-1">Главный админ</h1>
     <p class="text-muted small mb-0">{{ user.username }} — полный контроль над системой.</p>

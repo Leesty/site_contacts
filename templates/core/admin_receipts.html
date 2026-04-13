@@ -56,19 +56,33 @@
                   {% else %}—{% endif %}
                 </td>
                 <td>
-                  {% if wr.receipt_checked %}
-                    <span class="badge bg-success">Проверен</span>
+                  {% if wr.receipt_status == 'approved' %}
+                    <span class="badge bg-success">Одобрен</span>
+                  {% elif wr.receipt_status == 'rejected' %}
+                    <span class="badge bg-danger">Отклонён</span>
+                  {% elif wr.receipt_status == 'pending' %}
+                    <span class="badge bg-secondary">На проверке</span>
                   {% else %}
-                    <span class="badge bg-secondary">Не проверен</span>
+                    <span class="badge bg-warning text-dark">Нет чека</span>
                   {% endif %}
                 </td>
                 {% if tab == 'unchecked' %}
                 <td>
-                  <form method="post" class="d-inline">
-                    {% csrf_token %}
-                    <input type="hidden" name="wr_id" value="{{ wr.pk }}">
-                    <button type="submit" class="btn btn-success btn-sm py-0">Проверен</button>
-                  </form>
+                  <div class="d-flex flex-column gap-1">
+                    <form method="post" class="d-inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="wr_id" value="{{ wr.pk }}">
+                      <input type="hidden" name="action" value="approve">
+                      <button type="submit" class="btn btn-success btn-sm py-0">Одобрить</button>
+                    </form>
+                    <form method="post" class="d-flex gap-1">
+                      {% csrf_token %}
+                      <input type="hidden" name="wr_id" value="{{ wr.pk }}">
+                      <input type="hidden" name="action" value="reject">
+                      <input type="text" name="reason" placeholder="Причина" class="form-control form-control-sm" style="width: 120px;">
+                      <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
+                    </form>
+                  </div>
                 </td>
                 {% endif %}
               </tr>

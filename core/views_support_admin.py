@@ -2767,22 +2767,33 @@ def admin_receipts(request: HttpRequest) -> HttpResponse:
 
     if request.method == "POST":
         wr_id = request.POST.get("wr_id")
+        action = request.POST.get("action", "approve")
         wr = WithdrawalRequest.objects.filter(pk=wr_id).first()
         if wr:
-            wr.receipt_checked = True
-            wr.save(update_fields=["receipt_checked", "updated_at"])
-            messages.success(request, f"Чек #{wr.pk} отмечен как проверенный.")
+            if action == "approve":
+                wr.receipt_status = "approved"
+                wr.receipt_checked = True
+                wr.receipt_reject_reason = ""
+                wr.save(update_fields=["receipt_status", "receipt_checked", "receipt_reject_reason", "updated_at"])
+                messages.success(request, f"Чек #{wr.pk} (@{wr.user.username}) одобрен.")
+            elif action == "reject":
+                reason = (request.POST.get("reason") or "").strip()
+                wr.receipt_status = "rejected"
+                wr.receipt_reject_reason = reason
+                wr.receipt_checked = False
+                wr.save(update_fields=["receipt_status", "receipt_reject_reason", "receipt_checked", "updated_at"])
+                messages.success(request, f"Чек #{wr.pk} (@{wr.user.username}) отклонён.")
         return redirect("admin_receipts")
 
     tab = request.GET.get("tab", "unchecked")
-    qs = WithdrawalRequest.objects.exclude(Q(receipt="") | Q(receipt__isnull=True)).select_related("user")
+    qs = WithdrawalRequest.objects.filter(receipt_status__in=["pending", "approved", "rejected"]).select_related("user")
     if tab == "unchecked":
-        qs = qs.filter(receipt_checked=False)
+        qs = qs.filter(receipt_status="pending")
     qs = qs.order_by("-receipt_uploaded_at")
 
     paginator = Paginator(qs, 50)
     page_obj = paginator.get_page(request.GET.get("page", 1))
-    unchecked_count = WithdrawalRequest.objects.exclude(Q(receipt="") | Q(receipt__isnull=True)).filter(receipt_checked=False).count()
+    unchecked_count = WithdrawalRequest.objects.filter(receipt_status="pending").count()
 
     return render(request, "core/admin_receipts.html", {
         "page_obj": page_obj,

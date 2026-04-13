@@ -61,10 +61,9 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         user__partner_owner=user, lead_type__slug="dozhim", status=Lead.Status.PENDING
     ).count()
 
-    from django.db.models import Q
     receiptless_withdrawals = list(
         WithdrawalRequest.objects.filter(user=user, status="approved")
-        .filter(Q(receipt="") | Q(receipt__isnull=True))
+        .exclude(receipt_status="approved")
         .order_by("-created_at")[:5]
     )
 

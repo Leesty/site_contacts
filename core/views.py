@@ -186,7 +186,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 "current_rate": rate,
                 "receiptless_withdrawals": list(
                     WithdrawalRequest.objects.filter(user=user, status="approved")
-                    .filter(_Q(receipt="") | _Q(receipt__isnull=True))
+                    .exclude(receipt_status="approved")
                     .order_by("-created_at")[:5]
                 ),
             },
@@ -248,10 +248,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             search_link__bot_started=True, status=SearchReport.Status.PENDING
         ).count()
         smz_pending_count = User.objects.filter(smz_status="pending").count()
-        from django.db.models import Q as _Q
-        unchecked_receipts_count = WithdrawalRequest.objects.exclude(
-            _Q(receipt="") | _Q(receipt__isnull=True)
-        ).filter(receipt_checked=False).count()
+        unchecked_receipts_count = WithdrawalRequest.objects.filter(receipt_status="pending").count()
 
         ctx = {
             "user": user,
@@ -271,7 +268,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "unchecked_receipts_count": unchecked_receipts_count,
             "receiptless_withdrawals": list(
                 WithdrawalRequest.objects.filter(user=user, status="approved")
-                .filter(_Q(receipt="") | _Q(receipt__isnull=True))
+                .exclude(receipt_status="approved")
                 .order_by("-created_at")[:5]
             ),
         }
@@ -326,7 +323,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     from django.db.models import Q as _Q
     receiptless_withdrawals = list(
         WithdrawalRequest.objects.filter(user=user, status="approved")
-        .filter(_Q(receipt="") | _Q(receipt__isnull=True))
+        .exclude(receipt_status="approved")
         .order_by("-created_at")[:5]
     )
     return render(
@@ -702,8 +699,10 @@ def receipt_upload(request: HttpRequest, wr_id: int) -> HttpResponse:
         return redirect("dashboard")
     wr.receipt = attachment
     wr.receipt_uploaded_at = timezone.now()
-    wr.save(update_fields=["receipt", "receipt_uploaded_at", "updated_at"])
-    messages.success(request, "Чек загружен.")
+    wr.receipt_status = "pending"
+    wr.receipt_reject_reason = ""
+    wr.save(update_fields=["receipt", "receipt_uploaded_at", "receipt_status", "receipt_reject_reason", "updated_at"])
+    messages.success(request, "Чек загружен и отправлен на проверку.")
     return redirect("dashboard")
 
 
@@ -722,13 +721,12 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
     if getattr(user, "role", None) != "main_admin":
         if getattr(user, "smz_status", "none") != "approved":
             return redirect("smz_registration")
-        # Блокировка: есть выплата без чека
-        from django.db.models import Q
-        has_receiptless = WithdrawalRequest.objects.filter(
+        # Блокировка: есть выплата без одобренного чека
+        has_unchecked = WithdrawalRequest.objects.filter(
             user=user, status="approved",
-        ).filter(Q(receipt="") | Q(receipt__isnull=True)).exists()
-        if has_receiptless:
-            messages.warning(request, "Загрузите чек по предыдущей выплате, прежде чем создать новую заявку.")
+        ).exclude(receipt_status="approved").exists()
+        if has_unchecked:
+            messages.warning(request, "Загрузите и дождитесь одобрения чека по предыдущей выплате.")
             return redirect("dashboard")
 
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)

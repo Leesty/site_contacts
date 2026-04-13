@@ -1,0 +1,30 @@
+{% if receiptless_withdrawals %}
+  <div class="alert alert-danger mb-3">
+    <strong>Чеки по выплатам:</strong>
+    <div class="small text-muted mb-2">Вывод заблокирован до одобрения чеков администратором.</div>
+    {% for wr in receiptless_withdrawals %}
+      <div class="border-top pt-2 mt-2">
+        <div class="d-flex align-items-center gap-2">
+          <span class="small fw-semibold">Вывод #{{ wr.pk }} — {{ wr.amount }} руб.</span>
+          {% if wr.receipt_status == 'pending' %}
+            <span class="badge bg-secondary">Чек на проверке</span>
+          {% elif wr.receipt_status == 'rejected' %}
+            <span class="badge bg-danger">Чек отклонён</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">Нет чека</span>
+          {% endif %}
+        </div>
+        {% if wr.receipt_status == 'rejected' and wr.receipt_reject_reason %}
+          <div class="small text-warning mt-1">Причина: {{ wr.receipt_reject_reason }}</div>
+        {% endif %}
+        {% if wr.receipt_status != 'pending' %}
+          <form method="post" action="{% url 'receipt_upload' wr.pk %}" enctype="multipart/form-data" class="d-flex gap-1 mt-1">
+            {% csrf_token %}
+            <input type="file" name="receipt" accept="image/*" required class="form-control form-control-sm" style="max-width: 220px;">
+            <button type="submit" class="btn btn-danger btn-sm">{% if wr.receipt_status == 'rejected' %}Загрузить заново{% else %}Загрузить чек{% endif %}</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
