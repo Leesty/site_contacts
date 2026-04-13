@@ -16,13 +16,6 @@
   <div class="card shadow-sm" style="max-width: 32rem;">
     <div class="card-body">
       <h2 class="h6 mb-3">Заявка на вывод</h2>
-      {% if user.smz_fio %}
-        <div class="alert alert-info py-2 small mb-3">
-          <strong>ФИО:</strong> {{ user.smz_fio }}
-          {% if user.smz_not_self %}<span class="badge bg-warning text-dark ms-1">Приём не на себя</span>{% endif %}
-          <a href="{% url 'smz_registration' %}?edit=1" class="ms-2 small">Изменить</a>
-        </div>
-      {% endif %}
       <form method="post" action="">
         {% csrf_token %}
         <input type="hidden" name="dept" value="{{ dept }}">
