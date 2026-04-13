@@ -649,8 +649,6 @@ def download_my_contacts_txt(request: HttpRequest) -> HttpResponse:
 @login_required
 def smz_registration(request: HttpRequest) -> HttpResponse:
     """Страница верификации СМЗ: заполнение ФИО для выплат."""
-    if not _ensure_user_approved(request):
-        return redirect("dashboard")
     user = request.user
 
     if request.method == "POST":
@@ -710,8 +708,8 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard")
     user = request.user
 
-    # СМЗ-гейт: только для обычных пользователей
-    if getattr(user, "role", None) == "user":
+    # СМЗ-гейт: для всех кроме main_admin
+    if getattr(user, "role", None) != "main_admin":
         if getattr(user, "smz_status", "none") != "approved":
             return redirect("smz_registration")
         # Блокировка: есть выплата без чека
