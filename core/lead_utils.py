@@ -238,7 +238,7 @@ def _compress_video_ffmpeg(input_path: str, output_path: str, timeout: int = 600
         "-i",
         input_path,
         "-vf",
-        "scale='min(720,iw)':-2",
+        "scale='min(480,iw)':-2",
         "-c:v",
         "libx264",
         "-crf",
