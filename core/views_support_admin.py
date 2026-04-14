@@ -617,9 +617,12 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
                     # Старая система (role=partner, Настя — фикс ставка)
                     partner_earning = partner.partner_rate or 10
                 else:
-                    # Реферальная система: ставка с ссылки
-                    link = lead.user.partner_link
-                    ref_reward = max(1, min(39, link.ref_reward if link else 20))
+                    # Реферальная система: per-user override → ставка с ссылки → 20 по умолчанию
+                    if lead.user.ref_lead_reward is not None:
+                        ref_reward = max(1, min(LEAD_APPROVE_REWARD - 1, lead.user.ref_lead_reward))
+                    else:
+                        link = lead.user.partner_link
+                        ref_reward = max(1, min(LEAD_APPROVE_REWARD - 1, link.ref_reward if link else 20))
                     reward = ref_reward  # реф получит ref_reward вместо стандартных 40
                     partner_earning = LEAD_APPROVE_REWARD - ref_reward
                 PartnerEarning.objects.create(partner=partner, lead=lead, amount=partner_earning)

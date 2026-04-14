@@ -31,8 +31,13 @@
                 <tr>
                   <td>@{{ u.username }}</td>
                   <td class="text-muted small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
-                  <td>{% if u.partner_link %}{{ u.partner_link.ref_reward }} ₽{% else %}—{% endif %}</td>
-                  <td class="text-success">{% if u.partner_link %}{{ u.partner_cut }} ₽{% else %}—{% endif %}</td>
+                  <td>
+                    <input type="number" class="form-control form-control-sm js-ref-reward"
+                           data-user-id="{{ u.id }}"
+                           value="{{ u.current_ref_reward }}"
+                           min="1" max="39" style="width: 70px;">
+                  </td>
+                  <td class="text-success js-partner-cut" data-user-id="{{ u.id }}">{{ u.partner_cut }} ₽</td>
                   <td>
                     {% if u.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
                     {% elif u.status == 'pending' %}<span class="badge bg-warning text-dark">На модерации</span>
@@ -120,6 +125,23 @@
       .catch(function() { showToast('Ошибка сети', 'danger'); });
     }
 
+    // Edit ref lead reward (regular leads)
+    document.querySelectorAll('.js-ref-reward').forEach(function(input) {
+      var lastVal = input.value;
+      function save() {
+        if (input.value === lastVal) return;
+        lastVal = input.value;
+        var userId = input.getAttribute('data-user-id');
+        var cutCell = document.querySelector('.js-partner-cut[data-user-id="' + userId + '"]');
+
+        postSearchLink(userId, { ref_lead_reward: input.value }, function(res) {
+          if (cutCell) cutCell.textContent = res.partner_cut + ' ₽';
+        });
+      }
+      input.addEventListener('blur', save);
+      input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+    });
+
     // Toggle SearchLink
     document.querySelectorAll('.js-sl-toggle').forEach(function(cb) {
       cb.addEventListener('change', function() {
@@ -132,12 +154,12 @@
 
         postSearchLink(userId, data, function(res) {
           if (cutInput) cutInput.disabled = !res.enabled;
-          if (refCell) refCell.textContent = res.enabled ? res.ref_reward + ' ₽' : '—';
+          if (refCell) refCell.textContent = res.enabled ? res.sl_ref_reward + ' ₽' : '—';
         });
       });
     });
 
-    // Edit manager cut
+    // Edit manager cut (SearchLink)
     document.querySelectorAll('.js-sl-cut').forEach(function(input) {
       var lastVal = input.value;
       function save() {
@@ -147,7 +169,7 @@
         var refCell = document.querySelector('.js-sl-ref-reward[data-user-id="' + userId + '"]');
 
         postSearchLink(userId, { manager_cut: input.value }, function(res) {
-          if (refCell) refCell.textContent = res.enabled ? res.ref_reward + ' ₽' : '—';
+          if (refCell) refCell.textContent = res.enabled ? res.sl_ref_reward + ' ₽' : '—';
         });
       }
       input.addEventListener('blur', save);

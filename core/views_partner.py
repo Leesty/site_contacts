@@ -505,10 +505,14 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
     page_obj = paginator.get_page(request.GET.get("page"))
     _search_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
     for u in page_obj:
-        if u.partner_link:
-            u.partner_cut = LEAD_APPROVE_REWARD - u.partner_link.ref_reward
+        # Текущая ставка рефу за обычный лид (override → link → 20)
+        if u.ref_lead_reward is not None:
+            u.current_ref_reward = u.ref_lead_reward
+        elif u.partner_link:
+            u.current_ref_reward = u.partner_link.ref_reward
         else:
-            u.partner_cut = 0
+            u.current_ref_reward = 20
+        u.partner_cut = LEAD_APPROVE_REWARD - u.current_ref_reward
         u.sl_ref_reward = _search_total - u.ref_searchlink_manager_cut if u.ref_searchlink_enabled else 0
 
     return render(request, "core/user_referral_list.html", {
@@ -522,17 +526,32 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_http_methods(["POST"])
 def user_referral_searchlink_toggle(request: HttpRequest, user_id: int) -> HttpResponse:
-    """AJAX: включить/выключить SearchLink для реферала + задать ставку менеджера."""
+    """AJAX: настройки реферала — ставка за лид + SearchLink (вкл/выкл, доля менеджера)."""
     if not _require_user_approved(request):
         return HttpResponseForbidden()
     referral = get_object_or_404(User, pk=user_id, partner_owner=request.user)
     search_reward_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
+    update_fields = []
 
+    # Ставка рефералу за обычный лид
+    ref_lead_reward_raw = request.POST.get("ref_lead_reward")
+    if ref_lead_reward_raw is not None:
+        try:
+            val = int(ref_lead_reward_raw)
+        except (TypeError, ValueError):
+            val = 20
+        val = max(1, min(LEAD_APPROVE_REWARD - 1, val))
+        referral.ref_lead_reward = val
+        update_fields.append("ref_lead_reward")
+
+    # SearchLink: вкл/выкл
     enabled = request.POST.get("enabled")
-    manager_cut = request.POST.get("manager_cut")
-
     if enabled is not None:
         referral.ref_searchlink_enabled = enabled == "1"
+        update_fields.append("ref_searchlink_enabled")
+
+    # SearchLink: доля менеджера
+    manager_cut = request.POST.get("manager_cut")
     if manager_cut is not None:
         try:
             cut = int(manager_cut)
@@ -540,14 +559,19 @@ def user_referral_searchlink_toggle(request: HttpRequest, user_id: int) -> HttpR
             cut = 30
         cut = max(1, min(search_reward_total - 1, cut))
         referral.ref_searchlink_manager_cut = cut
+        update_fields.append("ref_searchlink_manager_cut")
 
-    referral.save(update_fields=["ref_searchlink_enabled", "ref_searchlink_manager_cut"])
-    ref_reward = search_reward_total - referral.ref_searchlink_manager_cut
+    if update_fields:
+        referral.save(update_fields=update_fields)
+
+    lead_ref_reward = referral.ref_lead_reward if referral.ref_lead_reward is not None else (referral.partner_link.ref_reward if referral.partner_link else 20)
     return JsonResponse({
         "success": True,
         "enabled": referral.ref_searchlink_enabled,
         "manager_cut": referral.ref_searchlink_manager_cut,
-        "ref_reward": ref_reward,
+        "sl_ref_reward": search_reward_total - referral.ref_searchlink_manager_cut,
+        "ref_lead_reward": lead_ref_reward,
+        "partner_cut": LEAD_APPROVE_REWARD - lead_ref_reward,
     })
 
 

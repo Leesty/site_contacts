@@ -114,6 +114,11 @@ class User(AbstractUser):
         default=30,
         help_text="Доля менеджера (руб.) с одобренного SearchLink-отчёта реферала. Реферал получает 100 - cut.",
     )
+    ref_lead_reward = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Ставка рефералу за одобренный лид (руб.). Если задано — перекрывает ставку из PartnerLink.",
+    )
 
     # СМЗ (самозанятость) — верификация для выплат
     smz_fio = models.CharField(max_length=255, blank=True, help_text="ФИО для СМЗ.")
