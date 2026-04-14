@@ -3,6 +3,7 @@
 {% block title %}Рефералы — Партнёрка{% endblock %}
 
 {% block content %}
+  {% csrf_token %}
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h4 mb-0">Рефералы <span class="text-muted small">({{ total }})</span></h1>
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'user_referrals' %}">← Реферальная система</a>
@@ -20,6 +21,9 @@
                 <th>Ставка рефу</th>
                 <th>Ваш доход</th>
                 <th>Статус</th>
+                <th>SearchLink</th>
+                <th>Ваша доля (SL)</th>
+                <th>Рефу (SL)</th>
               </tr>
             </thead>
             <tbody>
@@ -33,6 +37,23 @@
                     {% if u.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
                     {% elif u.status == 'pending' %}<span class="badge bg-warning text-dark">На модерации</span>
                     {% else %}<span class="badge bg-secondary">{{ u.status }}</span>{% endif %}
+                  </td>
+                  <td>
+                    <div class="form-check form-switch mb-0">
+                      <input class="form-check-input js-sl-toggle" type="checkbox"
+                             data-user-id="{{ u.id }}"
+                             {% if u.ref_searchlink_enabled %}checked{% endif %}>
+                    </div>
+                  </td>
+                  <td>
+                    <input type="number" class="form-control form-control-sm js-sl-cut"
+                           data-user-id="{{ u.id }}"
+                           value="{{ u.ref_searchlink_manager_cut }}"
+                           min="1" max="99" style="width: 75px;"
+                           {% if not u.ref_searchlink_enabled %}disabled{% endif %}>
+                  </td>
+                  <td class="js-sl-ref-reward" data-user-id="{{ u.id }}">
+                    {% if u.ref_searchlink_enabled %}{{ u.sl_ref_reward }} ₽{% else %}—{% endif %}
                   </td>
                 </tr>
               {% endfor %}
@@ -55,4 +76,83 @@
       {% endif %}
     </div>
   </div>
+
+  <div id="sl-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index: 1100; display: none;" role="alert"></div>
+
+  <script>
+  (function() {
+    var SEARCH_REWARD = {{ search_reward }};
+    var toast = document.getElementById('sl-toast');
+
+    function getCsrf() {
+      var el = document.querySelector('[name=csrfmiddlewaretoken]');
+      if (el) return el.value;
+      var m = document.cookie.match(/csrftoken=([^;]+)/);
+      return m ? m[1] : '';
+    }
+
+    function showToast(msg, type) {
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-' + (type || 'success') + ' py-2 px-3 mb-0 shadow-sm';
+      toast.style.display = 'block';
+      toast.style.zIndex = '1100';
+      setTimeout(function() { toast.style.display = 'none'; }, 3000);
+    }
+
+    function postSearchLink(userId, data, onSuccess) {
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      for (var k in data) body.append(k, data[k]);
+
+      fetch('/referrals/' + userId + '/searchlink/', {
+        method: 'POST', body: body,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin'
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.success) {
+          onSuccess(res);
+          showToast('Сохранено', 'success');
+        }
+      })
+      .catch(function() { showToast('Ошибка сети', 'danger'); });
+    }
+
+    // Toggle SearchLink
+    document.querySelectorAll('.js-sl-toggle').forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        var userId = this.getAttribute('data-user-id');
+        var cutInput = document.querySelector('.js-sl-cut[data-user-id="' + userId + '"]');
+        var refCell = document.querySelector('.js-sl-ref-reward[data-user-id="' + userId + '"]');
+        var enabled = this.checked ? '1' : '0';
+        var data = { enabled: enabled };
+        if (cutInput) data.manager_cut = cutInput.value;
+
+        postSearchLink(userId, data, function(res) {
+          if (cutInput) cutInput.disabled = !res.enabled;
+          if (refCell) refCell.textContent = res.enabled ? res.ref_reward + ' ₽' : '—';
+        });
+      });
+    });
+
+    // Edit manager cut
+    document.querySelectorAll('.js-sl-cut').forEach(function(input) {
+      var lastVal = input.value;
+      function save() {
+        if (input.value === lastVal) return;
+        lastVal = input.value;
+        var userId = input.getAttribute('data-user-id');
+        var refCell = document.querySelector('.js-sl-ref-reward[data-user-id="' + userId + '"]');
+
+        postSearchLink(userId, { manager_cut: input.value }, function(res) {
+          if (refCell) refCell.textContent = res.enabled ? res.ref_reward + ' ₽' : '—';
+        });
+      }
+      input.addEventListener('blur', save);
+      input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+    });
+  })();
+  </script>
 {% endblock %}

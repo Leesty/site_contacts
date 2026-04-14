@@ -7,8 +7,9 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count, Sum
-from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
+from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_http_methods
 
 from django.core.paginator import Paginator
 
@@ -431,7 +432,7 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     users_count = User.objects.filter(partner_owner=user).count()
     earnings = (
         PartnerEarning.objects.filter(partner=user)
-        .select_related("lead", "lead__user")
+        .select_related("lead", "lead__user", "search_report", "search_report__user")
         .order_by("-created_at")[:100]
     )
 
@@ -502,16 +503,51 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
     )
     paginator = Paginator(users_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
+    _search_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
     for u in page_obj:
         if u.partner_link:
             u.partner_cut = LEAD_APPROVE_REWARD - u.partner_link.ref_reward
         else:
             u.partner_cut = 0
+        u.sl_ref_reward = _search_total - u.ref_searchlink_manager_cut if u.ref_searchlink_enabled else 0
 
     return render(request, "core/user_referral_list.html", {
         "page_obj": page_obj,
         "total": users_qs.count(),
         "total_reward": LEAD_APPROVE_REWARD,
+        "search_reward": getattr(settings, "SEARCH_REPORT_REWARD", 100),
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def user_referral_searchlink_toggle(request: HttpRequest, user_id: int) -> HttpResponse:
+    """AJAX: включить/выключить SearchLink для реферала + задать ставку менеджера."""
+    if not _require_user_approved(request):
+        return HttpResponseForbidden()
+    referral = get_object_or_404(User, pk=user_id, partner_owner=request.user)
+    search_reward_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
+
+    enabled = request.POST.get("enabled")
+    manager_cut = request.POST.get("manager_cut")
+
+    if enabled is not None:
+        referral.ref_searchlink_enabled = enabled == "1"
+    if manager_cut is not None:
+        try:
+            cut = int(manager_cut)
+        except (TypeError, ValueError):
+            cut = 30
+        cut = max(1, min(search_reward_total - 1, cut))
+        referral.ref_searchlink_manager_cut = cut
+
+    referral.save(update_fields=["ref_searchlink_enabled", "ref_searchlink_manager_cut"])
+    ref_reward = search_reward_total - referral.ref_searchlink_manager_cut
+    return JsonResponse({
+        "success": True,
+        "enabled": referral.ref_searchlink_enabled,
+        "manager_cut": referral.ref_searchlink_manager_cut,
+        "ref_reward": ref_reward,
     })
 
 

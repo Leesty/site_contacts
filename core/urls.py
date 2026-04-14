@@ -33,6 +33,7 @@ urlpatterns = [
     path("referrals/list/", views_partner.user_referral_list, name="user_referral_list"),
     path("referrals/create/", views_partner.user_referral_create_link, name="user_referral_create_link"),
     path("referrals/<int:link_id>/toggle/", views_partner.user_referral_toggle_link, name="user_referral_toggle_link"),
+    path("referrals/<int:user_id>/searchlink/", views_partner.user_referral_searchlink_toggle, name="user_referral_searchlink_toggle"),
     path("a/<str:code>/", views_partner.referral_ref_register, name="referral_ref_register"),
     # Dozhim department
     path("department/switch/", views.switch_department, name="switch_department"),

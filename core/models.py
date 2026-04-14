@@ -106,6 +106,14 @@ class User(AbstractUser):
         related_name="registered_users",
         help_text="Реферальная ссылка, по которой зарегистрировался пользователь (для affiliate-ставки).",
     )
+    ref_searchlink_enabled = models.BooleanField(
+        default=False,
+        help_text="Разрешён ли SearchLink для реферала (включается менеджером-рефовладельцем).",
+    )
+    ref_searchlink_manager_cut = models.PositiveIntegerField(
+        default=30,
+        help_text="Доля менеджера (руб.) с одобренного SearchLink-отчёта реферала. Реферал получает 100 - cut.",
+    )
 
     # СМЗ (самозанятость) — верификация для выплат
     smz_fio = models.CharField(max_length=255, blank=True, help_text="ФИО для СМЗ.")
@@ -892,6 +900,13 @@ class PartnerEarning(TimeStampedModel):
     )
     lead = models.OneToOneField(
         "Lead",
+        on_delete=models.SET_NULL,
+        related_name="partner_earning",
+        null=True,
+        blank=True,
+    )
+    search_report = models.OneToOneField(
+        "SearchReport",
         on_delete=models.SET_NULL,
         related_name="partner_earning",
         null=True,

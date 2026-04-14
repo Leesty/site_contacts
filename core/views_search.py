@@ -54,6 +54,9 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
     """Список SearchLink-ов менеджера с формой создания и вкладками по статусу."""
     if not _require_approved_user(request):
         return HttpResponseForbidden("Доступ запрещён.")
+    if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
+        messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта. Обратитесь к менеджеру.")
+        return redirect("dashboard")
 
     tab = request.GET.get("tab", "all")
     q = (request.GET.get("q") or "").strip()
@@ -95,6 +98,10 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
         except SearchReport.DoesNotExist:
             link.report_obj = None
 
+    search_reward = SEARCH_REPORT_REWARD
+    if request.user.partner_owner_id and request.user.ref_searchlink_enabled:
+        search_reward = SEARCH_REPORT_REWARD - request.user.ref_searchlink_manager_cut
+
     return render(request, "search/my_links.html", {
         "page_obj": page_obj,
         "q": q,
@@ -104,6 +111,7 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
         "pending_count": pending_count,
         "bot_waiting_count": bot_waiting_count,
         "bot_started_count": bot_started_count,
+        "search_reward": search_reward,
     })
 
 
@@ -115,6 +123,9 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
     """Создать новый SearchLink."""
     if not _require_approved_user(request):
         return HttpResponseForbidden("Доступ запрещён.")
+    if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
+        messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта.")
+        return redirect("dashboard")
 
     lead_name = (request.POST.get("lead_name") or "").strip()[:200]
     if not lead_name:
@@ -171,6 +182,9 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
     """Отправить отчёт по SearchLink."""
     if not _require_approved_user(request):
         return HttpResponseForbidden("Доступ запрещён.")
+    if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
+        messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта.")
+        return redirect("dashboard")
 
     link = get_object_or_404(SearchLink, code=code, user=request.user)
 
@@ -230,6 +244,9 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     """Доработка отчёта по SearchLink."""
     if not _require_approved_user(request):
         return HttpResponseForbidden("Доступ запрещён.")
+    if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
+        messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта.")
+        return redirect("dashboard")
 
     link = get_object_or_404(SearchLink, code=code, user=request.user)
     try:
@@ -370,10 +387,33 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         report.save(update_fields=["status", "reviewed_at", "reviewed_by"])
 
         lead_owner = User.objects.select_for_update().get(pk=report.user_id)
-        lead_owner.balance = (lead_owner.balance or 0) + SEARCH_REPORT_REWARD
-        lead_owner.save(update_fields=["balance"])
+        from .models import PartnerEarning, log_balance_change
 
-    messages.success(request, f"Отчёт #{report_id} одобрен. +{SEARCH_REPORT_REWARD} руб. пользователю @{report.user.username}.")
+        # Разделение награды для рефералов
+        if lead_owner.partner_owner_id and lead_owner.ref_searchlink_enabled:
+            manager_cut = max(1, min(99, lead_owner.ref_searchlink_manager_cut))
+            ref_reward = SEARCH_REPORT_REWARD - manager_cut
+        else:
+            manager_cut = 0
+            ref_reward = SEARCH_REPORT_REWARD
+
+        _old = lead_owner.balance or 0
+        lead_owner.balance = _old + ref_reward
+        lead_owner.save(update_fields=["balance"])
+        log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"search_approve#{report_id} +{ref_reward}", request.user)
+
+        if manager_cut > 0:
+            partner = User.objects.select_for_update().get(pk=lead_owner.partner_owner_id)
+            _old_pb = partner.balance or 0
+            partner.balance = _old_pb + manager_cut
+            partner.save(update_fields=["balance"])
+            log_balance_change(partner, "balance", _old_pb, partner.balance, f"search_partner_earning report#{report_id} +{manager_cut}", request.user)
+            PartnerEarning.objects.create(partner=partner, search_report=report, amount=manager_cut)
+
+    msg = f"Отчёт #{report_id} одобрен. +{ref_reward} руб. пользователю @{report.user.username}."
+    if manager_cut > 0:
+        msg += f" +{manager_cut} руб. менеджеру."
+    messages.success(request, msg)
     return redirect("admin_search_reports_list")
 
 
@@ -396,9 +436,23 @@ def admin_search_report_reject(request: HttpRequest, report_id: int) -> HttpResp
         report.reviewed_by = request.user
         report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
         if was_approved:
+            from .models import PartnerEarning, log_balance_change
+            pe = PartnerEarning.objects.filter(search_report=report).select_related("partner").first()
+            if pe:
+                partner = User.objects.select_for_update().get(pk=pe.partner_id)
+                _old_pb = partner.balance or 0
+                partner.balance = _old_pb - pe.amount
+                partner.save(update_fields=["balance"])
+                log_balance_change(partner, "balance", _old_pb, partner.balance, f"search_reject#{report_id} partner_rollback -{pe.amount}", request.user)
+                _ref_reward = SEARCH_REPORT_REWARD - pe.amount
+                pe.delete()
+            else:
+                _ref_reward = SEARCH_REPORT_REWARD
             lead_owner = User.objects.select_for_update().get(pk=report.user_id)
-            lead_owner.balance = (lead_owner.balance or 0) - SEARCH_REPORT_REWARD
+            _old = lead_owner.balance or 0
+            lead_owner.balance = _old - _ref_reward
             lead_owner.save(update_fields=["balance"])
+            log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"search_reject#{report_id} -{_ref_reward}", request.user)
 
     messages.success(request, f"Отчёт #{report_id} отклонён.")
     return redirect("admin_search_reports_list")
@@ -423,9 +477,23 @@ def admin_search_report_rework(request: HttpRequest, report_id: int) -> HttpResp
         report.reviewed_by = request.user
         report.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by"])
         if was_approved:
+            from .models import PartnerEarning, log_balance_change
+            pe = PartnerEarning.objects.filter(search_report=report).select_related("partner").first()
+            if pe:
+                partner = User.objects.select_for_update().get(pk=pe.partner_id)
+                _old_pb = partner.balance or 0
+                partner.balance = _old_pb - pe.amount
+                partner.save(update_fields=["balance"])
+                log_balance_change(partner, "balance", _old_pb, partner.balance, f"search_rework#{report_id} partner_rollback -{pe.amount}", request.user)
+                _ref_reward = SEARCH_REPORT_REWARD - pe.amount
+                pe.delete()
+            else:
+                _ref_reward = SEARCH_REPORT_REWARD
             lead_owner = User.objects.select_for_update().get(pk=report.user_id)
-            lead_owner.balance = (lead_owner.balance or 0) - SEARCH_REPORT_REWARD
+            _old = lead_owner.balance or 0
+            lead_owner.balance = _old - _ref_reward
             lead_owner.save(update_fields=["balance"])
+            log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"search_rework#{report_id} -{_ref_reward}", request.user)
 
     messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
     return redirect("admin_search_reports_list")
