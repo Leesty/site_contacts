@@ -4,6 +4,7 @@
 {% block title %}Отчёты — Партнёрка{% endblock %}
 
 {% block content %}
+  {% csrf_token %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="h4 mb-0">Отчёты</h1>
     <div class="d-flex flex-wrap gap-2">
@@ -170,25 +171,26 @@
                 <td>
                   <div class="d-flex flex-wrap gap-1">
                     {% if lead.status == 'approved' or tab == 'approved' %}
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-toggle" data-reject-url="{% url 'admin_lead_reject' lead.user_id lead.id %}">Отменить</button>
-                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-toggle" data-rework-url="{% url 'admin_lead_rework' lead.user_id lead.id %}">На доработку</button>
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
+                              data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}" data-approved="1">Отменить</button>
+                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-btn"
+                              data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}" data-approved="1">На доработку</button>
                     {% elif lead.status == 'rework' or tab == 'rework' %}
-                      <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" class="d-inline js-lead-approve-form">
-                        {% csrf_token %}
-                        <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab={{ tab }}">
-                        <button type="submit" class="btn btn-success btn-sm" title="Одобрить без доработки. +{{ lead_approve_reward }} руб. пользователю">Одобрить без доработки</button>
-                      </form>
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-toggle" data-reject-url="{% url 'admin_lead_reject' lead.user_id lead.id %}">Отклонить</button>
+                      <button type="button" class="btn btn-success btn-sm js-approve-btn"
+                              data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}"
+                              title="Одобрить без доработки. +{{ lead_approve_reward }} руб. пользователю">Одобрить</button>
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
+                              data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}">Отклонить</button>
                     {% elif lead.status == 'rejected' %}
                       <span class="text-muted small">—</span>
                     {% else %}
-                      <form method="post" action="{% url 'admin_lead_approve' lead.user_id lead.id %}?next={% url 'admin_leads_all_new' %}%3Ftab%3D{{ tab }}" class="d-inline js-lead-approve-form">
-                        {% csrf_token %}
-                        <input type="hidden" name="next" value="{% url 'admin_leads_all_new' %}?tab={{ tab }}">
-                        <button type="submit" class="btn btn-success btn-sm" title="+{{ lead_approve_reward }} руб. пользователю">Одобрить</button>
-                      </form>
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-toggle" data-reject-url="{% url 'admin_lead_reject' lead.user_id lead.id %}">Отклонить</button>
-                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-toggle" data-rework-url="{% url 'admin_lead_rework' lead.user_id lead.id %}">На доработку</button>
+                      <button type="button" class="btn btn-success btn-sm js-approve-btn"
+                              data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}"
+                              title="+{{ lead_approve_reward }} руб. пользователю">Одобрить</button>
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
+                              data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}">Отклонить</button>
+                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-btn"
+                              data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}">На доработку</button>
                     {% endif %}
                   </div>
                 </td>
@@ -222,68 +224,55 @@
     {% endif %}
   </div>
 
-  <div id="lead-approve-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index: 1100; display: none;" role="alert"></div>
+  <!-- Reject modal -->
+  <div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title">Отклонить лид #<span id="rejectLeadId"></span></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="rejectApprovedWarning" class="alert alert-warning py-2 small d-none">
+            ⚠ Лид был одобрен. Вознаграждение будет списано с баланса пользователя.
+          </div>
+          <label class="form-label">Причина отклонения</label>
+          <textarea id="rejectReason" class="form-control" rows="3"
+                    placeholder="Укажите причину отклонения"></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+          <button type="button" class="btn btn-danger btn-sm" id="rejectSubmitBtn">Отклонить</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-  <script>
-  (function() {
-    document.querySelectorAll('.js-lead-approve-form').forEach(function(form) {
-      form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        var btn = form.querySelector('button[type="submit"]');
-        var row = form.closest('tr');
-        var toast = document.getElementById('lead-approve-toast');
-        if (btn.disabled) return;
-        btn.disabled = true;
-        btn.textContent = '…';
+  <!-- Rework modal -->
+  <div class="modal fade" id="reworkModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title">На доработку — лид #<span id="reworkLeadId"></span></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="reworkApprovedWarning" class="alert alert-warning py-2 small d-none">
+            ⚠ Лид был одобрен. Вознаграждение будет списано с баланса пользователя.
+          </div>
+          <label class="form-label">Комментарий к доработке (необязательно)</label>
+          <textarea id="reworkComment" class="form-control" rows="3"
+                    placeholder="Что нужно исправить или дополнить"></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+          <button type="button" class="btn btn-warning btn-sm" id="reworkSubmitBtn">Отправить на доработку</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        var body = new FormData(form);
-        var url = form.action;
-        var headers = { 'X-Requested-With': 'XMLHttpRequest' };
-
-        fetch(url, { method: 'POST', body: body, headers: headers, credentials: 'same-origin' })
-          .then(function(r) {
-            if (!r.ok) throw new Error('Ошибка');
-            return r.json();
-          })
-          .then(function(data) {
-            if (data.success && row) {
-              row.style.transition = 'opacity 0.25s';
-              row.style.opacity = '0';
-              setTimeout(function() {
-                row.remove();
-                var tbody = document.querySelector('.table-responsive tbody');
-                if (tbody && tbody.querySelectorAll('tr').length === 0) {
-                  var emptyRow = document.createElement('tr');
-                  emptyRow.innerHTML = '<td colspan="11" class="text-muted py-4 text-center">Нет отчётов.</td>';
-                  tbody.appendChild(emptyRow);
-                }
-              }, 250);
-            }
-            if (toast && data.message) {
-              toast.textContent = data.message;
-              toast.style.display = 'block';
-              setTimeout(function() { toast.style.display = 'none'; }, 3000);
-            }
-          })
-          .catch(function() {
-            btn.disabled = false;
-            btn.textContent = btn.textContent === '…' ? 'Одобрить' : 'Одобрить без доработки';
-            if (toast) {
-              toast.textContent = 'Ошибка. Попробуйте ещё раз или обновите страницу.';
-              toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-danger py-2 px-3 mb-0 shadow-sm';
-              toast.style.display = 'block';
-              toast.style.zIndex = '1100';
-              setTimeout(function() {
-                toast.style.display = 'none';
-                toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm';
-              }, 4000);
-            }
-          });
-      });
-    });
-  })();
-  </script>
-
+  <!-- Video modal -->
   <div class="modal fade" id="videoPreviewModal" tabindex="-1" aria-labelledby="videoPreviewModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content bg-dark">
@@ -302,176 +291,210 @@
       </div>
     </div>
   </div>
+
+  <div id="lead-action-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index: 1100; display: none;" role="alert"></div>
+
   <script src="{% static 'js/video-preview.js' %}"></script>
   <script>
   (function() {
-  // Expand/collapse long comments
-  document.querySelectorAll('.js-expand-btn').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      var td = btn.closest('td') || btn.closest('span').parentElement;
-      td.querySelector('.js-truncated').classList.add('d-none');
-      td.querySelector('.js-full').classList.remove('d-none');
-    });
-  });
-  document.querySelectorAll('.js-collapse-btn').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      var td = btn.closest('td') || btn.closest('span').parentElement;
-      td.querySelector('.js-full').classList.add('d-none');
-      td.querySelector('.js-truncated').classList.remove('d-none');
-    });
-  });
-  })();
-  </script>
-  <script>
-  (function() {
-    var toast = document.getElementById('lead-approve-toast');
-    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
-    if (!csrfToken) return;
-    csrfToken = csrfToken.value;
-
-    document.querySelectorAll('.js-rework-toggle').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var td = btn.closest('td');
-        // Закрыть другие открытые формы
-        document.querySelectorAll('.js-rework-inline').forEach(function(f) { f.remove(); });
-
-        var url = btn.getAttribute('data-rework-url');
-        var wrap = document.createElement('div');
-        wrap.className = 'js-rework-inline mt-1';
-        wrap.innerHTML =
-          '<div class="d-flex flex-column gap-1" style="min-width:220px;">' +
-            '<textarea class="form-control form-control-sm" rows="2" placeholder="Причина доработки" style="resize:vertical;min-height:52px;" autofocus></textarea>' +
-            '<div class="d-flex gap-1">' +
-              '<button class="btn btn-warning btn-sm text-dark flex-grow-1" type="button">Отправить</button>' +
-              '<button class="btn btn-outline-secondary btn-sm" type="button" title="Отмена">✕</button>' +
-            '</div>' +
-          '</div>';
-        td.appendChild(wrap);
-
-        var input = wrap.querySelector('textarea');
-        var sendBtn = wrap.querySelector('.btn-warning');
-        var cancelBtn = wrap.querySelector('.btn-outline-secondary');
-
-        input.focus();
-
-        function submit() {
-          var comment = input.value.trim();
-          if (!comment) { input.classList.add('is-invalid'); return; }
-          sendBtn.disabled = true;
-          sendBtn.textContent = '…';
-
-          var body = new FormData();
-          body.append('csrfmiddlewaretoken', csrfToken);
-          body.append('rework_comment', comment);
-
-          fetch(url, { method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-            .then(function(res) {
-              if (res.ok && res.data.success) {
-                var row = btn.closest('tr');
-                row.style.transition = 'opacity 0.25s';
-                row.style.opacity = '0';
-                setTimeout(function() { row.remove(); }, 250);
-                if (toast && res.data.message) {
-                  toast.textContent = res.data.message;
-                  toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-warning py-2 px-3 mb-0 shadow-sm';
-                  toast.style.display = 'block';
-                  toast.style.zIndex = '1100';
-                  setTimeout(function() { toast.style.display = 'none'; toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm'; }, 3000);
-                }
-              } else {
-                sendBtn.disabled = false;
-                sendBtn.textContent = 'Отправить';
-                input.classList.add('is-invalid');
-              }
-            })
-            .catch(function() {
-              sendBtn.disabled = false;
-              sendBtn.textContent = 'Отправить';
-            });
-        }
-
-        sendBtn.addEventListener('click', submit);
-        input.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } if (e.key === 'Escape') wrap.remove(); });
-        cancelBtn.addEventListener('click', function() { wrap.remove(); });
+    // Expand / collapse
+    document.querySelectorAll('.js-expand-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var td = btn.closest('td') || btn.closest('span').parentElement;
+        td.querySelector('.js-truncated').classList.add('d-none');
+        td.querySelector('.js-full').classList.remove('d-none');
       });
     });
-  })();
-  </script>
-  <script>
-  (function() {
-    var toast = document.getElementById('lead-approve-toast');
-    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
-    if (!csrfToken) return;
-    csrfToken = csrfToken.value;
+    document.querySelectorAll('.js-collapse-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var td = btn.closest('td') || btn.closest('span').parentElement;
+        td.querySelector('.js-full').classList.add('d-none');
+        td.querySelector('.js-truncated').classList.remove('d-none');
+      });
+    });
 
-    document.querySelectorAll('.js-reject-toggle').forEach(function(btn) {
+    var toast = document.getElementById('lead-action-toast');
+    function getCsrf() {
+      var el = document.querySelector('[name=csrfmiddlewaretoken]');
+      if (el) return el.value;
+      var m = document.cookie.match(/csrftoken=([^;]+)/);
+      return m ? m[1] : '';
+    }
+
+    function showToast(msg, type) {
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-' + type + ' py-2 px-3 mb-0 shadow-sm';
+      toast.style.display = 'block';
+      toast.style.zIndex = '1100';
+      setTimeout(function() { toast.style.display = 'none'; }, 3000);
+    }
+
+    function fadeRow(btn) {
+      var row = btn.closest('tr');
+      if (row) {
+        row.style.transition = 'opacity 0.25s';
+        row.style.opacity = '0';
+        setTimeout(function() {
+          row.remove();
+          var tbody = document.querySelector('.table-responsive tbody');
+          if (tbody && tbody.querySelectorAll('tr').length === 0) {
+            var emptyRow = document.createElement('tr');
+            emptyRow.innerHTML = '<td colspan="11" class="text-muted py-4 text-center">Нет отчётов.</td>';
+            tbody.appendChild(emptyRow);
+          }
+        }, 250);
+      }
+    }
+
+    // ---- Approve (AJAX) ----
+    document.querySelectorAll('.js-approve-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
-        var td = btn.closest('td');
-        document.querySelectorAll('.js-reject-inline').forEach(function(f) { f.remove(); });
-        document.querySelectorAll('.js-rework-inline').forEach(function(f) { f.remove(); });
+        var userId = btn.getAttribute('data-user-id');
+        var leadId = btn.getAttribute('data-lead-id');
+        btn.disabled = true;
+        btn.textContent = '…';
 
-        var url = btn.getAttribute('data-reject-url');
-        var wrap = document.createElement('div');
-        wrap.className = 'js-reject-inline mt-1';
-        wrap.innerHTML =
-          '<div class="d-flex flex-column gap-1" style="min-width:220px;">' +
-            '<textarea class="form-control form-control-sm" rows="2" placeholder="Причина отклонения" style="resize:vertical;min-height:52px;" autofocus></textarea>' +
-            '<div class="d-flex gap-1">' +
-              '<button class="btn btn-danger btn-sm flex-grow-1" type="button">Отклонить</button>' +
-              '<button class="btn btn-outline-secondary btn-sm" type="button" title="Отмена">✕</button>' +
-            '</div>' +
-          '</div>';
-        td.appendChild(wrap);
+        var body = new FormData();
+        body.append('csrfmiddlewaretoken', getCsrf());
 
-        var input = wrap.querySelector('textarea');
-        var sendBtn = wrap.querySelector('.btn-danger');
-        var cancelBtn = wrap.querySelector('.btn-outline-secondary');
+        fetch('/staff/users/' + userId + '/leads/' + leadId + '/approve/', {
+          method: 'POST', body: body,
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin'
+        })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(res) {
+          if (res.ok && res.data.success) {
+            fadeRow(btn);
+            showToast(res.data.message, 'success');
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Одобрить';
+            showToast('Ошибка: ' + (res.data.message || 'попробуйте снова'), 'danger');
+          }
+        })
+        .catch(function() {
+          btn.disabled = false;
+          btn.textContent = 'Одобрить';
+          showToast('Ошибка сети', 'danger');
+        });
+      });
+    });
 
-        input.focus();
+    // ---- Reject (modal) ----
+    var rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
+    var rejectBtn = null;
+    document.querySelectorAll('.js-reject-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        rejectBtn = btn;
+        var leadId = btn.getAttribute('data-lead-id');
+        var isApproved = btn.getAttribute('data-approved') === '1';
+        document.getElementById('rejectLeadId').textContent = leadId;
+        document.getElementById('rejectReason').value = '';
+        document.getElementById('rejectReason').classList.remove('is-invalid');
+        var warn = document.getElementById('rejectApprovedWarning');
+        isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none');
+        document.getElementById('rejectSubmitBtn').disabled = false;
+        document.getElementById('rejectSubmitBtn').textContent = 'Отклонить';
+        rejectModal.show();
+        setTimeout(function() { document.getElementById('rejectReason').focus(); }, 300);
+      });
+    });
 
-        function submit() {
-          var reason = input.value.trim();
-          if (!reason) { input.classList.add('is-invalid'); return; }
-          sendBtn.disabled = true;
-          sendBtn.textContent = '…';
+    document.getElementById('rejectSubmitBtn').addEventListener('click', function() {
+      if (!rejectBtn) return;
+      var reason = document.getElementById('rejectReason').value.trim();
+      if (!reason) {
+        document.getElementById('rejectReason').classList.add('is-invalid');
+        return;
+      }
+      var userId = rejectBtn.getAttribute('data-user-id');
+      var leadId = rejectBtn.getAttribute('data-lead-id');
+      var submitBtn = document.getElementById('rejectSubmitBtn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '…';
 
-          var body = new FormData();
-          body.append('csrfmiddlewaretoken', csrfToken);
-          body.append('rejection_reason', reason);
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      body.append('rejection_reason', reason);
 
-          fetch(url, { method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-            .then(function(res) {
-              if (res.ok && res.data.success) {
-                var row = btn.closest('tr');
-                row.style.transition = 'opacity 0.25s';
-                row.style.opacity = '0';
-                setTimeout(function() { row.remove(); }, 250);
-                if (toast && res.data.message) {
-                  toast.textContent = res.data.message;
-                  toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-danger py-2 px-3 mb-0 shadow-sm';
-                  toast.style.display = 'block';
-                  toast.style.zIndex = '1100';
-                  setTimeout(function() { toast.style.display = 'none'; toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm'; }, 3000);
-                }
-              } else {
-                sendBtn.disabled = false;
-                sendBtn.textContent = 'Отклонить';
-                input.classList.add('is-invalid');
-              }
-            })
-            .catch(function() {
-              sendBtn.disabled = false;
-              sendBtn.textContent = 'Отклонить';
-            });
+      fetch('/staff/users/' + userId + '/leads/' + leadId + '/reject/', {
+        method: 'POST', body: body,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin'
+      })
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        if (res.ok && res.data.success) {
+          rejectModal.hide();
+          fadeRow(rejectBtn);
+          showToast(res.data.message, 'danger');
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Отклонить';
+          document.getElementById('rejectReason').classList.add('is-invalid');
         }
+      })
+      .catch(function() {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Отклонить';
+      });
+    });
 
-        sendBtn.addEventListener('click', submit);
-        input.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } if (e.key === 'Escape') wrap.remove(); });
-        cancelBtn.addEventListener('click', function() { wrap.remove(); });
+    // ---- Rework (modal) ----
+    var reworkModal = new bootstrap.Modal(document.getElementById('reworkModal'));
+    var reworkBtn = null;
+    document.querySelectorAll('.js-rework-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        reworkBtn = btn;
+        var leadId = btn.getAttribute('data-lead-id');
+        var isApproved = btn.getAttribute('data-approved') === '1';
+        document.getElementById('reworkLeadId').textContent = leadId;
+        document.getElementById('reworkComment').value = '';
+        var warn = document.getElementById('reworkApprovedWarning');
+        isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none');
+        document.getElementById('reworkSubmitBtn').disabled = false;
+        document.getElementById('reworkSubmitBtn').textContent = 'Отправить на доработку';
+        reworkModal.show();
+        setTimeout(function() { document.getElementById('reworkComment').focus(); }, 300);
+      });
+    });
+
+    document.getElementById('reworkSubmitBtn').addEventListener('click', function() {
+      if (!reworkBtn) return;
+      var comment = document.getElementById('reworkComment').value.trim();
+      var userId = reworkBtn.getAttribute('data-user-id');
+      var leadId = reworkBtn.getAttribute('data-lead-id');
+      var submitBtn = document.getElementById('reworkSubmitBtn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '…';
+
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      body.append('rework_comment', comment);
+
+      fetch('/staff/users/' + userId + '/leads/' + leadId + '/rework/', {
+        method: 'POST', body: body,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin'
+      })
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        if (res.ok && res.data.success) {
+          reworkModal.hide();
+          fadeRow(reworkBtn);
+          showToast(res.data.message, 'warning');
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Отправить на доработку';
+        }
+      })
+      .catch(function() {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Отправить на доработку';
       });
     });
   })();
