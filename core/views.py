@@ -306,8 +306,9 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     pending_wr = WithdrawalRequest.objects.filter(user=user, status="pending").first()
     withdrawal_pending = pending_wr is not None
     withdrawal_pending_amount = pending_wr.amount if pending_wr else 0
-    can_withdraw_search = balance >= withdrawal_min and not withdrawal_pending
-    can_withdraw_dozhim = dozhim_balance >= withdrawal_min and not withdrawal_pending
+    smz_ok = getattr(user, "smz_status", "none") == "approved"
+    can_withdraw_search = balance >= withdrawal_min and not withdrawal_pending and smz_ok
+    can_withdraw_dozhim = dozhim_balance >= withdrawal_min and not withdrawal_pending and smz_ok
     # Есть ли непрочитанные сообщения от поддержки
     support_has_unread = False
     thread = SupportThread.objects.filter(user=user).order_by("-updated_at").first()
@@ -326,6 +327,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         .exclude(receipt_status="approved")
         .order_by("-created_at")[:5]
     )
+    last_rejected_wr = (
+        WithdrawalRequest.objects.filter(user=user, status="rejected")
+        .order_by("-processed_at")
+        .first()
+    )
     return render(
         request,
         "core/dashboard.html",
@@ -339,6 +345,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "support_has_unread": support_has_unread,
             "rework_leads_count": rework_leads_count,
             "receiptless_withdrawals": receiptless_withdrawals,
+            "last_rejected_withdrawal": last_rejected_wr,
         },
     )
 
@@ -716,6 +723,13 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
     # СМЗ-гейт: для всех кроме main_admin
     if getattr(user, "role", None) != "main_admin":
         if getattr(user, "smz_status", "none") != "approved":
+            _smz = getattr(user, "smz_status", "none")
+            if _smz == "pending":
+                messages.warning(request, "Вывод недоступен: заявка на СМЗ ещё на рассмотрении. Дождитесь одобрения администратором.")
+            elif _smz == "rejected":
+                messages.warning(request, "Вывод недоступен: заявка на СМЗ отклонена. Исправьте данные и отправьте заново.")
+            else:
+                messages.warning(request, "Для вывода средств необходимо заполнить данные самозанятости (СМЗ).")
             return redirect("smz_registration")
         # Блокировка: есть выплата без одобренного чека
         has_unchecked = WithdrawalRequest.objects.filter(

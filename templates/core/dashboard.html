@@ -42,6 +42,23 @@
     </div>
   {% endif %}
 
+  {% if last_rejected_withdrawal %}
+    <div class="alert alert-danger d-flex align-items-center mb-3" role="alert">
+      <span class="me-2" aria-hidden="true">❌</span>
+      <div>
+        <strong>Заявка на вывод {{ last_rejected_withdrawal.amount }} руб. отклонена.</strong>
+        Средства возвращены на баланс.
+        {% if user.smz_status == 'pending' %}
+          Причина: заявка на СМЗ ещё не одобрена. Дождитесь подтверждения.
+        {% elif user.smz_status == 'none' or user.smz_status == 'rejected' %}
+          Проверьте данные СМЗ и обратитесь в поддержку.
+        {% else %}
+          Обратитесь в поддержку, если не знаете причину.
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
   {% if withdrawal_pending %}
     <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
       <span class="me-2" aria-hidden="true">💸</span>
@@ -57,7 +74,11 @@
         <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}?dept=search">Вывести {{ user.balance|default:0 }} ₽</a>
       </div>
     {% else %}
-      <p class="text-muted small mb-2">Вывод от {{ withdrawal_min_balance }} руб.</p>
+      {% if user.smz_status != 'approved' and user.balance >= withdrawal_min_balance %}
+        <p class="text-warning small mb-2">Вывод будет доступен после одобрения СМЗ.</p>
+      {% else %}
+        <p class="text-muted small mb-2">Вывод от {{ withdrawal_min_balance }} руб.</p>
+      {% endif %}
     {% endif %}
   {% endif %}
 
