@@ -45,6 +45,16 @@
     <li class="nav-item">
       <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a>
     </li>
+    <li class="nav-item ms-2 border-start ps-2">
+      <a class="nav-link {% if tab == 'bot_waiting' %}active{% endif %}" href="?tab=bot_waiting">
+        Бот ожидает {% if bot_waiting_count %}<span class="badge bg-secondary">{{ bot_waiting_count }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'bot_started' %}active{% endif %}" href="?tab=bot_started">
+        Бот запущен {% if bot_started_count %}<span class="badge bg-success">{{ bot_started_count }}</span>{% endif %}
+      </a>
+    </li>
   </ul>
 
   {# Поиск #}
@@ -87,6 +97,7 @@
                 <th>Имя лида</th>
                 <th>Ссылка</th>
                 <th>Создано</th>
+                <th>Бот</th>
                 <th>Отчёт</th>
                 <th></th>
               </tr>
@@ -107,6 +118,13 @@
                     </div>
                   </td>
                   <td class="text-muted small">{{ link.created_at|date:"d.m.Y H:i" }}</td>
+                  <td>
+                    {% if link.bot_started %}
+                      <span class="badge bg-success">Запущен</span>
+                    {% else %}
+                      <span class="badge bg-secondary">Ожидание</span>
+                    {% endif %}
+                  </td>
                   <td>
                     {% with report=link.report_obj %}
                       {% if report %}

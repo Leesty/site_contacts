@@ -67,6 +67,10 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
         links_qs = links_qs.filter(report__status=SearchReport.Status.PENDING)
     elif tab == "approved":
         links_qs = links_qs.filter(report__status=SearchReport.Status.APPROVED)
+    elif tab == "bot_waiting":
+        links_qs = links_qs.filter(bot_started=False)
+    elif tab == "bot_started":
+        links_qs = links_qs.filter(bot_started=True)
 
     if q:
         from django.db.models import Q
@@ -78,6 +82,8 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
     rework_count = user_links.filter(report__status=SearchReport.Status.REWORK).count()
     rejected_count = user_links.filter(report__status=SearchReport.Status.REJECTED).count()
     pending_count = user_links.filter(report__status=SearchReport.Status.PENDING).count()
+    bot_waiting_count = user_links.filter(bot_started=False).count()
+    bot_started_count = user_links.filter(bot_started=True).count()
 
     paginator = Paginator(links_qs, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
@@ -96,6 +102,8 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
         "rework_count": rework_count,
         "rejected_count": rejected_count,
         "pending_count": pending_count,
+        "bot_waiting_count": bot_waiting_count,
+        "bot_started_count": bot_started_count,
     })
 
 

@@ -17,6 +17,7 @@
   {% if user.smz_status == 'pending' %}
     <div class="alert alert-info mb-3">
       <strong>Заявка на рассмотрении.</strong> Ваше ФИО отправлено администратору. Ожидайте подтверждения — после этого вы сможете выводить средства.
+      Вы можете изменить данные ниже до проверки.
     </div>
   {% endif %}
 
@@ -48,10 +49,9 @@
     </div>
   </div>
 
-  {% if user.smz_status != 'pending' %}
   <div class="card shadow-sm" style="max-width: 32rem;">
     <div class="card-header bg-transparent border-secondary py-2">
-      <strong>{% if user.smz_status == 'approved' %}Редактировать данные{% else %}Заполнить данные для выплат{% endif %}</strong>
+      <strong>{% if user.smz_status == 'approved' %}Редактировать данные СМЗ{% elif user.smz_status == 'pending' %}Изменить данные{% else %}Заполнить данные для выплат{% endif %}</strong>
     </div>
     <div class="card-body">
       <form method="post">
@@ -65,10 +65,9 @@
           <label for="smz_not_self" class="form-check-label">Приём не на себя (указываю чужие реквизиты)</label>
         </div>
         <button type="submit" class="btn btn-primary w-100">
-          {% if user.smz_status == 'approved' %}Сохранить изменения{% else %}Отправить на проверку{% endif %}
+          {% if user.smz_status == 'approved' %}Сохранить (заявка уйдёт на проверку){% elif user.smz_status == 'pending' %}Обновить данные{% else %}Отправить на проверку{% endif %}
         </button>
       </form>
     </div>
   </div>
-  {% endif %}
 {% endblock %}

@@ -666,16 +666,12 @@ def smz_registration(request: HttpRequest) -> HttpResponse:
             return render(request, "core/smz_registration.html", {"user": user})
         user.smz_fio = fio
         user.smz_not_self = not_self
-        # Если уже одобрен — просто обновляем ФИО без сброса статуса
-        if user.smz_status != "approved":
-            user.smz_status = "pending"
-            user.smz_submitted_at = timezone.now()
-            user.smz_reject_reason = ""
+        # Любое изменение → статус сбрасывается на pending (заявка летит админу)
+        user.smz_status = "pending"
+        user.smz_submitted_at = timezone.now()
+        user.smz_reject_reason = ""
         user.save(update_fields=["smz_fio", "smz_not_self", "smz_status", "smz_submitted_at", "smz_reject_reason"])
-        if user.smz_status == "approved":
-            messages.success(request, "Данные обновлены.")
-            return redirect("request_withdrawal_create")
-        messages.success(request, "Заявка на СМЗ отправлена. Ожидайте подтверждения администратора.")
+        messages.success(request, "Данные отправлены на проверку администратору.")
         return redirect("smz_registration")
 
     # Если уже одобрен и не редактирует — отправляем на вывод
