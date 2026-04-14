@@ -234,6 +234,9 @@ def worker_task_detail(request: HttpRequest, assignment_id: int) -> HttpResponse
                 if form.cleaned_data.get("attachment"):
                     report.attachment = form.cleaned_data["attachment"]
                 report.save()
+                if report.attachment:
+                    from .lead_utils import compress_lead_attachment
+                    compress_lead_attachment(report)
                 messages.success(request, "Отчёт отправлен на проверку.")
                 return redirect("worker_tasks")
             except Exception as e:
@@ -279,6 +282,9 @@ def worker_report_redo(request: HttpRequest, assignment_id: int) -> HttpResponse
                 report.attachment = form.cleaned_data["attachment"]
                 update_fields.append("attachment")
             report.save(update_fields=update_fields)
+            if form.cleaned_data.get("attachment") and report.attachment:
+                from .lead_utils import compress_lead_attachment
+                compress_lead_attachment(report)
             messages.success(request, "Отчёт отправлен на повторную проверку.")
             return redirect("worker_tasks")
     else:
@@ -442,6 +448,9 @@ def worker_self_lead_create(request: HttpRequest) -> HttpResponse:
                     if form.cleaned_data.get("attachment"):
                         self_lead.attachment = form.cleaned_data["attachment"]
                     self_lead.save()
+                    if self_lead.attachment:
+                        from .lead_utils import compress_lead_attachment
+                        compress_lead_attachment(self_lead)
                     messages.success(request, "Лид отправлен на проверку.")
                     return redirect("worker_self_leads")
                 except Exception as e:
@@ -491,6 +500,9 @@ def worker_self_lead_edit(request: HttpRequest, self_lead_id: int) -> HttpRespon
                 self_lead.attachment = form.cleaned_data["attachment"]
                 update_fields.append("attachment")
             self_lead.save(update_fields=update_fields)
+            if form.cleaned_data.get("attachment") and self_lead.attachment:
+                from .lead_utils import compress_lead_attachment
+                compress_lead_attachment(self_lead)
             messages.success(request, "Лид обновлён.")
             return redirect("worker_self_leads")
     else:
@@ -530,6 +542,9 @@ def worker_self_lead_redo(request: HttpRequest, self_lead_id: int) -> HttpRespon
                     self_lead.attachment = form.cleaned_data["attachment"]
                     update_fields.append("attachment")
                 self_lead.save(update_fields=update_fields)
+                if form.cleaned_data.get("attachment") and self_lead.attachment:
+                    from .lead_utils import compress_lead_attachment
+                    compress_lead_attachment(self_lead)
                 messages.success(request, "Лид отправлен на повторную проверку.")
                 return redirect("worker_self_leads")
     else:

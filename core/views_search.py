@@ -217,6 +217,8 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
             attachment=attachment,
             comment=comment,
         )
+        from .lead_utils import compress_lead_attachment
+        compress_lead_attachment(report)
         messages.success(request, "Отчёт отправлен.")
         return redirect("search_links_my")
 
@@ -272,6 +274,9 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
         report.status = SearchReport.Status.PENDING
         report.rework_comment = ""
         report.save(update_fields=["raw_contact", "attachment", "comment", "status", "rework_comment", "updated_at"])
+        if attachment:
+            from .lead_utils import compress_lead_attachment
+            compress_lead_attachment(report)
         messages.success(request, "Отчёт доработан и отправлен повторно.")
         return redirect("search_links_my")
 
