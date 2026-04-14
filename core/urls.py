@@ -339,6 +339,7 @@ urlpatterns = [
     path("search/links/create/", views_search.search_link_create, name="search_link_create"),
     path("search/links/<str:code>/report/", views_search.search_report_create, name="search_report_create"),
     path("search/links/<str:code>/report/redo/", views_search.search_report_redo, name="search_report_redo"),
+    path("search/links/<str:code>/report/attachment/", views_search.search_report_attachment, name="search_report_attachment"),
     path("api/search-bot-start/", views_search.search_bot_start_webhook, name="search_bot_start_webhook"),
     path("staff/search-reports/", views_search.admin_search_reports_list, name="admin_search_reports_list"),
     path("staff/search-reports/<int:report_id>/approve/", views_search.admin_search_report_approve, name="admin_search_report_approve"),

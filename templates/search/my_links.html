@@ -98,7 +98,9 @@
                 <th>Ссылка</th>
                 <th>Создано</th>
                 <th>Бот</th>
-                <th>Отчёт</th>
+                <th>Контакт</th>
+                <th>Вложение</th>
+                <th>Статус</th>
                 <th></th>
               </tr>
             </thead>
@@ -125,38 +127,44 @@
                       <span class="badge bg-secondary">Ожидание</span>
                     {% endif %}
                   </td>
+                  {% with report=link.report_obj %}
+                  <td class="small text-break" style="max-width: 150px;">
+                    {% if report and report.raw_contact %}{{ report.raw_contact|truncatechars:40 }}{% else %}<span class="text-muted">—</span>{% endif %}
+                  </td>
                   <td>
-                    {% with report=link.report_obj %}
-                      {% if report %}
-                        {% if report.status == 'pending' %}
-                          <span class="badge bg-secondary">На проверке</span>
-                        {% elif report.status == 'approved' %}
-                          <span class="badge bg-success">Одобрен +100₽</span>
-                        {% elif report.status == 'rejected' %}
-                          <span class="badge bg-danger">Отклонён</span>
-                          {% if report.rejection_reason %}
-                            <div class="small text-danger mt-1">{{ report.rejection_reason|truncatechars:80 }}</div>
-                          {% endif %}
-                        {% elif report.status == 'rework' %}
-                          <span class="badge bg-warning text-dark">На доработке</span>
-                          {% if report.rework_comment %}
-                            <div class="small text-warning mt-1">{{ report.rework_comment|truncatechars:80 }}</div>
-                          {% endif %}
+                    {% if report and report.attachment %}
+                      <a href="{% url 'search_report_attachment' link.code %}" target="_blank" class="btn btn-outline-primary btn-sm py-0">Файл</a>
+                    {% else %}<span class="text-muted">—</span>{% endif %}
+                  </td>
+                  <td>
+                    {% if report %}
+                      {% if report.status == 'pending' %}
+                        <span class="badge bg-secondary">На проверке</span>
+                      {% elif report.status == 'approved' %}
+                        <span class="badge bg-success">Одобрен +100₽</span>
+                      {% elif report.status == 'rejected' %}
+                        <span class="badge bg-danger">Отклонён</span>
+                        {% if report.rejection_reason %}
+                          <div class="small text-danger mt-1">{{ report.rejection_reason|truncatechars:80 }}</div>
                         {% endif %}
-                      {% else %}
-                        <span class="text-muted small">—</span>
+                      {% elif report.status == 'rework' %}
+                        <span class="badge bg-warning text-dark">Доработка</span>
+                        {% if report.rework_comment %}
+                          <div class="small text-warning mt-1">{{ report.rework_comment|truncatechars:80 }}</div>
+                        {% endif %}
                       {% endif %}
-                    {% endwith %}
+                    {% else %}
+                      <span class="text-muted small">—</span>
+                    {% endif %}
                   </td>
                   <td>
-                    {% with report=link.report_obj %}
-                      {% if not report %}
-                        <a href="{% url 'search_report_create' link.code %}" class="btn btn-primary btn-sm py-0">Отчёт</a>
-                      {% elif report.status == 'rework' %}
-                        <a href="{% url 'search_report_redo' link.code %}" class="btn btn-warning btn-sm py-0">Доработать</a>
-                      {% endif %}
-                    {% endwith %}
+                    {% if not report %}
+                      <a href="{% url 'search_report_create' link.code %}" class="btn btn-primary btn-sm py-0">Отчёт</a>
+                    {% elif report.status == 'rework' %}
+                      <a href="{% url 'search_report_redo' link.code %}" class="btn btn-warning btn-sm py-0">Доработать</a>
+                    {% endif %}
                   </td>
+                  {% endwith %}
                 </tr>
               {% endfor %}
             </tbody>

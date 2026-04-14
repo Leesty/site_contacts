@@ -210,6 +210,22 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
 
 
 @login_required
+def search_report_attachment(request: HttpRequest, code: str) -> HttpResponse:
+    """Просмотр вложения отчёта SearchLink (для владельца ссылки)."""
+    if not _require_approved_user(request):
+        return HttpResponseForbidden("Доступ запрещён.")
+    link = get_object_or_404(SearchLink, code=code, user=request.user)
+    try:
+        report = link.report
+    except SearchReport.DoesNotExist:
+        return HttpResponse("Нет отчёта.", status=404)
+    if not report.attachment:
+        return HttpResponse("Нет вложения.", status=404)
+    from django.shortcuts import redirect as redir
+    return redir(report.attachment.url)
+
+
+@login_required
 def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     """Доработка отчёта по SearchLink."""
     if not _require_approved_user(request):
