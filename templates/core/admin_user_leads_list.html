@@ -339,7 +339,8 @@
     });
 
     // ---- Reject (modal) ----
-    var rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
+    var _rejectModal = null;
+    function getRejectModal() { if (!_rejectModal) _rejectModal = new bootstrap.Modal(document.getElementById('rejectModal')); return _rejectModal; }
     var rejectBtn = null;
     document.querySelectorAll('.js-reject-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -353,7 +354,7 @@
         isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none');
         document.getElementById('rejectSubmitBtn').disabled = false;
         document.getElementById('rejectSubmitBtn').textContent = 'Отклонить';
-        rejectModal.show();
+        getRejectModal().show();
         setTimeout(function() { document.getElementById('rejectReason').focus(); }, 300);
       });
     });
@@ -383,7 +384,7 @@
       .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
       .then(function(res) {
         if (res.ok && res.data.success) {
-          rejectModal.hide();
+          getRejectModal().hide();
           fadeRow(rejectBtn);
           showToast(res.data.message, 'danger');
         } else {
@@ -399,7 +400,8 @@
     });
 
     // ---- Rework (modal) ----
-    var reworkModal = new bootstrap.Modal(document.getElementById('reworkModal'));
+    var _reworkModal = null;
+    function getReworkModal() { if (!_reworkModal) _reworkModal = new bootstrap.Modal(document.getElementById('reworkModal')); return _reworkModal; }
     var reworkBtn = null;
     document.querySelectorAll('.js-rework-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -412,7 +414,7 @@
         isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none');
         document.getElementById('reworkSubmitBtn').disabled = false;
         document.getElementById('reworkSubmitBtn').textContent = 'Отправить на доработку';
-        reworkModal.show();
+        getReworkModal().show();
         setTimeout(function() { document.getElementById('reworkComment').focus(); }, 300);
       });
     });
@@ -438,7 +440,7 @@
       .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
       .then(function(res) {
         if (res.ok && res.data.success) {
-          reworkModal.hide();
+          getReworkModal().hide();
           fadeRow(reworkBtn);
           showToast(res.data.message, 'warning');
         } else {
