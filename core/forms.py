@@ -16,17 +16,18 @@ class UserRegistrationForm(UserCreationForm):
     username = forms.CharField(
         label="Логин",
         help_text="Укажите свой Telegram @ник (можно без символа @).",
+        widget=forms.TextInput(attrs={"autocomplete": "username"}),
     )
     password1 = forms.CharField(
         label="Пароль",
         strip=False,
-        widget=forms.PasswordInput,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
         help_text="Любой пароль, который вам удобно запомнить. Не передавайте его другим людям.",
     )
     password2 = forms.CharField(
         label="Повтор пароля",
         strip=False,
-        widget=forms.PasswordInput,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
         help_text="Введите тот же пароль ещё раз для проверки.",
     )
 
@@ -395,7 +396,7 @@ class LeadReworkForm(forms.Form):
     rework_comment = forms.CharField(
         label="Что нужно доработать",
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3, "placeholder": "Опишите, что нужно исправить или добавить"}),
-        required=True,
+        required=False,
     )
 
 
