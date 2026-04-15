@@ -9,6 +9,31 @@
     <p class="text-muted small mb-0">{{ user.username }} — управление отчётами, пользователями и базами.</p>
   </div>
 
+  {# ═══ СМЗ-статус ═══ #}
+  {% if user.smz_status == 'none' or user.smz_status == 'rejected' %}
+    <div class="alert alert-warning d-flex align-items-center mb-3">
+      <span class="me-2">📋</span>
+      <div class="flex-grow-1">
+        {% if user.smz_status == 'rejected' %}
+          <strong>СМЗ отклонена.</strong> Исправьте данные и отправьте заново.
+        {% else %}
+          <strong>Для вывода средств необходимо подтвердить самозанятость.</strong>
+        {% endif %}
+      </div>
+      <a class="btn btn-warning btn-sm ms-2" href="{% url 'smz_registration' %}">Заполнить СМЗ</a>
+    </div>
+  {% elif user.smz_status == 'pending' %}
+    <div class="alert alert-info d-flex align-items-center mb-3">
+      <span class="me-2">⏳</span>
+      <div class="flex-grow-1"><strong>Заявка на СМЗ на рассмотрении.</strong> Ожидайте подтверждения для вывода средств.</div>
+      <a class="btn btn-outline-info btn-sm ms-2" href="{% url 'smz_registration' %}?edit=1">Изменить</a>
+    </div>
+  {% elif user.smz_status == 'approved' %}
+    <div class="d-flex gap-2 mb-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'smz_registration' %}?edit=1">Редактировать СМЗ</a>
+    </div>
+  {% endif %}
+
   {# ═══ Секция 1: Заработок (компактная полоса сверху) ═══ #}
   <div class="card shadow-sm mb-4" style="background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(99,102,241,0.05) 100%); border: 1px solid rgba(99,102,241,0.2);">
     <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center justify-content-between gap-2">

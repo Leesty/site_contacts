@@ -241,7 +241,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         admin_withdrawn = WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
         admin_balance = max(0, admin_earned - admin_withdrawn)
         admin_withdrawal_pending = WithdrawalRequest.objects.filter(user=user, status="pending").exists()
-        admin_can_withdraw = admin_balance >= getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500) and not admin_withdrawal_pending
+        admin_smz_ok = getattr(user, "smz_status", "none") == "approved" or getattr(user, "role", None) == "main_admin"
+        admin_can_withdraw = admin_balance >= getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500) and not admin_withdrawal_pending and admin_smz_ok
 
         from .models import SearchReport, SearchLink
         search_pending_count = SearchReport.objects.filter(

@@ -55,7 +55,8 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
     pending_wr = withdrawals.filter(status="pending").first()
     withdrawal_pending = pending_wr is not None
     withdrawal_pending_amount = pending_wr.amount if pending_wr else 0
-    can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending
+    partner_smz_ok = getattr(user, "smz_status", "none") == "approved"
+    can_request_withdrawal = balance >= withdrawal_min and not withdrawal_pending and partner_smz_ok
 
     from .models import Lead
     dozhim_pending_count = Lead.objects.filter(
