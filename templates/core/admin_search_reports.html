@@ -1,115 +1,354 @@
 {% extends "base.html" %}
+{% load support_extras static %}
 
 {% block title %}Отчёты SearchLink — Партнёрка{% endblock %}
 
 {% block content %}
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  {% csrf_token %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="h4 mb-0">Отчёты SearchLink {% if pending_count %}<span class="badge bg-danger">{{ pending_count }}</span>{% endif %}</h1>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_search_stats' %}">Статистика</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+    </div>
   </div>
 
-  {# Вкладки #}
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
       <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">Новые {% if pending_count %}<span class="badge bg-danger ms-1">{{ pending_count }}</span>{% endif %}</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a>
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">На доработке</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">На доработке</a>
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a>
     </li>
     <li class="nav-item">
       <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые</a>
     </li>
   </ul>
 
-  {% if page_obj %}
-    <div class="card shadow-sm">
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Менеджер</th>
+              <th>Лид</th>
+              <th>Дата лида</th>
+              <th>Отправлен</th>
+              {% if tab == 'rework' %}<th>Причина доработки</th>{% elif tab == 'rejected' %}<th>Причина отклонения</th>{% endif %}
+              {% if tab == 'approved' or tab == 'rejected' %}<th>Проверил</th>{% endif %}
+              <th>Вложение</th>
+              <th>Контакт</th>
+              <th>Комментарий</th>
+              {% if tab != 'rejected' %}<th>Действия</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for report in page_obj %}
               <tr>
-                <th>#</th>
-                <th>Менеджер</th>
-                <th>Лид</th>
-                <th>Контакт</th>
-                <th>Дата</th>
-                <th>Вложение</th>
-                <th>Статус</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for report in page_obj %}
-                <tr>
-                  <td class="text-muted">#{{ report.search_link.display_id|default:report.id }}</td>
-                  <td>@{{ report.user.username }}</td>
-                  <td>
-                    {{ report.search_link.lead_name|truncatechars:25 }}
-                    {% if report.search_link.self_click %}<span class="badge bg-danger ms-1" title="IP создателя совпал с IP посетителя">НАКРУТКА</span>{% endif %}
-                  </td>
-                  <td class="text-break small">{{ report.raw_contact|default:"—" }}</td>
-                  <td class="text-muted small">{{ report.lead_date|date:"d.m.Y" }}</td>
-                  <td>
-                    {% if report.attachment %}
-                      <a href="{% url 'admin_search_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm py-0">Файл</a>
-                    {% else %}—{% endif %}
-                  </td>
-                  <td>
-                    {% if report.status == 'pending' %}
-                      <span class="badge bg-secondary">На проверке</span>
-                    {% elif report.status == 'approved' %}
-                      <span class="badge bg-success">Одобрен</span>
-                    {% elif report.status == 'rejected' %}
-                      <span class="badge bg-danger">Отклонён</span>
+                <td class="text-muted">#{{ report.search_link.display_id|default:report.id }}</td>
+                <td>
+                  <a href="{% url 'admin_user_leads_list' report.user_id %}" class="text-truncate d-inline-block" style="max-width:130px;">@{{ report.user.username }}</a>
+                </td>
+                <td>
+                  {{ report.search_link.lead_name|truncatechars:25 }}
+                  {% if report.search_link.self_click %}<span class="badge bg-danger ms-1" title="IP создателя совпал с IP посетителя">НАКРУТКА</span>{% endif %}
+                  {% if not report.search_link.bot_started and report.search_link.visitor_ip %}<span class="badge bg-warning text-dark ms-1" title="Бот не стартовал, но ссылка кликнута">Без бота</span>{% endif %}
+                </td>
+                <td>{{ report.lead_date|date:"d.m.Y" }}</td>
+                <td class="small text-muted">{{ report.created_at|date:"d.m.Y H:i" }}</td>
+                {% if tab == 'rework' %}
+                <td class="text-break small">
+                  {% if report.rework_comment and report.rework_comment|length > 80 %}
+                    <span class="js-truncated">{{ report.rework_comment|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
+                    <span class="js-full d-none">{{ report.rework_comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
+                  {% else %}{{ report.rework_comment|default:"—" }}{% endif %}
+                </td>
+                {% elif tab == 'rejected' %}
+                <td class="text-break small">
+                  {% if report.rejection_reason and report.rejection_reason|length > 80 %}
+                    <span class="js-truncated">{{ report.rejection_reason|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
+                    <span class="js-full d-none">{{ report.rejection_reason }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
+                  {% else %}{{ report.rejection_reason|default:"—" }}{% endif %}
+                </td>
+                {% endif %}
+                {% if tab == 'approved' or tab == 'rejected' %}
+                <td>{% if report.reviewed_by %}@{{ report.reviewed_by.username }}{% else %}—{% endif %}</td>
+                {% endif %}
+                <td>
+                  {% if report.attachment %}
+                    {% if report.attachment|lead_attachment_is_video %}
+                      <button type="button" class="btn btn-outline-primary btn-sm js-video-preview"
+                              data-video-url="{% url 'admin_search_report_attachment' report.id %}"
+                              data-s3-url="{{ report.attachment|attachment_s3_url }}"
+                              data-lead-id="{{ report.search_link.display_id|default:report.id }}">Видео</button>
+                    {% else %}
+                      <a href="{% url 'admin_search_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Открыть</a>
+                    {% endif %}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-break small">{{ report.raw_contact|default:"—"|contact_link }}</td>
+                <td class="text-break small">
+                  {% if report.comment and report.comment|length > 40 %}
+                    <span class="js-truncated">{{ report.comment|truncatechars:40 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
+                    <span class="js-full d-none">{{ report.comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
+                  {% else %}{{ report.comment|default:"—" }}{% endif %}
+                </td>
+                {% if tab != 'rejected' %}
+                <td>
+                  <div class="d-flex flex-wrap gap-1">
+                    {% if report.status == 'approved' %}
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}" data-approved="1">Отменить</button>
+                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}" data-approved="1">Доработка</button>
                     {% elif report.status == 'rework' %}
-                      <span class="badge bg-warning text-dark">Доработка</span>
+                      <button type="button" class="btn btn-success btn-sm js-approve-btn"
+                              data-report-id="{{ report.id }}">Одобрить</button>
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">Отклонить</button>
+                    {% elif report.status == 'pending' %}
+                      <button type="button" class="btn btn-success btn-sm js-approve-btn"
+                              data-report-id="{{ report.id }}">Одобрить</button>
+                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">Отклонить</button>
+                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">Доработка</button>
                     {% endif %}
-                  </td>
-                  <td>
-                    {% if report.status == 'pending' %}
-                      <form method="post" action="{% url 'admin_search_report_approve' report.id %}" class="d-inline" onsubmit="return confirm('Одобрить?');">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-success btn-sm py-0">Одобрить</button>
-                      </form>
-                      <form method="post" action="{% url 'admin_search_report_reject' report.id %}" class="d-inline" onsubmit="return confirm('Отклонить?');">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
-                      </form>
-                      <form method="post" action="{% url 'admin_search_report_rework' report.id %}" class="d-inline">
-                        {% csrf_token %}
-                        <input type="hidden" name="comment" value="">
-                        <button type="submit" class="btn btn-outline-warning btn-sm py-0">Доработка</button>
-                      </form>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+                  </div>
+                </td>
+                {% endif %}
+              </tr>
+            {% empty %}
+              <tr><td colspan="12" class="text-muted text-center py-4">Нет отчётов.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer bg-transparent border-secondary d-flex justify-content-center py-2">
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Reject modal -->
+  <div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title">Отклонить отчёт #<span id="rejectReportId"></span></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="rejectApprovedWarning" class="alert alert-warning py-2 small d-none">
+            ⚠ Отчёт был одобрен. Вознаграждение будет списано с баланса.
+          </div>
+          <label class="form-label">Причина отклонения</label>
+          <textarea id="rejectReason" class="form-control" rows="3" placeholder="Укажите причину отклонения"></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+          <button type="button" class="btn btn-danger btn-sm" id="rejectSubmitBtn">Отклонить</button>
         </div>
       </div>
-      {% if page_obj.paginator.num_pages > 1 %}
-        <div class="card-footer bg-transparent border-secondary d-flex justify-content-end">
-          <nav>
-            <ul class="pagination pagination-sm mb-0">
-              {% if page_obj.has_previous %}
-                <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>
-              {% endif %}
-              <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-              {% if page_obj.has_next %}
-                <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>
-              {% endif %}
-            </ul>
-          </nav>
+    </div>
+  </div>
+
+  <!-- Rework modal -->
+  <div class="modal fade" id="reworkModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title">На доработку — отчёт #<span id="reworkReportId"></span></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-      {% endif %}
+        <div class="modal-body">
+          <div id="reworkApprovedWarning" class="alert alert-warning py-2 small d-none">
+            ⚠ Отчёт был одобрен. Вознаграждение будет списано с баланса.
+          </div>
+          <label class="form-label">Комментарий к доработке (необязательно)</label>
+          <textarea id="reworkComment" class="form-control" rows="3" placeholder="Что нужно исправить или дополнить"></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+          <button type="button" class="btn btn-warning btn-sm" id="reworkSubmitBtn">Отправить на доработку</button>
+        </div>
+      </div>
     </div>
-  {% else %}
-    <div class="card shadow-sm">
-      <div class="card-body text-center text-muted py-5">Нет отчётов.</div>
+  </div>
+
+  <!-- Video modal -->
+  <div class="modal fade" id="videoPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark">
+        <div class="modal-header border-secondary py-2">
+          <h6 class="modal-title">Видео отчёта #<span id="videoLeadId"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <video id="videoPreviewPlayer" controls preload="none" style="width: 100%; max-height: 70vh;">
+            Ваш браузер не поддерживает видео.
+          </video>
+        </div>
+        <div class="modal-footer border-secondary py-2">
+          <a id="videoDownloadLink" href="#" target="_blank" class="btn btn-outline-primary btn-sm">Открыть в новой вкладке</a>
+        </div>
+      </div>
     </div>
-  {% endif %}
+  </div>
+
+  <div id="lead-action-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index: 1100; display: none;" role="alert"></div>
+
+  <script src="{% static 'js/video-preview.js' %}"></script>
+  <script>
+  (function() {
+    // Expand / collapse
+    document.querySelectorAll('.js-expand-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var td = btn.closest('td');
+        td.querySelector('.js-truncated').classList.add('d-none');
+        td.querySelector('.js-full').classList.remove('d-none');
+      });
+    });
+    document.querySelectorAll('.js-collapse-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var td = btn.closest('td');
+        td.querySelector('.js-full').classList.add('d-none');
+        td.querySelector('.js-truncated').classList.remove('d-none');
+      });
+    });
+
+    var toast = document.getElementById('lead-action-toast');
+    function getCsrf() {
+      var el = document.querySelector('[name=csrfmiddlewaretoken]');
+      if (el) return el.value;
+      var m = document.cookie.match(/csrftoken=([^;]+)/);
+      return m ? m[1] : '';
+    }
+    function showToast(msg, type) {
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-' + type + ' py-2 px-3 mb-0 shadow-sm';
+      toast.style.display = 'block';
+      toast.style.zIndex = '1100';
+      setTimeout(function() { toast.style.display = 'none'; }, 3000);
+    }
+    function fadeRow(btn) {
+      var row = btn.closest('tr');
+      if (row) { row.style.transition = 'opacity 0.25s'; row.style.opacity = '0'; setTimeout(function() { row.remove(); }, 250); }
+    }
+
+    // Approve (AJAX)
+    document.querySelectorAll('.js-approve-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var reportId = btn.getAttribute('data-report-id');
+        btn.disabled = true; btn.textContent = '…';
+        var body = new FormData();
+        body.append('csrfmiddlewaretoken', getCsrf());
+        fetch('/staff/search-reports/' + reportId + '/approve/', {
+          method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin'
+        })
+        .then(function(r) { return r.text().then(function(t) { return { ok: r.ok, text: t }; }); })
+        .then(function(res) {
+          if (res.ok) { fadeRow(btn); showToast('Отчёт одобрен', 'success'); }
+          else { btn.disabled = false; btn.textContent = 'Одобрить'; showToast('Ошибка', 'danger'); }
+        })
+        .catch(function() { btn.disabled = false; btn.textContent = 'Одобрить'; });
+      });
+    });
+
+    // Reject (modal)
+    var _rejectModal = null;
+    function getRejectModal() { if (!_rejectModal) _rejectModal = new bootstrap.Modal(document.getElementById('rejectModal')); return _rejectModal; }
+    var rejectBtn = null;
+    document.querySelectorAll('.js-reject-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        rejectBtn = btn;
+        var displayId = btn.getAttribute('data-display-id') || btn.getAttribute('data-report-id');
+        var isApproved = btn.getAttribute('data-approved') === '1';
+        document.getElementById('rejectReportId').textContent = displayId;
+        document.getElementById('rejectReason').value = '';
+        document.getElementById('rejectReason').classList.remove('is-invalid');
+        var warn = document.getElementById('rejectApprovedWarning');
+        isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none');
+        document.getElementById('rejectSubmitBtn').disabled = false;
+        document.getElementById('rejectSubmitBtn').textContent = 'Отклонить';
+        getRejectModal().show();
+        setTimeout(function() { document.getElementById('rejectReason').focus(); }, 300);
+      });
+    });
+    document.getElementById('rejectSubmitBtn').addEventListener('click', function() {
+      if (!rejectBtn) return;
+      var reason = document.getElementById('rejectReason').value.trim();
+      var reportId = rejectBtn.getAttribute('data-report-id');
+      var submitBtn = document.getElementById('rejectSubmitBtn');
+      submitBtn.disabled = true; submitBtn.textContent = '…';
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      body.append('reason', reason);
+      fetch('/staff/search-reports/' + reportId + '/reject/', {
+        method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin'
+      })
+      .then(function(r) { return { ok: r.ok }; })
+      .then(function(res) {
+        if (res.ok) { getRejectModal().hide(); fadeRow(rejectBtn); showToast('Отчёт отклонён', 'danger'); }
+        else { submitBtn.disabled = false; submitBtn.textContent = 'Отклонить'; }
+      })
+      .catch(function() { submitBtn.disabled = false; submitBtn.textContent = 'Отклонить'; });
+    });
+
+    // Rework (modal)
+    var _reworkModal = null;
+    function getReworkModal() { if (!_reworkModal) _reworkModal = new bootstrap.Modal(document.getElementById('reworkModal')); return _reworkModal; }
+    var reworkBtn = null;
+    document.querySelectorAll('.js-rework-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        reworkBtn = btn;
+        var displayId = btn.getAttribute('data-display-id') || btn.getAttribute('data-report-id');
+        var isApproved = btn.getAttribute('data-approved') === '1';
+        document.getElementById('reworkReportId').textContent = displayId;
+        document.getElementById('reworkComment').value = '';
+        var warn = document.getElementById('reworkApprovedWarning');
+        isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none');
+        document.getElementById('reworkSubmitBtn').disabled = false;
+        document.getElementById('reworkSubmitBtn').textContent = 'Отправить на доработку';
+        getReworkModal().show();
+        setTimeout(function() { document.getElementById('reworkComment').focus(); }, 300);
+      });
+    });
+    document.getElementById('reworkSubmitBtn').addEventListener('click', function() {
+      if (!reworkBtn) return;
+      var comment = document.getElementById('reworkComment').value.trim();
+      var reportId = reworkBtn.getAttribute('data-report-id');
+      var submitBtn = document.getElementById('reworkSubmitBtn');
+      submitBtn.disabled = true; submitBtn.textContent = '…';
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      body.append('comment', comment);
+      fetch('/staff/search-reports/' + reportId + '/rework/', {
+        method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin'
+      })
+      .then(function(r) { return { ok: r.ok }; })
+      .then(function(res) {
+        if (res.ok) { getReworkModal().hide(); fadeRow(reworkBtn); showToast('Отправлено на доработку', 'warning'); }
+        else { submitBtn.disabled = false; submitBtn.textContent = 'Отправить на доработку'; }
+      })
+      .catch(function() { submitBtn.disabled = false; submitBtn.textContent = 'Отправить на доработку'; });
+    });
+  })();
+  </script>
 {% endblock %}

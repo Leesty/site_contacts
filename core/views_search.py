@@ -333,7 +333,7 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     from django.db.models import Q
     # Показываем отчёты где бот стартовал ИЛИ ссылка кликнута (visitor_ip есть) — fallback на случай сбоя вебхука
     _visible = Q(search_link__bot_started=True) | Q(search_link__visitor_ip__isnull=False)
-    reports_qs = SearchReport.objects.filter(_visible).select_related("user", "search_link")
+    reports_qs = SearchReport.objects.filter(_visible).select_related("user", "search_link", "reviewed_by")
 
     if tab == "approved":
         reports_qs = reports_qs.filter(status=SearchReport.Status.APPROVED)
@@ -421,6 +421,8 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
     msg = f"Отчёт #{report_id} одобрен. +{ref_reward} руб. пользователю @{report.user.username}."
     if manager_cut > 0:
         msg += f" +{manager_cut} руб. менеджеру."
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"success": True, "message": msg})
     messages.success(request, msg)
     return redirect("admin_search_reports_list")
 
