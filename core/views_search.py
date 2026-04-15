@@ -330,7 +330,10 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
         return HttpResponseForbidden("Недостаточно прав.")
 
     tab = request.GET.get("tab", "pending")
-    reports_qs = SearchReport.objects.filter(search_link__bot_started=True).select_related("user", "search_link")
+    from django.db.models import Q
+    # Показываем отчёты где бот стартовал ИЛИ ссылка кликнута (visitor_ip есть) — fallback на случай сбоя вебхука
+    _visible = Q(search_link__bot_started=True) | Q(search_link__visitor_ip__isnull=False)
+    reports_qs = SearchReport.objects.filter(_visible).select_related("user", "search_link")
 
     if tab == "approved":
         reports_qs = reports_qs.filter(status=SearchReport.Status.APPROVED)
@@ -345,7 +348,7 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
     pending_count = SearchReport.objects.filter(
-        search_link__bot_started=True, status=SearchReport.Status.PENDING
+        _visible, status=SearchReport.Status.PENDING
     ).count()
 
     return render(request, "core/admin_search_reports.html", {
@@ -370,8 +373,8 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         if report.status == SearchReport.Status.APPROVED:
             messages.info(request, "Отчёт уже одобрен.")
             return redirect("admin_search_reports_list")
-        if not report.search_link.bot_started:
-            messages.error(request, "Бот не стартован — нельзя одобрить.")
+        if not report.search_link.bot_started and not report.search_link.visitor_ip:
+            messages.error(request, "Ссылка не была открыта — нельзя одобрить.")
             return redirect("admin_search_reports_list")
         if report.search_link.self_click:
             messages.error(
