@@ -42,7 +42,7 @@
     </div>
   {% endif %}
 
-  {% if last_rejected_withdrawal %}
+  {% if last_rejected_withdrawal and not withdrawal_pending %}
     <div class="alert alert-danger d-flex align-items-center mb-3" role="alert">
       <span class="me-2" aria-hidden="true">❌</span>
       <div>
