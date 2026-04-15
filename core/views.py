@@ -243,10 +243,14 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         admin_withdrawal_pending = WithdrawalRequest.objects.filter(user=user, status="pending").exists()
         admin_can_withdraw = admin_balance >= getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500) and not admin_withdrawal_pending
 
-        from .models import SearchReport
+        from .models import SearchReport, SearchLink
+        from django.db.models import Q as _SQ
         search_pending_count = SearchReport.objects.filter(
-            search_link__bot_started=True, status=SearchReport.Status.PENDING
+            _SQ(search_link__bot_started=True) | _SQ(search_link__visitor_ip__isnull=False),
+            status=SearchReport.Status.PENDING,
         ).count()
+        search_total_links = SearchLink.objects.count()
+        search_total_approved = SearchReport.objects.filter(status=SearchReport.Status.APPROVED).count()
         smz_pending_count = User.objects.filter(smz_status="pending").count()
         unchecked_receipts_count = WithdrawalRequest.objects.filter(receipt_status="pending").count()
 
@@ -264,6 +268,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "admin_can_withdraw": admin_can_withdraw,
             "admin_withdrawal_pending": admin_withdrawal_pending,
             "search_pending_count": search_pending_count,
+            "search_total_links": search_total_links,
+            "search_total_approved": search_total_approved,
             "smz_pending_count": smz_pending_count,
             "unchecked_receipts_count": unchecked_receipts_count,
             "receiptless_withdrawals": list(

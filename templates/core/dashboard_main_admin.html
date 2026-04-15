@@ -42,6 +42,21 @@
         </div>
       </div>
     </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">🔗 SearchLink</h2>
+            {% if search_pending_count %}<span class="badge bg-danger">{{ search_pending_count }}</span>{% endif %}
+          </div>
+          <div class="text-muted small mb-2">Ссылок: {{ search_total_links|default:0 }} · Одобрено: {{ search_total_approved|default:0 }}</div>
+          <div class="d-flex gap-1">
+            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_search_reports_list' %}">Отчёты</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_search_stats' %}">Стат.</a>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   {# ═══ Управление ═══ #}
