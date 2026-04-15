@@ -44,7 +44,7 @@
             <tbody>
               {% for report in page_obj %}
                 <tr>
-                  <td class="text-muted">{{ report.id }}</td>
+                  <td class="text-muted">#{{ report.search_link.display_id|default:report.id }}</td>
                   <td>@{{ report.user.username }}</td>
                   <td>
                     {{ report.search_link.lead_name|truncatechars:25 }}

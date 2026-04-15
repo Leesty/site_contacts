@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% load support_extras %}
+
+{% block title %}SearchLink — Статистика{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">SearchLink — Статистика</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_search_reports_list' %}">Модерация отчётов</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Ссылок</div><strong>{{ total_links }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Кликнуто</div><strong>{{ total_visited }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Бот стартовал</div><strong>{{ total_bot_started }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Отчётов</div><strong>{{ total_reports }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Одобрено</div><strong class="text-success">{{ total_approved }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">На проверке</div><strong class="text-warning">{{ total_pending }}</strong></div></div>
+  </div>
+
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'users' %}active{% endif %}" href="?tab=users">По пользователям</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'links' %}active{% endif %}" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}">Все ссылки</a>
+    </li>
+  </ul>
+
+  {% if tab == 'users' %}
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Менеджер</th>
+              <th>Ссылок</th>
+              <th>Кликнуто</th>
+              <th>Бот старт</th>
+              <th>Отчётов</th>
+              <th>Одобрено</th>
+              <th>На проверке</th>
+              <th>Отклонено</th>
+              <th>Накрутка</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in user_stats %}
+              <tr>
+                <td>@{{ u.username }}</td>
+                <td>{{ u.links_total }}</td>
+                <td>{{ u.visited_count }}</td>
+                <td>{{ u.bot_started_count }}</td>
+                <td>{{ u.reports_count }}</td>
+                <td class="text-success">{{ u.approved_count }}</td>
+                <td class="text-warning">{{ u.pending_count }}</td>
+                <td class="text-danger">{{ u.rejected_count }}</td>
+                <td>{% if u.self_click_count %}<span class="badge bg-danger">{{ u.self_click_count }}</span>{% else %}—{% endif %}</td>
+                <td><a href="?tab=links&user={{ u.pk }}" class="btn btn-outline-primary btn-sm py-0">Ссылки</a></td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="10" class="text-muted text-center py-4">Нет данных.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tab == 'links' %}
+  <form method="get" class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+    <input type="hidden" name="tab" value="links">
+    {% if user_filter %}<input type="hidden" name="user" value="{{ user_filter }}">{% endif %}
+    <input type="text" name="q" class="form-control form-control-sm" style="max-width:300px;"
+           placeholder="Поиск: имя, код, ник менеджера" value="{{ q }}">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Найти</button>
+    {% if q or user_filter %}<a href="?tab=links" class="btn btn-outline-danger btn-sm">Сброс</a>{% endif %}
+  </form>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Менеджер</th>
+              <th>Имя лида</th>
+              <th>Создана</th>
+              <th>Клик</th>
+              <th>Бот</th>
+              <th>Накрутка</th>
+              <th>Отчёт</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for link in page_obj %}
+              <tr>
+                <td class="text-muted">{{ link.display_id|default:link.id }}</td>
+                <td><a href="?tab=links&user={{ link.user_id }}">@{{ link.user.username }}</a></td>
+                <td class="text-break" style="max-width: 200px;">{{ link.lead_name|truncatechars:40 }}</td>
+                <td class="small text-muted">{{ link.created_at|date:"d.m H:i" }}</td>
+                <td>{% if link.visitor_ip %}<span class="badge bg-info text-dark">Да</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>{% if link.bot_started %}<span class="badge bg-success">Да</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>{% if link.self_click %}<span class="badge bg-danger">IP</span>{% else %}—{% endif %}</td>
+                <td>
+                  {% if link.report_obj %}
+                    {% if link.report_obj.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                    {% elif link.report_obj.status == 'pending' %}<span class="badge bg-secondary">На проверке</span>
+                    {% elif link.report_obj.status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>
+                    {% elif link.report_obj.status == 'rework' %}<span class="badge bg-warning text-dark">Доработка</span>
+                    {% endif %}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="8" class="text-muted text-center py-4">Нет ссылок.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer border-secondary d-flex justify-content-center py-2">
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+{% endblock %}

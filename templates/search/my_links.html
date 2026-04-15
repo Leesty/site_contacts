@@ -107,7 +107,7 @@
             <tbody>
               {% for link in page_obj %}
                 <tr>
-                  <td>{{ link.lead_name|truncatechars:30 }}</td>
+                  <td><span class="text-muted small me-1">#{{ link.display_id|default:link.id }}</span> {{ link.lead_name|truncatechars:30 }}</td>
                   <td>
                     <div class="d-flex align-items-center gap-1">
                       <input type="text" class="form-control form-control-sm font-monospace" style="font-size: 11px; width: 200px;"

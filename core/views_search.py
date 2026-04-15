@@ -517,3 +517,73 @@ def admin_search_report_attachment(request: HttpRequest, report_id: int) -> Http
         return HttpResponse("Нет вложения.", status=404)
     from django.shortcuts import redirect as redir
     return redir(report.attachment.url)
+
+
+# ─── Админ: полная статистика SearchLink ──────────────────────────────────────
+
+@login_required
+def admin_search_stats(request: HttpRequest) -> HttpResponse:
+    """Полная статистика SearchLink для главного админа: все ссылки, все пользователи."""
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
+
+    from django.db.models import Count, Q
+
+    q = (request.GET.get("q") or "").strip()
+    user_filter = request.GET.get("user")
+    tab = request.GET.get("tab", "users")
+
+    # Per-user stats
+    user_stats = (
+        User.objects.filter(search_links__isnull=False)
+        .annotate(
+            links_total=Count("search_links", distinct=True),
+            bot_started_count=Count("search_links", filter=Q(search_links__bot_started=True), distinct=True),
+            visited_count=Count("search_links", filter=Q(search_links__visitor_ip__isnull=False), distinct=True),
+            reports_count=Count("search_reports", distinct=True),
+            approved_count=Count("search_reports", filter=Q(search_reports__status="approved"), distinct=True),
+            rejected_count=Count("search_reports", filter=Q(search_reports__status="rejected"), distinct=True),
+            pending_count=Count("search_reports", filter=Q(search_reports__status="pending"), distinct=True),
+            self_click_count=Count("search_links", filter=Q(search_links__self_click=True), distinct=True),
+        )
+        .order_by("-links_total")
+    )
+
+    # Global totals
+    total_links = SearchLink.objects.count()
+    total_bot_started = SearchLink.objects.filter(bot_started=True).count()
+    total_visited = SearchLink.objects.filter(visitor_ip__isnull=False).count()
+    total_reports = SearchReport.objects.count()
+    total_approved = SearchReport.objects.filter(status="approved").count()
+    total_pending = SearchReport.objects.filter(status="pending").count()
+
+    # Links tab — full list with filtering
+    links_qs = SearchLink.objects.select_related("user").order_by("-created_at")
+    if user_filter:
+        links_qs = links_qs.filter(user_id=user_filter)
+    if q:
+        links_qs = links_qs.filter(
+            Q(lead_name__icontains=q) | Q(code__icontains=q) |
+            Q(user__username__icontains=q)
+        )
+
+    paginator = Paginator(links_qs, 50)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    link_ids = [sl.id for sl in page_obj]
+    reports_map = {r.search_link_id: r for r in SearchReport.objects.filter(search_link_id__in=link_ids)}
+    for link in page_obj:
+        link.report_obj = reports_map.get(link.id)
+
+    return render(request, "search/admin_stats.html", {
+        "tab": tab,
+        "q": q,
+        "user_filter": user_filter,
+        "user_stats": user_stats,
+        "page_obj": page_obj,
+        "total_links": total_links,
+        "total_bot_started": total_bot_started,
+        "total_visited": total_visited,
+        "total_reports": total_reports,
+        "total_approved": total_approved,
+        "total_pending": total_pending,
+    })

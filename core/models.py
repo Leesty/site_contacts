@@ -1040,6 +1040,10 @@ def search_report_upload_to(instance: "SearchReport", filename: str) -> str:
 class SearchLink(TimeStampedModel):
     """Ссылка для привлечения лидов через Telegram-бота (SearchLink-система)."""
 
+    display_id = models.PositiveIntegerField(
+        null=True, blank=True, db_index=True, unique=True,
+        help_text="Сквозной номер (общая нумерация с Lead).",
+    )
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -1108,6 +1112,11 @@ class SearchLink(TimeStampedModel):
     def save(self, *args, **kwargs):
         if not self.bot_username:
             self.bot_username = random.choice(SEARCH_BOT_POOL)
+        if not self.display_id:
+            from django.db.models import Max
+            max_lead = Lead.objects.aggregate(m=Max("id"))["m"] or 0
+            max_sl = SearchLink.objects.aggregate(m=Max("display_id"))["m"] or 0
+            self.display_id = max(max_lead, max_sl) + 1
         super().save(*args, **kwargs)
 
 
