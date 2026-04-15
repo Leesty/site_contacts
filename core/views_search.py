@@ -531,6 +531,8 @@ def admin_search_stats(request: HttpRequest) -> HttpResponse:
 
     q = (request.GET.get("q") or "").strip()
     user_filter = request.GET.get("user")
+    bot_filter = request.GET.get("bot", "")
+    report_filter = request.GET.get("report", "")
     tab = request.GET.get("tab", "users")
 
     # Per-user stats
@@ -566,6 +568,22 @@ def admin_search_stats(request: HttpRequest) -> HttpResponse:
             Q(lead_name__icontains=q) | Q(code__icontains=q) |
             Q(user__username__icontains=q)
         )
+    if bot_filter == "started":
+        links_qs = links_qs.filter(bot_started=True)
+    elif bot_filter == "not_started":
+        links_qs = links_qs.filter(bot_started=False)
+    elif bot_filter == "clicked":
+        links_qs = links_qs.filter(bot_started=False, visitor_ip__isnull=False)
+    elif bot_filter == "no_click":
+        links_qs = links_qs.filter(visitor_ip__isnull=True)
+    if report_filter == "has":
+        links_qs = links_qs.filter(report__isnull=False)
+    elif report_filter == "no":
+        links_qs = links_qs.filter(report__isnull=True)
+    elif report_filter == "approved":
+        links_qs = links_qs.filter(report__status="approved")
+    elif report_filter == "pending":
+        links_qs = links_qs.filter(report__status="pending")
 
     paginator = Paginator(links_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page", 1))
@@ -578,6 +596,8 @@ def admin_search_stats(request: HttpRequest) -> HttpResponse:
         "tab": tab,
         "q": q,
         "user_filter": user_filter,
+        "bot_filter": bot_filter,
+        "report_filter": report_filter,
         "user_stats": user_stats,
         "page_obj": page_obj,
         "total_links": total_links,

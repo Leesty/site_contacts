@@ -77,10 +77,24 @@
   <form method="get" class="mb-3 d-flex gap-2 flex-wrap align-items-center">
     <input type="hidden" name="tab" value="links">
     {% if user_filter %}<input type="hidden" name="user" value="{{ user_filter }}">{% endif %}
-    <input type="text" name="q" class="form-control form-control-sm" style="max-width:300px;"
-           placeholder="Поиск: имя, код, ник менеджера" value="{{ q }}">
+    <input type="text" name="q" class="form-control form-control-sm" style="max-width:250px;"
+           placeholder="Имя, код, ник менеджера" value="{{ q }}">
+    <select name="bot" class="form-select form-select-sm" style="width:auto;">
+      <option value="">Бот: все</option>
+      <option value="started" {% if bot_filter == 'started' %}selected{% endif %}>Бот нажат</option>
+      <option value="not_started" {% if bot_filter == 'not_started' %}selected{% endif %}>Бот НЕ нажат</option>
+      <option value="clicked" {% if bot_filter == 'clicked' %}selected{% endif %}>Кликнуто (без бота)</option>
+      <option value="no_click" {% if bot_filter == 'no_click' %}selected{% endif %}>Без кликов</option>
+    </select>
+    <select name="report" class="form-select form-select-sm" style="width:auto;">
+      <option value="">Отчёт: все</option>
+      <option value="has" {% if report_filter == 'has' %}selected{% endif %}>С отчётом</option>
+      <option value="no" {% if report_filter == 'no' %}selected{% endif %}>Без отчёта</option>
+      <option value="approved" {% if report_filter == 'approved' %}selected{% endif %}>Одобрен</option>
+      <option value="pending" {% if report_filter == 'pending' %}selected{% endif %}>На проверке</option>
+    </select>
     <button type="submit" class="btn btn-outline-secondary btn-sm">Найти</button>
-    {% if q or user_filter %}<a href="?tab=links" class="btn btn-outline-danger btn-sm">Сброс</a>{% endif %}
+    {% if q or user_filter or bot_filter or report_filter %}<a href="?tab=links" class="btn btn-outline-danger btn-sm">Сброс</a>{% endif %}
   </form>
 
   <div class="card shadow-sm">
