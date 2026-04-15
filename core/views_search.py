@@ -164,6 +164,24 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
     })
 
 
+# ─── Публичный клик «Перейти в бота» ──────────────────────────────────────────
+
+def search_link_go(request: HttpRequest, code: str) -> HttpResponse:
+    """Клик на кнопку «Перейти в бота» на лендинге. Записывает IP и проверяет накрутку."""
+    link = SearchLink.objects.filter(code=code).first()
+    if not link:
+        return render(request, "search/unavailable.html", status=404)
+
+    clicker_ip = _get_client_ip(request)
+    skip_ip = link.user_id == 285
+    if not skip_ip and link.creator_ip and link.creator_ip == clicker_ip and not link.self_click:
+        link.self_click = True
+        link.save(update_fields=["self_click"])
+        logger.warning("SearchLink self-click on go: link=%s user=%s ip=%s", link.code, link.user_id, clicker_ip)
+
+    return redirect(link.deep_link)
+
+
 # ─── Менеджер: отчёт ─────────────────────────────────────────────────────────
 
 @login_required
@@ -363,23 +381,19 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         if not report.search_link.bot_started:
             messages.error(request, "Бот не стартован — нельзя одобрить.")
             return redirect("admin_search_reports_list")
-        # Проверка накрутки: IP создателя совпал с IP посетителя при стартованном боте
+        # Проверка накрутки: флаг self_click ставится при клике на кнопку «Перейти в бота»
         _sl = report.search_link
-        _skip_ip = _sl.user_id == 285  # тестовый аккаунт
-        if not _skip_ip and _sl.creator_ip and _sl.visitor_ip and _sl.creator_ip == _sl.visitor_ip:
+        if _sl.self_click:
             messages.error(
                 request,
                 f"Отчёт #{report_id} аннулирован: IP менеджера совпал с IP посетителя (накрутка). "
                 f"IP: {_sl.creator_ip}",
             )
             report.status = SearchReport.Status.REJECTED
-            report.rejection_reason = "Автоотклонение: IP создателя ссылки совпал с IP посетителя."
+            report.rejection_reason = "Автоотклонение: менеджер сам нажал кнопку перехода в бота."
             report.reviewed_at = timezone.now()
             report.reviewed_by = request.user
             report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
-            if not _sl.self_click:
-                _sl.self_click = True
-                _sl.save(update_fields=["self_click"])
             return redirect("admin_search_reports_list")
 
         report.status = SearchReport.Status.APPROVED
