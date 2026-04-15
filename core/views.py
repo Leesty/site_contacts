@@ -244,9 +244,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         admin_can_withdraw = admin_balance >= getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500) and not admin_withdrawal_pending
 
         from .models import SearchReport, SearchLink
-        from django.db.models import Q as _SQ
         search_pending_count = SearchReport.objects.filter(
-            _SQ(search_link__bot_started=True) | _SQ(search_link__visitor_ip__isnull=False),
+            search_link__bot_started=True,
             status=SearchReport.Status.PENDING,
         ).count()
         search_total_links = SearchLink.objects.count()
