@@ -150,23 +150,12 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
     if link.bot_started:
         return render(request, "search/unavailable.html")
 
-    # Сохраняем IP посетителя и проверяем совпадение с IP создателя
+    # Сохраняем IP посетителя (только первый визит — не перезаписываем)
+    # Проверка на накрутку происходит при одобрении, не при просмотре лендинга
     visitor_ip = _get_client_ip(request)
-    update_fields = []
     if not link.visitor_ip:
         link.visitor_ip = visitor_ip
-        update_fields.append("visitor_ip")
-    # Тестовый аккаунт (user_id=285, username=5) — пропускаем IP-проверку
-    skip_ip_check = link.user_id == 285
-    if not skip_ip_check and link.creator_ip and link.creator_ip == visitor_ip and not link.self_click:
-        link.self_click = True
-        update_fields.append("self_click")
-        logger.warning(
-            "SearchLink self-click: link=%s user=%s ip=%s",
-            link.code, link.user_id, visitor_ip,
-        )
-    if update_fields:
-        link.save(update_fields=update_fields)
+        link.save(update_fields=["visitor_ip"])
 
     return render(request, "search/landing.html", {
         "lead_name": link.lead_name,
@@ -374,17 +363,23 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         if not report.search_link.bot_started:
             messages.error(request, "Бот не стартован — нельзя одобрить.")
             return redirect("admin_search_reports_list")
-        if report.search_link.self_click:
+        # Проверка накрутки: IP создателя совпал с IP посетителя при стартованном боте
+        _sl = report.search_link
+        _skip_ip = _sl.user_id == 285  # тестовый аккаунт
+        if not _skip_ip and _sl.creator_ip and _sl.visitor_ip and _sl.creator_ip == _sl.visitor_ip:
             messages.error(
                 request,
                 f"Отчёт #{report_id} аннулирован: IP менеджера совпал с IP посетителя (накрутка). "
-                f"IP: {report.search_link.creator_ip}",
+                f"IP: {_sl.creator_ip}",
             )
             report.status = SearchReport.Status.REJECTED
             report.rejection_reason = "Автоотклонение: IP создателя ссылки совпал с IP посетителя."
             report.reviewed_at = timezone.now()
             report.reviewed_by = request.user
             report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
+            if not _sl.self_click:
+                _sl.self_click = True
+                _sl.save(update_fields=["self_click"])
             return redirect("admin_search_reports_list")
 
         report.status = SearchReport.Status.APPROVED
