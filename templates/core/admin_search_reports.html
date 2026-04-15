@@ -37,94 +37,76 @@
               <th>#</th>
               <th>Менеджер</th>
               <th>Лид</th>
-              <th>Дата лида</th>
-              <th>Отправлен</th>
-              {% if tab == 'rework' %}<th>Причина доработки</th>{% elif tab == 'rejected' %}<th>Причина отклонения</th>{% endif %}
-              {% if tab == 'approved' or tab == 'rejected' %}<th>Проверил</th>{% endif %}
+              <th>Дата</th>
+              {% if tab != 'rejected' %}<th>Действия</th>{% endif %}
               <th>Вложение</th>
               <th>Контакт</th>
-              <th>Комментарий</th>
-              {% if tab != 'rejected' %}<th>Действия</th>{% endif %}
+              {% if tab == 'rework' %}<th>Причина</th>{% elif tab == 'rejected' %}<th>Причина</th>{% endif %}
+              {% if tab == 'approved' or tab == 'rejected' %}<th>Проверил</th>{% endif %}
             </tr>
           </thead>
           <tbody>
             {% for report in page_obj %}
               <tr>
-                <td class="text-muted">#{{ report.search_link.display_id|default:report.id }}</td>
+                <td class="text-muted small">#{{ report.search_link.display_id|default:report.id }}</td>
                 <td>
-                  <a href="{% url 'admin_user_leads_list' report.user_id %}" class="text-truncate d-inline-block" style="max-width:130px;">@{{ report.user.username }}</a>
+                  <a href="{% url 'admin_user_leads_list' report.user_id %}" class="text-truncate d-inline-block" style="max-width:100px;">@{{ report.user.username }}</a>
                 </td>
                 <td>
-                  {{ report.search_link.lead_name|truncatechars:25 }}
-                  {% if report.search_link.self_click %}<span class="badge bg-danger ms-1" title="IP создателя совпал с IP посетителя">НАКРУТКА</span>{% endif %}
-                  {% if not report.search_link.bot_started and report.search_link.visitor_ip %}<span class="badge bg-warning text-dark ms-1" title="Бот не стартовал, но ссылка кликнута">Без бота</span>{% endif %}
+                  {{ report.search_link.lead_name|truncatechars:20 }}
+                  {% if report.search_link.self_click %}<span class="badge bg-danger ms-1">НК</span>{% endif %}
                 </td>
-                <td>{{ report.lead_date|date:"d.m.Y" }}</td>
-                <td class="small text-muted">{{ report.created_at|date:"d.m.Y H:i" }}</td>
-                {% if tab == 'rework' %}
-                <td class="text-break small">
-                  {% if report.rework_comment and report.rework_comment|length > 80 %}
-                    <span class="js-truncated">{{ report.rework_comment|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
-                    <span class="js-full d-none">{{ report.rework_comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
-                  {% else %}{{ report.rework_comment|default:"—" }}{% endif %}
-                </td>
-                {% elif tab == 'rejected' %}
-                <td class="text-break small">
-                  {% if report.rejection_reason and report.rejection_reason|length > 80 %}
-                    <span class="js-truncated">{{ report.rejection_reason|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
-                    <span class="js-full d-none">{{ report.rejection_reason }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
-                  {% else %}{{ report.rejection_reason|default:"—" }}{% endif %}
-                </td>
-                {% endif %}
-                {% if tab == 'approved' or tab == 'rejected' %}
-                <td>{% if report.reviewed_by %}@{{ report.reviewed_by.username }}{% else %}—{% endif %}</td>
-                {% endif %}
-                <td>
-                  {% if report.attachment %}
-                    {% if report.attachment|lead_attachment_is_video %}
-                      <button type="button" class="btn btn-outline-primary btn-sm js-video-preview"
-                              data-video-url="{% url 'admin_search_report_attachment' report.id %}"
-                              data-s3-url="{{ report.attachment|attachment_s3_url }}"
-                              data-lead-id="{{ report.search_link.display_id|default:report.id }}">Видео</button>
-                    {% else %}
-                      <a href="{% url 'admin_search_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm">Открыть</a>
-                    {% endif %}
-                  {% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-                <td class="text-break small">{{ report.raw_contact|default:"—"|contact_link }}</td>
-                <td class="text-break small">
-                  {% if report.comment and report.comment|length > 40 %}
-                    <span class="js-truncated">{{ report.comment|truncatechars:40 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
-                    <span class="js-full d-none">{{ report.comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
-                  {% else %}{{ report.comment|default:"—" }}{% endif %}
-                </td>
+                <td class="small text-muted">{{ report.lead_date|date:"d.m" }}</td>
                 {% if tab != 'rejected' %}
                 <td>
-                  <div class="d-flex flex-wrap gap-1">
+                  <div class="d-flex flex-nowrap gap-1">
                     {% if report.status == 'approved' %}
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
-                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}" data-approved="1">Отменить</button>
-                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-btn"
-                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}" data-approved="1">Доработка</button>
+                      <button type="button" class="btn btn-outline-danger btn-sm py-0 js-reject-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}" data-approved="1">✗</button>
+                      <button type="button" class="btn btn-warning btn-sm py-0 text-dark js-rework-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}" data-approved="1">↺</button>
                     {% elif report.status == 'rework' %}
-                      <button type="button" class="btn btn-success btn-sm js-approve-btn"
-                              data-report-id="{{ report.id }}">Одобрить</button>
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
-                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">Отклонить</button>
+                      <button type="button" class="btn btn-success btn-sm py-0 js-approve-btn"
+                              data-report-id="{{ report.id }}">✓</button>
+                      <button type="button" class="btn btn-outline-danger btn-sm py-0 js-reject-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">✗</button>
                     {% elif report.status == 'pending' %}
-                      <button type="button" class="btn btn-success btn-sm js-approve-btn"
-                              data-report-id="{{ report.id }}">Одобрить</button>
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
-                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">Отклонить</button>
-                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-btn"
-                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">Доработка</button>
+                      <button type="button" class="btn btn-success btn-sm py-0 js-approve-btn"
+                              data-report-id="{{ report.id }}">✓</button>
+                      <button type="button" class="btn btn-outline-danger btn-sm py-0 js-reject-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">✗</button>
+                      <button type="button" class="btn btn-warning btn-sm py-0 text-dark js-rework-btn"
+                              data-report-id="{{ report.id }}" data-display-id="{{ report.search_link.display_id|default:report.id }}">↺</button>
                     {% endif %}
                   </div>
                 </td>
                 {% endif %}
+                <td>
+                  {% if report.attachment %}
+                    {% if report.attachment|lead_attachment_is_video %}
+                      <button type="button" class="btn btn-outline-primary btn-sm py-0 js-video-preview"
+                              data-video-url="{% url 'admin_search_report_attachment' report.id %}"
+                              data-s3-url="{{ report.attachment|attachment_s3_url }}"
+                              data-lead-id="{{ report.search_link.display_id|default:report.id }}">▶</button>
+                    {% else %}
+                      <a href="{% url 'admin_search_report_attachment' report.id %}" target="_blank" class="btn btn-outline-primary btn-sm py-0">📎</a>
+                    {% endif %}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  {% if report.raw_contact %}<a href="{{ report.raw_contact }}" target="_blank" rel="noopener" title="{{ report.raw_contact }}" class="text-decoration-none">{{ report.raw_contact|truncatechars:25 }}</a>{% else %}—{% endif %}
+                </td>
+                {% if tab == 'rework' %}
+                <td class="text-break small" style="max-width:150px;">{{ report.rework_comment|default:"—"|truncatechars:50 }}</td>
+                {% elif tab == 'rejected' %}
+                <td class="text-break small" style="max-width:150px;">{{ report.rejection_reason|default:"—"|truncatechars:50 }}</td>
+                {% endif %}
+                {% if tab == 'approved' or tab == 'rejected' %}
+                <td class="small">{% if report.reviewed_by %}@{{ report.reviewed_by.username }}{% else %}—{% endif %}</td>
+                {% endif %}
               </tr>
             {% empty %}
-              <tr><td colspan="12" class="text-muted text-center py-4">Нет отчётов.</td></tr>
+              <tr><td colspan="9" class="text-muted text-center py-4">Нет отчётов.</td></tr>
             {% endfor %}
           </tbody>
         </table>
