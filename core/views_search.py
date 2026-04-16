@@ -147,9 +147,6 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
     if not link:
         return render(request, "search/unavailable.html", status=404)
 
-    if link.bot_started:
-        return render(request, "search/unavailable.html")
-
     # Сохраняем IP посетителя (только первый визит — не перезаписываем)
     # Проверка на накрутку происходит при одобрении, не при просмотре лендинга
     visitor_ip = _get_client_ip(request)
