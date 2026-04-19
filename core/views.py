@@ -333,11 +333,14 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         .exclude(receipt_status="approved")
         .order_by("-created_at")[:5]
     )
-    last_rejected_wr = (
-        WithdrawalRequest.objects.filter(user=user, status="rejected")
-        .order_by("-processed_at")
+    # Плашка «Заявка отклонена» только если последняя заявка юзера — reject.
+    # Если после неё была создана новая (pending/approved), плашку не показываем.
+    _last_wr = (
+        WithdrawalRequest.objects.filter(user=user)
+        .order_by("-created_at")
         .first()
     )
+    last_rejected_wr = _last_wr if _last_wr and _last_wr.status == "rejected" else None
     return render(
         request,
         "core/dashboard.html",
