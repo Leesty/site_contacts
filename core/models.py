@@ -1081,6 +1081,18 @@ class SearchLink(TimeStampedModel):
         blank=True,
         help_text="Telegram ID лида (из вебхука).",
     )
+    telegram_username = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Telegram username лида (без @), из вебхука при /start.",
+    )
+    telegram_first_name = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="Telegram first_name лида, из вебхука при /start.",
+    )
     creator_ip = models.GenericIPAddressField(
         null=True,
         blank=True,

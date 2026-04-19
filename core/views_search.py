@@ -305,6 +305,8 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
 
     code = (data.get("code") or "").strip()
     telegram_id = data.get("telegram_id")
+    telegram_username = (data.get("telegram_username") or "").strip().lstrip("@")[:64]
+    telegram_first_name = (data.get("telegram_first_name") or "").strip()[:128]
 
     if not code:
         return JsonResponse({"ok": False, "error": "missing_code"}, status=400)
@@ -313,14 +315,33 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
     if not link:
         return JsonResponse({"ok": False, "error": "not_found"}, status=404)
 
+    # Если бот уже был стартован, но юзернейм ещё не записан — дозаполняем
+    # (не ломаем идемпотентность: статус bot_started не меняем).
     if link.bot_started:
+        updates = []
+        if telegram_username and not link.telegram_username:
+            link.telegram_username = telegram_username
+            updates.append("telegram_username")
+        if telegram_first_name and not link.telegram_first_name:
+            link.telegram_first_name = telegram_first_name
+            updates.append("telegram_first_name")
+        if updates:
+            updates.append("updated_at")
+            link.save(update_fields=updates)
         return JsonResponse({"ok": True, "already_started": True})
 
     link.bot_started = True
     link.bot_started_at = timezone.now()
     if telegram_id:
         link.telegram_id = telegram_id
-    link.save(update_fields=["bot_started", "bot_started_at", "telegram_id", "updated_at"])
+    if telegram_username:
+        link.telegram_username = telegram_username
+    if telegram_first_name:
+        link.telegram_first_name = telegram_first_name
+    link.save(update_fields=[
+        "bot_started", "bot_started_at", "telegram_id",
+        "telegram_username", "telegram_first_name", "updated_at",
+    ])
 
     return JsonResponse({"ok": True})
 

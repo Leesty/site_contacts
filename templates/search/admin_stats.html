@@ -118,7 +118,14 @@
               <tr>
                 <td class="text-muted">{{ link.display_id|default:link.id }}</td>
                 <td><a href="?tab=links&user={{ link.user_id }}">@{{ link.user.username }}</a></td>
-                <td class="text-break" style="max-width: 200px;">{{ link.lead_name|truncatechars:40 }}</td>
+                <td class="text-break" style="max-width: 200px;">
+                  {% if link.telegram_username %}
+                    <a href="https://t.me/{{ link.telegram_username }}" target="_blank" rel="noopener">@{{ link.telegram_username|truncatechars:30 }}</a>
+                    <div class="small text-muted">{{ link.lead_name|truncatechars:25 }}</div>
+                  {% else %}
+                    {{ link.lead_name|truncatechars:40 }}
+                  {% endif %}
+                </td>
                 <td class="small text-muted">{{ link.created_at|date:"d.m H:i" }}</td>
                 <td>{% if link.visitor_ip %}<span class="badge bg-info text-dark">Да</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
                 <td>{% if link.bot_started %}<span class="badge bg-success">Да</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>

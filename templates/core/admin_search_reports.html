@@ -53,7 +53,12 @@
                   <a href="{% url 'admin_user_leads_list' report.user_id %}" class="text-truncate d-inline-block" style="max-width:100px;">@{{ report.user.username }}</a>
                 </td>
                 <td>
-                  {{ report.search_link.lead_name|truncatechars:20 }}
+                  {% if report.search_link.telegram_username %}
+                    <a href="https://t.me/{{ report.search_link.telegram_username }}" target="_blank" rel="noopener" class="text-decoration-none">@{{ report.search_link.telegram_username|truncatechars:20 }}</a>
+                    <div class="small text-muted">{{ report.search_link.lead_name|truncatechars:20 }}</div>
+                  {% else %}
+                    {{ report.search_link.lead_name|truncatechars:20 }}
+                  {% endif %}
                   {% if report.search_link.self_click %}<span class="badge bg-danger ms-1">НК</span>{% endif %}
                 </td>
                 <td class="small text-muted">{{ report.lead_date|date:"d.m" }}</td>
