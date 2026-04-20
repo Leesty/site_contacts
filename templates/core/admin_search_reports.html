@@ -53,8 +53,17 @@
                   <a href="{% url 'admin_user_leads_list' report.user_id %}" class="text-truncate d-inline-block" style="max-width:100px;">@{{ report.user.username }}</a>
                 </td>
                 <td>
-                  {% if report.search_link.telegram_username %}
-                    <a href="https://t.me/{{ report.search_link.telegram_username }}" target="_blank" rel="noopener" class="text-decoration-none">@{{ report.search_link.telegram_username|truncatechars:20 }}</a>
+                  {% if report.search_link.platform == 'vk' %}
+                    <span class="badge" style="background:#4c75a3;color:#fff;font-size:9px;">VK</span>
+                  {% else %}
+                    <span class="badge" style="background:#0088cc;color:#fff;font-size:9px;">TG</span>
+                  {% endif %}
+                  {% if report.search_link.lead_contact_display %}
+                    {% if report.search_link.lead_contact_url %}
+                      <a href="{{ report.search_link.lead_contact_url }}" target="_blank" rel="noopener" class="text-decoration-none">{% if report.search_link.platform == 'vk' %}{{ report.search_link.lead_contact_display|truncatechars:20 }}{% else %}@{{ report.search_link.lead_contact_display|truncatechars:20 }}{% endif %}</a>
+                    {% else %}
+                      {{ report.search_link.lead_contact_display|truncatechars:20 }}
+                    {% endif %}
                     <div class="small text-muted">{{ report.search_link.lead_name|truncatechars:20 }}</div>
                   {% else %}
                     {{ report.search_link.lead_name|truncatechars:20 }}

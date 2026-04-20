@@ -140,14 +140,21 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard")
 
     lead_name = (request.POST.get("lead_name") or "").strip()[:200]
+    platform = (request.POST.get("platform") or "telegram").strip().lower()
+    if platform not in (SearchLink.Platform.TELEGRAM, SearchLink.Platform.VK):
+        platform = SearchLink.Platform.TELEGRAM
     if not lead_name:
         messages.error(request, "Укажите имя/ник лида.")
         return redirect("search_links_my")
 
     link = SearchLink.objects.create(
-        user=request.user, lead_name=lead_name, creator_ip=_get_client_ip(request),
+        user=request.user,
+        lead_name=lead_name,
+        platform=platform,
+        creator_ip=_get_client_ip(request),
     )
-    messages.success(request, f"Ссылка создана для «{lead_name}».")
+    platform_label = "VK" if platform == SearchLink.Platform.VK else "Telegram"
+    messages.success(request, f"Ссылка ({platform_label}) создана для «{lead_name}».")
     return redirect("search_links_my")
 
 
@@ -170,6 +177,7 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
         "lead_name": link.lead_name,
         "deep_link": link.deep_link,
         "code": link.code,
+        "platform": link.platform,
     })
 
 
@@ -316,9 +324,18 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "invalid_json"}, status=400)
 
     code = (data.get("code") or "").strip()
+    platform = (data.get("platform") or "telegram").strip().lower()
+    if platform not in ("telegram", "vk"):
+        platform = "telegram"
+
+    # Telegram-поля
     telegram_id = data.get("telegram_id")
     telegram_username = (data.get("telegram_username") or "").strip().lstrip("@")[:64]
     telegram_first_name = (data.get("telegram_first_name") or "").strip()[:128]
+    # VK-поля
+    vk_user_id = data.get("vk_user_id")
+    vk_screen_name = (data.get("vk_screen_name") or "").strip()[:64]
+    vk_first_name = (data.get("vk_first_name") or "").strip()[:128]
 
     if not code:
         return JsonResponse({"ok": False, "error": "missing_code"}, status=400)
@@ -327,16 +344,32 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
     if not link:
         return JsonResponse({"ok": False, "error": "not_found"}, status=404)
 
-    # Если бот уже был стартован, но юзернейм ещё не записан — дозаполняем
-    # (не ломаем идемпотентность: статус bot_started не меняем).
+    # Защита от путаницы платформ — вебхук от VK не должен трогать TG-ссылку и наоборот
+    if link.platform != platform:
+        return JsonResponse({
+            "ok": False,
+            "error": "platform_mismatch",
+            "expected": link.platform,
+            "got": platform,
+        }, status=400)
+
+    # Если бот уже был стартован — дозаполняем пустые поля (не меняем bot_started_at)
     if link.bot_started:
         updates = []
-        if telegram_username and not link.telegram_username:
-            link.telegram_username = telegram_username
-            updates.append("telegram_username")
-        if telegram_first_name and not link.telegram_first_name:
-            link.telegram_first_name = telegram_first_name
-            updates.append("telegram_first_name")
+        if platform == "telegram":
+            if telegram_username and not link.telegram_username:
+                link.telegram_username = telegram_username
+                updates.append("telegram_username")
+            if telegram_first_name and not link.telegram_first_name:
+                link.telegram_first_name = telegram_first_name
+                updates.append("telegram_first_name")
+        else:  # vk
+            if vk_screen_name and not link.vk_screen_name:
+                link.vk_screen_name = vk_screen_name
+                updates.append("vk_screen_name")
+            if vk_first_name and not link.vk_first_name:
+                link.vk_first_name = vk_first_name
+                updates.append("vk_first_name")
         if updates:
             updates.append("updated_at")
             link.save(update_fields=updates)
@@ -344,17 +377,30 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
 
     link.bot_started = True
     link.bot_started_at = timezone.now()
-    if telegram_id:
-        link.telegram_id = telegram_id
-    if telegram_username:
-        link.telegram_username = telegram_username
-    if telegram_first_name:
-        link.telegram_first_name = telegram_first_name
-    link.save(update_fields=[
-        "bot_started", "bot_started_at", "telegram_id",
-        "telegram_username", "telegram_first_name", "updated_at",
-    ])
+    update_fields = ["bot_started", "bot_started_at", "updated_at"]
 
+    if platform == "telegram":
+        if telegram_id:
+            link.telegram_id = telegram_id
+            update_fields.append("telegram_id")
+        if telegram_username:
+            link.telegram_username = telegram_username
+            update_fields.append("telegram_username")
+        if telegram_first_name:
+            link.telegram_first_name = telegram_first_name
+            update_fields.append("telegram_first_name")
+    else:  # vk
+        if vk_user_id:
+            link.vk_user_id = vk_user_id
+            update_fields.append("vk_user_id")
+        if vk_screen_name:
+            link.vk_screen_name = vk_screen_name
+            update_fields.append("vk_screen_name")
+        if vk_first_name:
+            link.vk_first_name = vk_first_name
+            update_fields.append("vk_first_name")
+
+    link.save(update_fields=update_fields)
     return JsonResponse({"ok": True})
 
 
