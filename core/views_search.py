@@ -49,6 +49,20 @@ def _can_manage_searchlinks(request: HttpRequest) -> bool:
     return _require_approved_user(request)
 
 
+# Тестовые аккаунты, которым видна опция VK (до полного раскатывания фичи).
+# Id=5 (Test11) — тестовый аккаунт для проверки VK SearchLink.
+VK_SEARCHLINK_BETA_USER_IDS = {5}
+
+
+def _can_use_vk_platform(user) -> bool:
+    """Временный гейт на VK SearchLink: админы + тестовые аккаунты."""
+    if not user.is_authenticated:
+        return False
+    if getattr(user, "role", None) in ("admin", "main_admin"):
+        return True
+    return user.id in VK_SEARCHLINK_BETA_USER_IDS
+
+
 def _require_support(request: HttpRequest) -> bool:
     user = request.user
     if not user.is_authenticated:
@@ -124,6 +138,7 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
         "bot_waiting_count": bot_waiting_count,
         "bot_started_count": bot_started_count,
         "search_reward": search_reward,
+        "can_use_vk": _can_use_vk_platform(request.user),
     })
 
 
@@ -140,14 +155,25 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard")
 
     lead_name = (request.POST.get("lead_name") or "").strip()[:200]
+    platform = (request.POST.get("platform") or "telegram").strip().lower()
+    if platform not in (SearchLink.Platform.TELEGRAM, SearchLink.Platform.VK):
+        platform = SearchLink.Platform.TELEGRAM
+    # Бета-гейт: VK доступен только тестовым аккаунтам и админам. Остальным — тихий фолбэк на TG.
+    if platform == SearchLink.Platform.VK and not _can_use_vk_platform(request.user):
+        platform = SearchLink.Platform.TELEGRAM
+        messages.warning(request, "VK-ссылки пока в бета-тесте, вам создана Telegram-ссылка.")
     if not lead_name:
         messages.error(request, "Укажите имя/ник лида.")
         return redirect("search_links_my")
 
     link = SearchLink.objects.create(
-        user=request.user, lead_name=lead_name, creator_ip=_get_client_ip(request),
+        user=request.user,
+        lead_name=lead_name,
+        platform=platform,
+        creator_ip=_get_client_ip(request),
     )
-    messages.success(request, f"Ссылка создана для «{lead_name}».")
+    platform_label = "VK" if platform == SearchLink.Platform.VK else "Telegram"
+    messages.success(request, f"Ссылка ({platform_label}) создана для «{lead_name}».")
     return redirect("search_links_my")
 
 
@@ -168,7 +194,9 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
 
     return render(request, "search/landing.html", {
         "lead_name": link.lead_name,
-        "deep_link": link.deep_link,
+        "tg_deep_link": link.tg_deep_link,
+        "vk_deep_link": link.vk_deep_link,
+        "preferred_platform": link.platform,
         "code": link.code,
     })
 
@@ -176,7 +204,11 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
 # ─── Публичный клик «Перейти в бота» ──────────────────────────────────────────
 
 def search_link_go(request: HttpRequest, code: str) -> HttpResponse:
-    """Клик на кнопку «Перейти в бота» на лендинге. Записывает IP и проверяет накрутку."""
+    """Клик на кнопку «Перейти в бота» на лендинге. Записывает IP и проверяет накрутку.
+
+    Query-параметр ?p=tg|vk выбирает платформу для редиректа. По умолчанию — tg
+    (старое поведение). Лендинг показывает обе кнопки с явным параметром.
+    """
     link = SearchLink.objects.filter(code=code).first()
     if not link:
         return render(request, "search/unavailable.html", status=404)
@@ -188,7 +220,11 @@ def search_link_go(request: HttpRequest, code: str) -> HttpResponse:
         link.save(update_fields=["self_click"])
         logger.warning("SearchLink self-click on go: link=%s user=%s ip=%s", link.code, link.user_id, clicker_ip)
 
-    return redirect(link.deep_link)
+    p = (request.GET.get("p") or "").strip().lower()
+    if p == "vk":
+        return redirect(link.vk_deep_link)
+    # Default и p=tg → telegram
+    return redirect(link.tg_deep_link)
 
 
 # ─── Менеджер: отчёт ─────────────────────────────────────────────────────────
@@ -316,9 +352,18 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "invalid_json"}, status=400)
 
     code = (data.get("code") or "").strip()
+    platform = (data.get("platform") or "telegram").strip().lower()
+    if platform not in ("telegram", "vk"):
+        platform = "telegram"
+
+    # Telegram-поля
     telegram_id = data.get("telegram_id")
     telegram_username = (data.get("telegram_username") or "").strip().lstrip("@")[:64]
     telegram_first_name = (data.get("telegram_first_name") or "").strip()[:128]
+    # VK-поля
+    vk_user_id = data.get("vk_user_id")
+    vk_screen_name = (data.get("vk_screen_name") or "").strip()[:64]
+    vk_first_name = (data.get("vk_first_name") or "").strip()[:128]
 
     if not code:
         return JsonResponse({"ok": False, "error": "missing_code"}, status=400)
@@ -327,16 +372,26 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
     if not link:
         return JsonResponse({"ok": False, "error": "not_found"}, status=404)
 
-    # Если бот уже был стартован, но юзернейм ещё не записан — дозаполняем
-    # (не ломаем идемпотентность: статус bot_started не меняем).
+    # Платформа не проверяется — на одной ссылке доступны обе платформы,
+    # первая платформа, с которой лид прислал start, и засчитывается.
+
+    # Если бот уже был стартован — дозаполняем пустые поля (не меняем bot_started_at)
     if link.bot_started:
         updates = []
-        if telegram_username and not link.telegram_username:
-            link.telegram_username = telegram_username
-            updates.append("telegram_username")
-        if telegram_first_name and not link.telegram_first_name:
-            link.telegram_first_name = telegram_first_name
-            updates.append("telegram_first_name")
+        if platform == "telegram":
+            if telegram_username and not link.telegram_username:
+                link.telegram_username = telegram_username
+                updates.append("telegram_username")
+            if telegram_first_name and not link.telegram_first_name:
+                link.telegram_first_name = telegram_first_name
+                updates.append("telegram_first_name")
+        else:  # vk
+            if vk_screen_name and not link.vk_screen_name:
+                link.vk_screen_name = vk_screen_name
+                updates.append("vk_screen_name")
+            if vk_first_name and not link.vk_first_name:
+                link.vk_first_name = vk_first_name
+                updates.append("vk_first_name")
         if updates:
             updates.append("updated_at")
             link.save(update_fields=updates)
@@ -344,17 +399,30 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
 
     link.bot_started = True
     link.bot_started_at = timezone.now()
-    if telegram_id:
-        link.telegram_id = telegram_id
-    if telegram_username:
-        link.telegram_username = telegram_username
-    if telegram_first_name:
-        link.telegram_first_name = telegram_first_name
-    link.save(update_fields=[
-        "bot_started", "bot_started_at", "telegram_id",
-        "telegram_username", "telegram_first_name", "updated_at",
-    ])
+    update_fields = ["bot_started", "bot_started_at", "updated_at"]
 
+    if platform == "telegram":
+        if telegram_id:
+            link.telegram_id = telegram_id
+            update_fields.append("telegram_id")
+        if telegram_username:
+            link.telegram_username = telegram_username
+            update_fields.append("telegram_username")
+        if telegram_first_name:
+            link.telegram_first_name = telegram_first_name
+            update_fields.append("telegram_first_name")
+    else:  # vk
+        if vk_user_id:
+            link.vk_user_id = vk_user_id
+            update_fields.append("vk_user_id")
+        if vk_screen_name:
+            link.vk_screen_name = vk_screen_name
+            update_fields.append("vk_screen_name")
+        if vk_first_name:
+            link.vk_first_name = vk_first_name
+            update_fields.append("vk_first_name")
+
+    link.save(update_fields=update_fields)
     return JsonResponse({"ok": True})
 
 

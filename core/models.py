@@ -1037,8 +1037,15 @@ def search_report_upload_to(instance: "SearchReport", filename: str) -> str:
     return f"search_reports/user_{instance.user_id}/{uuid4().hex}.{ext}"
 
 
+VK_COMMUNITY_SCREEN_NAME = "leadmurzz"
+
+
 class SearchLink(TimeStampedModel):
-    """Ссылка для привлечения лидов через Telegram-бота (SearchLink-система)."""
+    """Ссылка для привлечения лидов через бота мессенджера (Telegram / VK)."""
+
+    class Platform(models.TextChoices):
+        TELEGRAM = "telegram", "Telegram"
+        VK = "vk", "VK"
 
     display_id = models.PositiveIntegerField(
         null=True, blank=True, db_index=True, unique=True,
@@ -1057,6 +1064,13 @@ class SearchLink(TimeStampedModel):
         db_index=True,
         help_text="Уникальный код ссылки (/s/<code>/).",
     )
+    platform = models.CharField(
+        max_length=16,
+        choices=Platform.choices,
+        default=Platform.TELEGRAM,
+        db_index=True,
+        help_text="Платформа бота: Telegram или VK.",
+    )
     lead_name = models.CharField(
         max_length=200,
         help_text="Имя/ник лида (для OG-тегов и персонализации).",
@@ -1064,7 +1078,7 @@ class SearchLink(TimeStampedModel):
     bot_username = models.CharField(
         max_length=64,
         blank=True,
-        help_text="Username бота из пула (без @).",
+        help_text="Для TG — username бота из пула (без @). Для VK — screen_name community.",
     )
     bot_started = models.BooleanField(
         default=False,
@@ -1093,6 +1107,23 @@ class SearchLink(TimeStampedModel):
         default="",
         help_text="Telegram first_name лида, из вебхука при /start.",
     )
+    vk_user_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="VK user id лида (из вебхука при первом сообщении community-боту).",
+    )
+    vk_screen_name = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="VK screen_name лида (nickname в URL vk.com/<screen_name>).",
+    )
+    vk_first_name = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="VK first_name лида, из вебхука.",
+    )
     creator_ip = models.GenericIPAddressField(
         null=True,
         blank=True,
@@ -1115,14 +1146,57 @@ class SearchLink(TimeStampedModel):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"SearchLink({self.code}) → {self.lead_name}"
+        return f"SearchLink({self.platform}:{self.code}) → {self.lead_name}"
 
     @property
     def deep_link(self) -> str:
-        return f"https://t.me/{self.bot_username}?start={self.code}"
+        """Основная deep-ссылка (по preferred platform). Для истории/совместимости."""
+        if self.platform == self.Platform.VK:
+            return self.vk_deep_link
+        return self.tg_deep_link
+
+    @property
+    def tg_deep_link(self) -> str:
+        """Telegram deep link из пула ботов (bot_username всегда TG-бот)."""
+        tg_bot = self.bot_username or SEARCH_BOT_POOL[0]
+        return f"https://t.me/{tg_bot}?start={self.code}"
+
+    @property
+    def vk_deep_link(self) -> str:
+        return f"https://vk.me/{VK_COMMUNITY_SCREEN_NAME}?ref={self.code}"
+
+    @property
+    def started_platform(self) -> str:
+        """Какая платформа реально зафиксировала переход."""
+        if self.telegram_id or self.telegram_username:
+            return "telegram"
+        if self.vk_user_id or self.vk_screen_name:
+            return "vk"
+        return ""
+
+    @property
+    def lead_contact_url(self) -> str:
+        """Кликабельный профиль лида (для админки/менеджера)."""
+        if self.platform == self.Platform.VK:
+            if self.vk_screen_name:
+                return f"https://vk.com/{self.vk_screen_name}"
+            if self.vk_user_id:
+                return f"https://vk.com/id{self.vk_user_id}"
+            return ""
+        if self.telegram_username:
+            return f"https://t.me/{self.telegram_username}"
+        return ""
+
+    @property
+    def lead_contact_display(self) -> str:
+        if self.platform == self.Platform.VK:
+            return self.vk_screen_name or (f"id{self.vk_user_id}" if self.vk_user_id else "")
+        return self.telegram_username
 
     def save(self, *args, **kwargs):
         if not self.bot_username:
+            # bot_username — это всегда TG-бот из пула.
+            # VK-ссылки всегда идут через одну community (VK_COMMUNITY_SCREEN_NAME).
             self.bot_username = random.choice(SEARCH_BOT_POOL)
         if not self.display_id:
             from django.db.models import Max
