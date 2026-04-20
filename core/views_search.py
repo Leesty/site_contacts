@@ -49,6 +49,20 @@ def _can_manage_searchlinks(request: HttpRequest) -> bool:
     return _require_approved_user(request)
 
 
+# Тестовые аккаунты, которым видна опция VK (до полного раскатывания фичи).
+# Id=5 (Test11) — тестовый аккаунт для проверки VK SearchLink.
+VK_SEARCHLINK_BETA_USER_IDS = {5}
+
+
+def _can_use_vk_platform(user) -> bool:
+    """Временный гейт на VK SearchLink: админы + тестовые аккаунты."""
+    if not user.is_authenticated:
+        return False
+    if getattr(user, "role", None) in ("admin", "main_admin"):
+        return True
+    return user.id in VK_SEARCHLINK_BETA_USER_IDS
+
+
 def _require_support(request: HttpRequest) -> bool:
     user = request.user
     if not user.is_authenticated:
@@ -124,6 +138,7 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
         "bot_waiting_count": bot_waiting_count,
         "bot_started_count": bot_started_count,
         "search_reward": search_reward,
+        "can_use_vk": _can_use_vk_platform(request.user),
     })
 
 
@@ -143,6 +158,10 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
     platform = (request.POST.get("platform") or "telegram").strip().lower()
     if platform not in (SearchLink.Platform.TELEGRAM, SearchLink.Platform.VK):
         platform = SearchLink.Platform.TELEGRAM
+    # Бета-гейт: VK доступен только тестовым аккаунтам и админам. Остальным — тихий фолбэк на TG.
+    if platform == SearchLink.Platform.VK and not _can_use_vk_platform(request.user):
+        platform = SearchLink.Platform.TELEGRAM
+        messages.warning(request, "VK-ссылки пока в бета-тесте, вам создана Telegram-ссылка.")
     if not lead_name:
         messages.error(request, "Укажите имя/ник лида.")
         return redirect("search_links_my")
@@ -175,16 +194,21 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
 
     return render(request, "search/landing.html", {
         "lead_name": link.lead_name,
-        "deep_link": link.deep_link,
+        "tg_deep_link": link.tg_deep_link,
+        "vk_deep_link": link.vk_deep_link,
+        "preferred_platform": link.platform,
         "code": link.code,
-        "platform": link.platform,
     })
 
 
 # ─── Публичный клик «Перейти в бота» ──────────────────────────────────────────
 
 def search_link_go(request: HttpRequest, code: str) -> HttpResponse:
-    """Клик на кнопку «Перейти в бота» на лендинге. Записывает IP и проверяет накрутку."""
+    """Клик на кнопку «Перейти в бота» на лендинге. Записывает IP и проверяет накрутку.
+
+    Query-параметр ?p=tg|vk выбирает платформу для редиректа. По умолчанию — tg
+    (старое поведение). Лендинг показывает обе кнопки с явным параметром.
+    """
     link = SearchLink.objects.filter(code=code).first()
     if not link:
         return render(request, "search/unavailable.html", status=404)
@@ -196,7 +220,11 @@ def search_link_go(request: HttpRequest, code: str) -> HttpResponse:
         link.save(update_fields=["self_click"])
         logger.warning("SearchLink self-click on go: link=%s user=%s ip=%s", link.code, link.user_id, clicker_ip)
 
-    return redirect(link.deep_link)
+    p = (request.GET.get("p") or "").strip().lower()
+    if p == "vk":
+        return redirect(link.vk_deep_link)
+    # Default и p=tg → telegram
+    return redirect(link.tg_deep_link)
 
 
 # ─── Менеджер: отчёт ─────────────────────────────────────────────────────────
@@ -344,14 +372,8 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
     if not link:
         return JsonResponse({"ok": False, "error": "not_found"}, status=404)
 
-    # Защита от путаницы платформ — вебхук от VK не должен трогать TG-ссылку и наоборот
-    if link.platform != platform:
-        return JsonResponse({
-            "ok": False,
-            "error": "platform_mismatch",
-            "expected": link.platform,
-            "got": platform,
-        }, status=400)
+    # Платформа не проверяется — на одной ссылке доступны обе платформы,
+    # первая платформа, с которой лид прислал start, и засчитывается.
 
     # Если бот уже был стартован — дозаполняем пустые поля (не меняем bot_started_at)
     if link.bot_started:

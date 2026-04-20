@@ -1150,10 +1150,29 @@ class SearchLink(TimeStampedModel):
 
     @property
     def deep_link(self) -> str:
+        """Основная deep-ссылка (по preferred platform). Для истории/совместимости."""
         if self.platform == self.Platform.VK:
-            # Один community на всю партнёрку, не пул — просто ref-параметр
-            return f"https://vk.me/{self.bot_username or VK_COMMUNITY_SCREEN_NAME}?ref={self.code}"
-        return f"https://t.me/{self.bot_username}?start={self.code}"
+            return self.vk_deep_link
+        return self.tg_deep_link
+
+    @property
+    def tg_deep_link(self) -> str:
+        """Telegram deep link из пула ботов (bot_username всегда TG-бот)."""
+        tg_bot = self.bot_username or SEARCH_BOT_POOL[0]
+        return f"https://t.me/{tg_bot}?start={self.code}"
+
+    @property
+    def vk_deep_link(self) -> str:
+        return f"https://vk.me/{VK_COMMUNITY_SCREEN_NAME}?ref={self.code}"
+
+    @property
+    def started_platform(self) -> str:
+        """Какая платформа реально зафиксировала переход."""
+        if self.telegram_id or self.telegram_username:
+            return "telegram"
+        if self.vk_user_id or self.vk_screen_name:
+            return "vk"
+        return ""
 
     @property
     def lead_contact_url(self) -> str:
@@ -1176,10 +1195,9 @@ class SearchLink(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         if not self.bot_username:
-            if self.platform == self.Platform.VK:
-                self.bot_username = VK_COMMUNITY_SCREEN_NAME
-            else:
-                self.bot_username = random.choice(SEARCH_BOT_POOL)
+            # bot_username — это всегда TG-бот из пула.
+            # VK-ссылки всегда идут через одну community (VK_COMMUNITY_SCREEN_NAME).
+            self.bot_username = random.choice(SEARCH_BOT_POOL)
         if not self.display_id:
             from django.db.models import Max
             max_lead = Lead.objects.aggregate(m=Max("id"))["m"] or 0
