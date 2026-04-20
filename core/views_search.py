@@ -50,8 +50,8 @@ def _can_manage_searchlinks(request: HttpRequest) -> bool:
 
 
 # Тестовые аккаунты, которым видна опция VK (до полного раскатывания фичи).
-# Id=5 (Test11) — тестовый аккаунт для проверки VK SearchLink.
-VK_SEARCHLINK_BETA_USER_IDS = {5}
+# Id=285 (username="5") — тестовый аккаунт для проверки VK SearchLink.
+VK_SEARCHLINK_BETA_USER_IDS = {285}
 
 
 def _can_use_vk_platform(user) -> bool:
@@ -423,7 +423,62 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
             update_fields.append("vk_first_name")
 
     link.save(update_fields=update_fields)
+
+    # Автодобавление лида в базу контактов менеджера (base_type=telegram|vk)
+    try:
+        _autoadd_lead_contact(link, platform)
+    except Exception as e:
+        logger.warning("SearchLink autoadd contact failed link=%s: %s", link.code, e)
+
     return JsonResponse({"ok": True})
+
+
+def _autoadd_lead_contact(link: SearchLink, platform: str) -> None:
+    """После первого bot_started — добавляем контакт лида в базу менеджера.
+
+    - base_type: по платформе (telegram или vk)
+    - value: username/screen_name, fallback на id
+    - assigned_to: менеджер, создавший ссылку
+    Идемпотентно по (base_type, value) — если контакт уже есть, не создаём дубль и
+    не перепривязываем к другому менеджеру.
+    """
+    from .models import BaseType, Contact
+
+    if platform == "telegram":
+        slug = "telegram"
+        if link.telegram_username:
+            value = f"@{link.telegram_username}"
+        elif link.telegram_id:
+            value = f"tg:{link.telegram_id}"
+        else:
+            return
+    else:  # vk
+        slug = "vk"
+        if link.vk_screen_name:
+            value = link.vk_screen_name
+        elif link.vk_user_id:
+            value = f"id{link.vk_user_id}"
+        else:
+            return
+
+    base_type = BaseType.objects.filter(slug=slug).first()
+    if not base_type:
+        logger.warning("SearchLink autoadd: base_type %s not found", slug)
+        return
+
+    contact, created = Contact.objects.get_or_create(
+        base_type=base_type,
+        value=value,
+        defaults={
+            "assigned_to": link.user,
+            "assigned_at": timezone.now(),
+            "is_active": False,  # уже «сработал», не выдавать другим
+        },
+    )
+    if created:
+        logger.info("SearchLink autoadd contact: %s/%s → user=%s", slug, value, link.user_id)
+    else:
+        logger.info("SearchLink autoadd contact exists: %s/%s (kept existing)", slug, value)
 
 
 # ─── Админ: модерация отчётов ────────────────────────────────────────────────
