@@ -426,21 +426,22 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
             report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
             return redirect("admin_search_reports_list")
 
-        report.status = SearchReport.Status.APPROVED
-        report.reviewed_at = timezone.now()
-        report.reviewed_by = request.user
-        report.save(update_fields=["status", "reviewed_at", "reviewed_by"])
-
         lead_owner = User.objects.select_for_update().get(pk=report.user_id)
         from .models import PartnerEarning, log_balance_change
 
         # Разделение награды для рефералов
         if lead_owner.partner_owner_id and lead_owner.ref_searchlink_enabled:
-            manager_cut = max(1, min(99, lead_owner.ref_searchlink_manager_cut))
+            manager_cut = max(1, min(SEARCH_REPORT_REWARD - 1, lead_owner.ref_searchlink_manager_cut))
             ref_reward = SEARCH_REPORT_REWARD - manager_cut
         else:
             manager_cut = 0
             ref_reward = SEARCH_REPORT_REWARD
+
+        report.status = SearchReport.Status.APPROVED
+        report.reviewed_at = timezone.now()
+        report.reviewed_by = request.user
+        report.paid_reward = ref_reward
+        report.save(update_fields=["status", "reviewed_at", "reviewed_by", "paid_reward"])
 
         _old = lead_owner.balance or 0
         lead_owner.balance = _old + ref_reward

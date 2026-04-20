@@ -148,7 +148,7 @@
                       {% if report.status == 'pending' %}
                         <span class="badge bg-secondary">На проверке</span>
                       {% elif report.status == 'approved' %}
-                        <span class="badge bg-success">Одобрен +{{ search_reward }}₽</span>
+                        <span class="badge bg-success">Одобрен +{% if report.paid_reward %}{{ report.paid_reward }}{% else %}{{ search_reward }}{% endif %}₽</span>
                       {% elif report.status == 'rejected' %}
                         <span class="badge bg-danger">Отклонён</span>
                         {% if report.rejection_reason %}

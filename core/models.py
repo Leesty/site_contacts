@@ -1187,6 +1187,10 @@ class SearchReport(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="reviewed_search_reports",
     )
+    paid_reward = models.IntegerField(
+        default=0,
+        help_text="Сколько реально начислено менеджеру на момент одобрения (без партнёрского cut). Для старых/не одобренных записей — 0.",
+    )
 
     class Meta:
         verbose_name = "Отчёт SearchLink"
