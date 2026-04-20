@@ -55,7 +55,7 @@
 
   {# ═══ Секция 2: Отчёты (главное — крупные карточки) ═══ #}
   <h6 class="text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Отчёты</h6>
-  <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3 mb-4">
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
@@ -88,6 +88,17 @@
           </div>
           <p class="text-muted small mb-2">Все отделы + поиск по контакту, дате, ID.</p>
           <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_leads_all_new' %}?tab=all">Поиск</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(234,179,8,0.1) 0%, rgba(234,179,8,0.02) 100%); border: 1px solid rgba(234,179,8,0.25);">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">🕵 Модерация админов</h2>
+          </div>
+          <p class="text-muted small mb-2">Кто из админов что одобрил / отклонил / кинул на доработку. С причинами.</p>
+          <a class="btn btn-outline-warning btn-sm" href="{% url 'admin_moderation_by_admin_list' %}">Смотреть</a>
         </div>
       </div>
     </div>
@@ -200,15 +211,6 @@
             <span class="fw-semibold" style="font-size: 14px;">📊 Статистика</span>
             <br>
             <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_stats' %}">Открыть</a>
-          </div>
-        </div>
-      </div>
-      <div class="col">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body py-3">
-            <span class="fw-semibold" style="font-size: 14px;">🕵 Модерация по админам</span>
-            <br>
-            <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_moderation_by_admin_list' %}">Кто что проверял</a>
           </div>
         </div>
       </div>
