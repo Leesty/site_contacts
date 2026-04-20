@@ -16,22 +16,33 @@
     <div class="card-body py-3">
       <form method="post" action="{% url 'search_link_create' %}" class="row g-2 align-items-center">
         {% csrf_token %}
-        <div class="col-12 col-md-5">
-          <input type="text" class="form-control form-control-sm" name="lead_name" placeholder="Имя / ник лида" required maxlength="200">
-        </div>
-        <div class="col-6 col-md-3">
-          <select class="form-select form-select-sm" name="platform">
-            <option value="telegram" selected>🟦 Telegram</option>
-            <option value="vk">🟪 VK</option>
-          </select>
-        </div>
-        <div class="col-6 col-md-4">
-          <button type="submit" class="btn btn-primary btn-sm w-100">Создать</button>
-        </div>
+        {% if can_use_vk %}
+          <div class="col-12 col-md-5">
+            <input type="text" class="form-control form-control-sm" name="lead_name" placeholder="Имя / ник лида" required maxlength="200">
+          </div>
+          <div class="col-6 col-md-3">
+            <select class="form-select form-select-sm" name="platform">
+              <option value="telegram" selected>🟦 Telegram</option>
+              <option value="vk">🟪 VK (бета)</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-4">
+            <button type="submit" class="btn btn-primary btn-sm w-100">Создать</button>
+          </div>
+        {% else %}
+          <div class="col-12 col-md-9">
+            <input type="text" class="form-control form-control-sm" name="lead_name" placeholder="Имя / ник лида" required maxlength="200">
+          </div>
+          <div class="col-12 col-md-3">
+            <button type="submit" class="btn btn-primary btn-sm w-100">Создать</button>
+          </div>
+        {% endif %}
       </form>
+      {% if can_use_vk %}
       <div class="form-text mt-1">
-        <strong>Важно для VK:</strong> ссылка работает только если клиент <em>ранее не писал</em> боту @leadmurzz. Первое сообщение после клика засчитывает переход.
+        <strong>Лендинг одинаковый для обеих платформ</strong> — клиент сам выберет, где запустить бота. Засчитывается первый переход. В VK: первое сообщение после клика, и только если клиент ранее не писал @leadmurzz.
       </div>
+      {% endif %}
     </div>
   </div>
 
