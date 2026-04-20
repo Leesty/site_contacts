@@ -9,6 +9,7 @@
 - Шаблон `my_links.html` теперь берёт `report.paid_reward` (fallback на `search_reward` только для записей без бэкфилла)
 - Вьюха `admin_search_report_approve` при одобрении пишет фактическую сумму в `paid_reward`
 - Компенсация для pip1au7: +50₽ (баланс 90→140), `paid_reward` на report #94 обновлён до 120₽
+- Массовая компенсация остальным 45 отчётам за 20.04 (одобрены до деплоя ставки 150): +50₽ менеджеру по каждому отчёту, `paid_reward` +50 в каждом, запись в `core_balancelog` с reason `searchlink_rate_compensation#<report_id>`. Итого 2250₽ на 11 менеджеров. После компенсации все 46 одобрений 20.04 суммарно дают 150₽ (manager paid + partner cut)
 
 ## 2026-04-20
 
