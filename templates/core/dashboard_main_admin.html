@@ -194,6 +194,22 @@
       <div class="col">
         <div class="card h-100 shadow-sm">
           <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">🕵 Модерация по админам</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_moderation_by_admin_list' %}">Кто что проверял</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 13px;">🔗 Мои SearchLink</span><br>
+            <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'search_links_my' %}">Создать</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
             <span class="fw-semibold" style="font-size: 13px;">📦 Базы (Excel)</span><br>
             <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'bases_excel' %}">Загрузить</a>
           </div>

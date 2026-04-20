@@ -119,13 +119,13 @@
                   {% if tab == 'all' %}
                     {% if lead.status == 'approved' %}<span class="badge bg-success">Одобрен</span>{% elif lead.status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>{% elif lead.status == 'rework' %}<span class="badge bg-warning text-dark">На доработке</span>{% else %}<span class="badge bg-secondary">На проверке</span>{% endif %}
                   {% else %}
-                    {% if lead.reviewed_by %}@{{ lead.reviewed_by.username }}{% else %}—{% endif %}
+                    {% if lead.reviewed_by %}<a href="{% url 'admin_moderation_by_admin_detail' lead.reviewed_by.id %}?kind=lead&tab={{ tab }}" class="text-decoration-none">@{{ lead.reviewed_by.username }}</a>{% else %}—{% endif %}
                   {% endif %}
                 </td>
                 {% endif %}
                 {% if tab == 'all' %}
                 <td class="text-break small">
-                  {% if lead.reviewed_by %}@{{ lead.reviewed_by.username }}{% if lead.rework_comment %}: {{ lead.rework_comment|truncatechars:50 }}{% elif lead.rejection_reason %}: {{ lead.rejection_reason|truncatechars:50 }}{% endif %}{% else %}—{% endif %}
+                  {% if lead.reviewed_by %}<a href="{% url 'admin_moderation_by_admin_detail' lead.reviewed_by.id %}?kind=lead&tab=all" class="text-decoration-none">@{{ lead.reviewed_by.username }}</a>{% if lead.rework_comment %}: {{ lead.rework_comment|truncatechars:50 }}{% elif lead.rejection_reason %}: {{ lead.rejection_reason|truncatechars:50 }}{% endif %}{% else %}—{% endif %}
                 </td>
                 {% endif %}
                 {% if tab == 'rework' or tab == 'rejected' %}

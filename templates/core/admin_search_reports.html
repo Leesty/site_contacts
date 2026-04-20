@@ -42,7 +42,7 @@
               <th>Вложение</th>
               <th>Контакт</th>
               {% if tab == 'rework' %}<th>Причина</th>{% elif tab == 'rejected' %}<th>Причина</th>{% endif %}
-              {% if tab == 'approved' or tab == 'rejected' %}<th>Проверил</th>{% endif %}
+              {% if tab == 'approved' or tab == 'rejected' or tab == 'rework' %}<th>Проверил</th>{% endif %}
             </tr>
           </thead>
           <tbody>
@@ -106,12 +106,12 @@
                 {% elif tab == 'rejected' %}
                 <td class="text-break small" style="max-width:150px;">{{ report.rejection_reason|default:"—"|truncatechars:50 }}</td>
                 {% endif %}
-                {% if tab == 'approved' or tab == 'rejected' %}
-                <td class="small">{% if report.reviewed_by %}@{{ report.reviewed_by.username }}{% else %}—{% endif %}</td>
+                {% if tab == 'approved' or tab == 'rejected' or tab == 'rework' %}
+                <td class="small">{% if report.reviewed_by %}<a href="{% url 'admin_moderation_by_admin_detail' report.reviewed_by.id %}?kind=searchreport&tab={{ tab }}" class="text-decoration-none">@{{ report.reviewed_by.username }}</a>{% else %}—{% endif %}</td>
                 {% endif %}
               </tr>
             {% empty %}
-              <tr><td colspan="9" class="text-muted text-center py-4">Нет отчётов.</td></tr>
+              <tr><td colspan="10" class="text-muted text-center py-4">Нет отчётов.</td></tr>
             {% endfor %}
           </tbody>
         </table>

@@ -38,6 +38,17 @@ def _require_approved_user(request: HttpRequest) -> bool:
     return getattr(user, "role", None) == "user" and getattr(user, "status", None) == "approved"
 
 
+def _can_manage_searchlinks(request: HttpRequest) -> bool:
+    """SearchLink может создавать approved-user ИЛИ admin/main_admin."""
+    user = request.user
+    if not user.is_authenticated:
+        return False
+    role = getattr(user, "role", None)
+    if role in ("admin", "main_admin"):
+        return True
+    return _require_approved_user(request)
+
+
 def _require_support(request: HttpRequest) -> bool:
     user = request.user
     if not user.is_authenticated:
@@ -52,9 +63,10 @@ def _require_support(request: HttpRequest) -> bool:
 @login_required
 def search_links_my(request: HttpRequest) -> HttpResponse:
     """Список SearchLink-ов менеджера с формой создания и вкладками по статусу."""
-    if not _require_approved_user(request):
+    if not _can_manage_searchlinks(request):
         return HttpResponseForbidden("Доступ запрещён.")
-    if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
+    # Ref-SearchLink-гейт действует только на обычных юзеров, админы проходят мимо.
+    if getattr(request.user, "role", None) == "user" and request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
         messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта. Обратитесь к менеджеру.")
         return redirect("dashboard")
 
@@ -121,9 +133,9 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["POST"])
 def search_link_create(request: HttpRequest) -> HttpResponse:
     """Создать новый SearchLink."""
-    if not _require_approved_user(request):
+    if not _can_manage_searchlinks(request):
         return HttpResponseForbidden("Доступ запрещён.")
-    if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
+    if getattr(request.user, "role", None) == "user" and request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
         messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта.")
         return redirect("dashboard")
 

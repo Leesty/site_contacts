@@ -145,6 +145,16 @@ urlpatterns = [
         name="admin_earnings_stats",
     ),
     path(
+        "staff/moderation-by-admin/",
+        views_support_admin.admin_moderation_by_admin_list,
+        name="admin_moderation_by_admin_list",
+    ),
+    path(
+        "staff/moderation-by-admin/<int:admin_id>/",
+        views_support_admin.admin_moderation_by_admin_detail,
+        name="admin_moderation_by_admin_detail",
+    ),
+    path(
         "staff/standalone/reset-password/",
         views_support_admin.standalone_admin_reset_password,
         name="standalone_admin_reset_password",

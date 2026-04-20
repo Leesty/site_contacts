@@ -155,7 +155,10 @@
             <span class="fw-semibold" style="font-size: 14px;">🔗 SearchLink</span>
             {% if search_pending_count %}<span class="badge bg-danger">{{ search_pending_count }}</span>{% endif %}
           </div>
-          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_search_reports_list' %}">Отчёты</a>
+          <div class="d-flex gap-1 mt-1">
+            <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_search_reports_list' %}">Отчёты</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{% url 'search_links_my' %}">Мои</a>
+          </div>
         </div>
       </div>
     </div>
@@ -197,6 +200,15 @@
             <span class="fw-semibold" style="font-size: 14px;">📊 Статистика</span>
             <br>
             <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_stats' %}">Открыть</a>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body py-3">
+            <span class="fw-semibold" style="font-size: 14px;">🕵 Модерация по админам</span>
+            <br>
+            <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_moderation_by_admin_list' %}">Кто что проверял</a>
           </div>
         </div>
       </div>

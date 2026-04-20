@@ -2804,3 +2804,127 @@ def admin_receipts(request: HttpRequest) -> HttpResponse:
         "unchecked_count": unchecked_count,
     })
 
+
+# ─── Модерация по админам (кто что проверял) ─────────────────────────────────
+
+@login_required
+def admin_moderation_by_admin_list(request: HttpRequest) -> HttpResponse:
+    """Сводная таблица: сколько отчётов каждый админ одобрил / отклонил / отправил на доработку."""
+    if not _require_support(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+
+    from .models import SearchReport
+
+    # Лиды (основная биржа) — агрегируем по reviewed_by
+    lead_stats = {}
+    for row in (
+        Lead.objects.filter(reviewed_by__isnull=False)
+        .values("reviewed_by_id", "status")
+        .annotate(c=Count("id"))
+    ):
+        d = lead_stats.setdefault(row["reviewed_by_id"], {"approved": 0, "rejected": 0, "rework": 0})
+        if row["status"] in d:
+            d[row["status"]] = row["c"]
+
+    # Отчёты SearchLink — агрегируем по reviewed_by
+    sr_stats = {}
+    for row in (
+        SearchReport.objects.filter(reviewed_by__isnull=False)
+        .values("reviewed_by_id", "status")
+        .annotate(c=Count("id"))
+    ):
+        d = sr_stats.setdefault(row["reviewed_by_id"], {"approved": 0, "rejected": 0, "rework": 0})
+        if row["status"] in d:
+            d[row["status"]] = row["c"]
+
+    admin_ids = set(lead_stats.keys()) | set(sr_stats.keys())
+    admins = {u.id: u for u in User.objects.filter(id__in=admin_ids)}
+
+    rows = []
+    for aid in admin_ids:
+        admin = admins.get(aid)
+        if not admin:
+            continue
+        ls = lead_stats.get(aid, {"approved": 0, "rejected": 0, "rework": 0})
+        ss = sr_stats.get(aid, {"approved": 0, "rejected": 0, "rework": 0})
+        total = sum(ls.values()) + sum(ss.values())
+        rows.append({
+            "admin": admin,
+            "lead_approved": ls["approved"],
+            "lead_rejected": ls["rejected"],
+            "lead_rework": ls["rework"],
+            "sr_approved": ss["approved"],
+            "sr_rejected": ss["rejected"],
+            "sr_rework": ss["rework"],
+            "total": total,
+        })
+    rows.sort(key=lambda r: r["total"], reverse=True)
+
+    return render(request, "core/admin_moderation_by_admin_list.html", {
+        "rows": rows,
+    })
+
+
+@login_required
+def admin_moderation_by_admin_detail(request: HttpRequest, admin_id: int) -> HttpResponse:
+    """Детализация: что именно проверял конкретный админ — лиды + SearchReport."""
+    if not _require_support(request):
+        return HttpResponseForbidden("Недостаточно прав.")
+
+    from .models import SearchReport
+
+    target_admin = get_object_or_404(User, pk=admin_id)
+    kind = request.GET.get("kind", "lead")  # lead | searchreport
+    tab = request.GET.get("tab", "rework")  # approved | rejected | rework | all
+    if kind not in ("lead", "searchreport"):
+        kind = "lead"
+    if tab not in ("approved", "rejected", "rework", "all"):
+        tab = "rework"
+
+    if kind == "lead":
+        qs = Lead.objects.filter(reviewed_by=target_admin).select_related("user", "lead_type", "base_type")
+        if tab == "approved":
+            qs = qs.filter(status=Lead.Status.APPROVED)
+        elif tab == "rejected":
+            qs = qs.filter(status=Lead.Status.REJECTED)
+        elif tab == "rework":
+            qs = qs.filter(status=Lead.Status.REWORK)
+        qs = qs.order_by("-reviewed_at")
+    else:
+        qs = SearchReport.objects.filter(reviewed_by=target_admin).select_related("user", "search_link")
+        if tab == "approved":
+            qs = qs.filter(status=SearchReport.Status.APPROVED)
+        elif tab == "rejected":
+            qs = qs.filter(status=SearchReport.Status.REJECTED)
+        elif tab == "rework":
+            qs = qs.filter(status=SearchReport.Status.REWORK)
+        qs = qs.order_by("-reviewed_at")
+
+    paginator = Paginator(qs, 50)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    # Счётчики для бейджей вкладок
+    if kind == "lead":
+        base = Lead.objects.filter(reviewed_by=target_admin)
+        counts = {
+            "approved": base.filter(status=Lead.Status.APPROVED).count(),
+            "rejected": base.filter(status=Lead.Status.REJECTED).count(),
+            "rework": base.filter(status=Lead.Status.REWORK).count(),
+        }
+    else:
+        base = SearchReport.objects.filter(reviewed_by=target_admin)
+        counts = {
+            "approved": base.filter(status=SearchReport.Status.APPROVED).count(),
+            "rejected": base.filter(status=SearchReport.Status.REJECTED).count(),
+            "rework": base.filter(status=SearchReport.Status.REWORK).count(),
+        }
+    counts["all"] = counts["approved"] + counts["rejected"] + counts["rework"]
+
+    return render(request, "core/admin_moderation_by_admin_detail.html", {
+        "target_admin": target_admin,
+        "page_obj": page_obj,
+        "kind": kind,
+        "tab": tab,
+        "counts": counts,
+    })
+

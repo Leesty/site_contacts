@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Модерация по админам — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">Модерация по админам</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-3">Кто из админов принял/отклонил/отправил на доработку отчёты. Клик по админу — детализация с причинами.</p>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Админ</th>
+              <th colspan="3" class="text-center border-start border-end border-secondary">Обычные лиды</th>
+              <th colspan="3" class="text-center border-end border-secondary">SearchLink отчёты</th>
+              <th class="text-end">Всего</th>
+              <th></th>
+            </tr>
+            <tr class="small text-muted">
+              <th></th>
+              <th class="text-center border-start border-secondary">✓</th>
+              <th class="text-center">✗</th>
+              <th class="text-center border-end border-secondary">↺</th>
+              <th class="text-center">✓</th>
+              <th class="text-center">✗</th>
+              <th class="text-center border-end border-secondary">↺</th>
+              <th></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>
+                  <a href="{% url 'admin_moderation_by_admin_detail' row.admin.id %}?kind=lead&tab=rework" class="text-decoration-none">
+                    @{{ row.admin.username }}
+                  </a>
+                  <span class="text-muted small ms-1">({{ row.admin.get_role_display }})</span>
+                </td>
+                <td class="text-center border-start border-secondary">
+                  {% if row.lead_approved %}<span class="badge bg-success">{{ row.lead_approved }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-center">
+                  {% if row.lead_rejected %}<span class="badge bg-danger">{{ row.lead_rejected }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-center border-end border-secondary">
+                  {% if row.lead_rework %}<span class="badge bg-warning text-dark">{{ row.lead_rework }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-center">
+                  {% if row.sr_approved %}<span class="badge bg-success">{{ row.sr_approved }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-center">
+                  {% if row.sr_rejected %}<span class="badge bg-danger">{{ row.sr_rejected }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-center border-end border-secondary">
+                  {% if row.sr_rework %}<span class="badge bg-warning text-dark">{{ row.sr_rework }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-end fw-semibold">{{ row.total }}</td>
+                <td class="text-end">
+                  <a class="btn btn-outline-primary btn-sm py-0" href="{% url 'admin_moderation_by_admin_detail' row.admin.id %}?kind=lead&tab=rework">Детали →</a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="9" class="text-muted text-center py-4">Пока ни один админ ничего не проверял.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

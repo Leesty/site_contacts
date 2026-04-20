@@ -2,6 +2,17 @@
 
 ## 2026-04-20
 
+### Модерация по админам
+- Новая страница `/staff/moderation-by-admin/` — сводная таблица: кто из админов что принял/отклонил/отправил на доработку (по лидам и по SearchReport отдельно)
+- Детализация `/staff/moderation-by-admin/<admin_id>/` — вкладки по статусам, переключатель «Обычные лиды / SearchLink отчёты», столбец «Причина / Что доработать»
+- В таблицах лидов и отчётов `@reviewed_by` теперь кликабельная ссылка на детализацию админа
+- В `admin_search_reports.html` «Проверил» теперь показывается и в rework-вкладке (раньше было только в approved/rejected)
+- Ссылки в дашборды admin и main_admin
+
+### SearchLink для админов
+- `admin` и `main_admin` теперь могут создавать и вести свои SearchLink ссылки (кнопка на дашборде)
+- Гейт `ref_searchlink_enabled` действует только на `role=user`
+
 ### SearchLink: telegram_username лида
 - Добавлены поля `telegram_username`, `telegram_first_name` на `SearchLink` (миграция 0050)
 - Бот при `/start` шлёт в вебхук `telegram_username` и `telegram_first_name` (патч на 72.56.24.65)

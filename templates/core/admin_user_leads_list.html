@@ -148,7 +148,7 @@
                     <span class="js-full d-none">{{ lead.comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
                   {% else %}{{ lead.comment|default:"—" }}{% endif %}
                 </td>
-                <td>{% if lead.reviewed_by %}@{{ lead.reviewed_by.username }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>{% if lead.reviewed_by %}<a href="{% url 'admin_moderation_by_admin_detail' lead.reviewed_by.id %}?kind=lead&tab={{ tab }}" class="text-decoration-none">@{{ lead.reviewed_by.username }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
               </tr>
             {% empty %}
               <tr>

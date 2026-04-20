@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Модерация @{{ target_admin.username }} — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">Модерация: <span class="text-primary">@{{ target_admin.username }}</span>
+      <span class="text-muted small">({{ target_admin.get_role_display }})</span>
+    </h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_moderation_by_admin_list' %}">← К списку админов</a>
+  </div>
+
+  {# Переключатель тип: обычные лиды / SearchReport #}
+  <div class="btn-group btn-group-sm mb-3" role="group">
+    <a class="btn btn-outline-primary {% if kind == 'lead' %}active{% endif %}" href="?kind=lead&tab={{ tab }}">Обычные лиды</a>
+    <a class="btn btn-outline-primary {% if kind == 'searchreport' %}active{% endif %}" href="?kind=searchreport&tab={{ tab }}">SearchLink отчёты</a>
+  </div>
+
+  {# Вкладки статусов #}
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?kind={{ kind }}&tab=rework">
+        На доработке {% if counts.rework %}<span class="badge bg-warning text-dark ms-1">{{ counts.rework }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?kind={{ kind }}&tab=rejected">
+        Отклонённые {% if counts.rejected %}<span class="badge bg-danger ms-1">{{ counts.rejected }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?kind={{ kind }}&tab=approved">
+        Одобренные {% if counts.approved %}<span class="badge bg-success ms-1">{{ counts.approved }}</span>{% endif %}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?kind={{ kind }}&tab=all">
+        Все <span class="badge bg-secondary ms-1">{{ counts.all }}</span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Пользователь</th>
+              {% if kind == 'lead' %}
+                <th>Тип лида</th>
+                <th>Контакт</th>
+              {% else %}
+                <th>Клиент (TG)</th>
+              {% endif %}
+              <th>Статус</th>
+              <th>Причина / Что доработать</th>
+              <th>Дата решения</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in page_obj %}
+              <tr>
+                <td class="text-muted small">#{{ item.id }}</td>
+                {% if kind == 'lead' %}
+                  <td><a href="{% url 'admin_user_leads_list' item.user_id %}" class="text-decoration-none">@{{ item.user.username }}</a></td>
+                  <td class="small">{{ item.lead_type.name|default:"—" }}</td>
+                  <td class="small text-muted" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    {% if item.raw_contact %}{{ item.raw_contact|truncatechars:30 }}{% else %}—{% endif %}
+                  </td>
+                {% else %}
+                  <td><a href="{% url 'admin_user_leads_list' item.user_id %}" class="text-decoration-none">@{{ item.user.username }}</a></td>
+                  <td>
+                    {% if item.search_link.telegram_username %}
+                      <a href="https://t.me/{{ item.search_link.telegram_username }}" target="_blank" rel="noopener">@{{ item.search_link.telegram_username|truncatechars:20 }}</a>
+                    {% else %}
+                      <span class="text-muted">{{ item.search_link.lead_name|truncatechars:20 }}</span>
+                    {% endif %}
+                  </td>
+                {% endif %}
+                <td>
+                  {% if item.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                  {% elif item.status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>
+                  {% elif item.status == 'rework' %}<span class="badge bg-warning text-dark">Доработка</span>
+                  {% else %}<span class="badge bg-secondary">{{ item.status }}</span>{% endif %}
+                </td>
+                <td class="small" style="max-width:320px;">
+                  {% if item.status == 'rework' %}
+                    {{ item.rework_comment|default:"—" }}
+                  {% elif item.status == 'rejected' %}
+                    {{ item.rejection_reason|default:"—" }}
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">{{ item.reviewed_at|date:"d.m.Y H:i"|default:"—" }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="7" class="text-muted text-center py-4">Нет записей.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer bg-transparent border-secondary d-flex justify-content-center py-2">
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?kind={{ kind }}&tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?kind={{ kind }}&tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
