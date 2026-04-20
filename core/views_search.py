@@ -375,8 +375,26 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
     # Платформа не проверяется — на одной ссылке доступны обе платформы,
     # первая платформа, с которой лид прислал start, и засчитывается.
 
-    # Если бот уже был стартован — дозаполняем пустые поля (не меняем bot_started_at)
+    # Если бот уже был стартован — проверяем «побеждает первая платформа».
     if link.bot_started:
+        # Определяем, какая платформа реально зафиксировала переход
+        existing_started_via = None
+        if link.vk_user_id or link.vk_screen_name:
+            existing_started_via = "vk"
+        elif link.telegram_id or link.telegram_username:
+            existing_started_via = "telegram"
+
+        # Если поздний вебхук с ДРУГОЙ платформы — игнорируем полностью, не пишем в БД.
+        if existing_started_via and existing_started_via != platform:
+            return JsonResponse({
+                "ok": True,
+                "already_started": True,
+                "winner": existing_started_via,
+                "ignored_platform": platform,
+            })
+
+        # Та же платформа (например, бот перезапустился и клиент повторно /start) —
+        # дозаполняем пустые поля, без смены bot_started_at.
         updates = []
         if platform == "telegram":
             if telegram_username and not link.telegram_username:
