@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load support_extras %}
 
 {% block title %}Доработка лида #{{ lead.id }} — Партнёрка{% endblock %}
 
@@ -11,15 +12,22 @@
   {% if lead.rework_comment %}
     <div class="alert alert-warning mb-3">
       <strong>Что нужно доработать:</strong><br>{{ lead.rework_comment }}
+      {% if lead.reviewed_by %}<div class="small text-muted mt-1">Отправил на доработку: @{{ lead.reviewed_by.username }}</div>{% endif %}
     </div>
   {% endif %}
 
   <p class="text-muted mb-3">
-    Исправьте контакт/ссылку, комментарий или загрузите новый скриншот/видео. Вложение обязательно: либо текущее, либо новое (макс. 30 МБ). После отправки лид снова попадёт на проверку.
+    Исправьте категорию, контакт/ссылку, комментарий или загрузите новый скриншот/видео. Если вложили фото по ошибке — можно заменить на видео, и наоборот. Вложение обязательно: либо текущее, либо новое (макс. 30 МБ). После отправки лид снова попадёт на проверку.
   </p>
 
   <form method="post" enctype="multipart/form-data" class="mb-3" id="lead-redo-form">
     {% csrf_token %}
+    <div class="mb-3">
+      <label class="form-label" for="id_lead_type">{{ form.lead_type.label }}</label>
+      {{ form.lead_type }}
+      <div class="form-text">Если при отправке выбрали не ту категорию — исправьте здесь.</div>
+      {% if form.lead_type.errors %}<div class="text-danger small">{% for error in form.lead_type.errors %}{{ error }}{% endfor %}</div>{% endif %}
+    </div>
     <div class="mb-3">
       <label class="form-label" for="id_raw_contact">{{ form.raw_contact.label }}</label>
       {{ form.raw_contact }}
@@ -38,6 +46,15 @@
     </div>
     <div class="mb-3" id="lead-redo-attachment-wrap" data-has-attachment="{% if lead.attachment %}1{% else %}0{% endif %}">
       <label class="form-label" for="id_attachment">{{ form.attachment.label }}</label>
+      {% if lead.attachment %}
+        <div class="alert alert-info py-2 px-3 small mb-2">
+          {% if lead.attachment|lead_attachment_is_video %}
+            🎬 <strong>Сейчас у лида видео.</strong> Можно оставить как есть или заменить на другое видео/фото.
+          {% else %}
+            🖼 <strong>Сейчас у лида фото.</strong> Если вставили фото по ошибке — загрузите видео ниже, оно заменит текущее.
+          {% endif %}
+        </div>
+      {% endif %}
       {{ form.attachment }}
       {% if form.attachment.help_text %}<div class="form-text">{{ form.attachment.help_text }}</div>{% endif %}
       <div id="lead-redo-attachment-status" class="small mt-1" aria-live="polite"></div>
@@ -50,7 +67,7 @@
   <script>
   (function() {
     var MAX_SIZE = 30 * 1024 * 1024;
-    var ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'mp4', 'mov', 'webm', 'm4v', '3gp'];
+    var ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'mp4', 'mov', 'webm', 'm4v', '3gp', 'mkv', 'avi', 'hevc'];
     var wrap = document.getElementById('lead-redo-attachment-wrap');
     var input = document.getElementById('id_attachment');
     var statusEl = document.getElementById('lead-redo-attachment-status');

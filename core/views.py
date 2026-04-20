@@ -1205,6 +1205,10 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                         lead.comment = form.cleaned_data.get("comment") or ""
                         lead.lead_date = form.cleaned_data["lead_date"]
                         update_fields = ["raw_contact", "source", "normalized_contact", "comment", "lead_date", "status", "rework_comment", "updated_at"]
+                        new_lead_type = form.cleaned_data.get("lead_type")
+                        if new_lead_type and new_lead_type.pk != lead.lead_type_id:
+                            lead.lead_type = new_lead_type
+                            update_fields.append("lead_type")
                         if form.cleaned_data.get("attachment"):
                             lead.attachment = form.cleaned_data["attachment"]
                             update_fields.append("attachment")
@@ -1240,6 +1244,7 @@ def lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
                 "raw_contact": lead.raw_contact,
                 "lead_date": lead.lead_date,
                 "comment": lead.comment,
+                "lead_type": lead.lead_type_id,
             }
         )
     return render(request, "core/lead_redo.html", {"form": form, "lead": lead})

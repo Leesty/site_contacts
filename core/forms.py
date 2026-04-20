@@ -472,8 +472,14 @@ class WorkerReportReworkForm(forms.Form):
 
 
 class LeadReworkUserForm(forms.Form):
-    """Форма доработки лида пользователем: контакт/ссылка, дата, комментарий, новое вложение."""
+    """Форма доработки лида пользователем: контакт/ссылка, дата, комментарий, новое вложение, категория."""
 
+    lead_type = forms.ModelChoiceField(
+        label="Категория лида",
+        queryset=LeadType.objects.all(),
+        required=True,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     raw_contact = forms.CharField(
         label="Контакт / ссылка",
         max_length=255,
@@ -493,10 +499,18 @@ class LeadReworkUserForm(forms.Form):
     )
     attachment = forms.FileField(
         label="Скриншот или видео",
-        help_text="Обязательно: либо оставьте текущее вложение, либо загрузите новое (макс. 30 МБ).",
+        help_text="Обязательно: либо оставьте текущее вложение, либо загрузите новое (макс. 30 МБ). Можно заменить фото на видео или наоборот.",
         required=False,
-        widget=forms.FileInput(attrs={"class": "form-control", "accept": "image/*,.mp4,.mov,.webm,.m4v,.3gp"}),
+        widget=forms.FileInput(attrs={"class": "form-control", "accept": _ATTACHMENT_ACCEPT}),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Те же категории, что и в форме отправки: без «self» (self-leads воркеров)
+        try:
+            self.fields["lead_type"].queryset = LeadType.objects.exclude(slug="self").order_by("order", "id")
+        except Exception:
+            pass
 
     def clean_attachment(self):
         data = self.cleaned_data.get("attachment")
