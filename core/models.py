@@ -1046,6 +1046,7 @@ class SearchLink(TimeStampedModel):
     class Platform(models.TextChoices):
         TELEGRAM = "telegram", "Telegram"
         VK = "vk", "VK"
+        BOTH = "both", "Универсальный (TG + VK)"
 
     display_id = models.PositiveIntegerField(
         null=True, blank=True, db_index=True, unique=True,
@@ -1176,22 +1177,29 @@ class SearchLink(TimeStampedModel):
 
     @property
     def lead_contact_url(self) -> str:
-        """Кликабельный профиль лида (для админки/менеджера)."""
-        if self.platform == self.Platform.VK:
+        """Кликабельный профиль лида, исходя из реально сработавшей платформы."""
+        sp = self.started_platform  # фактически что стриггерилось
+        if sp == "vk":
             if self.vk_screen_name:
                 return f"https://vk.com/{self.vk_screen_name}"
             if self.vk_user_id:
                 return f"https://vk.com/id{self.vk_user_id}"
             return ""
-        if self.telegram_username:
-            return f"https://t.me/{self.telegram_username}"
+        if sp == "telegram":
+            if self.telegram_username:
+                return f"https://t.me/{self.telegram_username}"
+            return ""
+        # бот ещё не стартован
         return ""
 
     @property
     def lead_contact_display(self) -> str:
-        if self.platform == self.Platform.VK:
+        sp = self.started_platform
+        if sp == "vk":
             return self.vk_screen_name or (f"id{self.vk_user_id}" if self.vk_user_id else "")
-        return self.telegram_username
+        if sp == "telegram":
+            return self.telegram_username or (f"tg:{self.telegram_id}" if self.telegram_id else "")
+        return ""
 
     def save(self, *args, **kwargs):
         if not self.bot_username:

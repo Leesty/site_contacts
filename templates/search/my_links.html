@@ -14,33 +14,14 @@
       <strong>Создать ссылку</strong>
     </div>
     <div class="card-body py-3">
-      <form method="post" action="{% url 'search_link_create' %}" class="row g-2 align-items-center">
+      <form method="post" action="{% url 'search_link_create' %}" class="d-flex gap-2">
         {% csrf_token %}
-        {% if can_use_vk %}
-          <div class="col-12 col-md-5">
-            <input type="text" class="form-control form-control-sm" name="lead_name" placeholder="Имя / ник лида" required maxlength="200">
-          </div>
-          <div class="col-6 col-md-3">
-            <select class="form-select form-select-sm" name="platform">
-              <option value="telegram" selected>🟦 Telegram</option>
-              <option value="vk">🟪 VK (бета)</option>
-            </select>
-          </div>
-          <div class="col-6 col-md-4">
-            <button type="submit" class="btn btn-primary btn-sm w-100">Создать</button>
-          </div>
-        {% else %}
-          <div class="col-12 col-md-9">
-            <input type="text" class="form-control form-control-sm" name="lead_name" placeholder="Имя / ник лида" required maxlength="200">
-          </div>
-          <div class="col-12 col-md-3">
-            <button type="submit" class="btn btn-primary btn-sm w-100">Создать</button>
-          </div>
-        {% endif %}
+        <input type="text" class="form-control form-control-sm" name="lead_name" placeholder="Имя / ник лида" required maxlength="200">
+        <button type="submit" class="btn btn-primary btn-sm px-4">Создать</button>
       </form>
       {% if can_use_vk %}
       <div class="form-text mt-1">
-        <strong>Лендинг одинаковый для обеих платформ</strong> — клиент сам выберет, где запустить бота. Засчитывается первый переход. В VK: первое сообщение после клика, и только если клиент ранее не писал @leadmurzz.
+        Ваш лендинг работает и для Telegram, и для ВК. Клиент сам выбирает, где запустить бота — засчитывается первый переход.
       </div>
       {% endif %}
     </div>
@@ -133,13 +114,17 @@
                 <tr>
                   <td>
                     <span class="text-muted small me-1">#{{ link.display_id|default:link.id }}</span>
-                    {% if link.platform == 'vk' %}
+                    {% if link.started_platform == 'vk' %}
                       <span class="badge" style="background:#4c75a3;color:#fff;font-size:10px;">VK</span>
+                    {% elif link.started_platform == 'telegram' %}
+                      <span class="badge" style="background:#0088cc;color:#fff;font-size:10px;">TG</span>
+                    {% elif link.platform == 'both' %}
+                      <span class="badge bg-secondary" style="font-size:10px;">TG+VK</span>
                     {% else %}
                       <span class="badge" style="background:#0088cc;color:#fff;font-size:10px;">TG</span>
                     {% endif %}
                     {% if link.lead_contact_display %}
-                      {% if link.lead_contact_url %}<a href="{{ link.lead_contact_url }}" target="_blank" rel="noopener">{% if link.platform == 'vk' %}{{ link.lead_contact_display|truncatechars:30 }}{% else %}@{{ link.lead_contact_display|truncatechars:30 }}{% endif %}</a>{% else %}{{ link.lead_contact_display|truncatechars:30 }}{% endif %}
+                      {% if link.lead_contact_url %}<a href="{{ link.lead_contact_url }}" target="_blank" rel="noopener">{% if link.started_platform == 'vk' %}{{ link.lead_contact_display|truncatechars:30 }}{% else %}@{{ link.lead_contact_display|truncatechars:30 }}{% endif %}</a>{% else %}{{ link.lead_contact_display|truncatechars:30 }}{% endif %}
                       <span class="text-muted small">· {{ link.lead_name|truncatechars:20 }}</span>
                     {% else %}
                       {{ link.lead_name|truncatechars:30 }}

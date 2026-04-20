@@ -155,16 +155,17 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard")
 
     lead_name = (request.POST.get("lead_name") or "").strip()[:200]
-    platform = (request.POST.get("platform") or "telegram").strip().lower()
-    if platform not in (SearchLink.Platform.TELEGRAM, SearchLink.Platform.VK):
-        platform = SearchLink.Platform.TELEGRAM
-    # Бета-гейт: VK доступен только тестовым аккаунтам и админам. Остальным — тихий фолбэк на TG.
-    if platform == SearchLink.Platform.VK and not _can_use_vk_platform(request.user):
-        platform = SearchLink.Platform.TELEGRAM
-        messages.warning(request, "VK-ссылки пока в бета-тесте, вам создана Telegram-ссылка.")
     if not lead_name:
         messages.error(request, "Укажите имя/ник лида.")
         return redirect("search_links_my")
+
+    # Платформа ставится автоматически: для beta-аккаунтов — универсальный
+    # лендинг (TG+VK), остальные получают прежний TG-лендинг.
+    platform = (
+        SearchLink.Platform.BOTH
+        if _can_use_vk_platform(request.user)
+        else SearchLink.Platform.TELEGRAM
+    )
 
     link = SearchLink.objects.create(
         user=request.user,
@@ -172,8 +173,7 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
         platform=platform,
         creator_ip=_get_client_ip(request),
     )
-    platform_label = "VK" if platform == SearchLink.Platform.VK else "Telegram"
-    messages.success(request, f"Ссылка ({platform_label}) создана для «{lead_name}».")
+    messages.success(request, f"Ссылка создана для «{lead_name}».")
     return redirect("search_links_my")
 
 
