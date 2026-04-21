@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import F, Max, Q
 from django.db import transaction
 from django.db.utils import OperationalError, ProgrammingError
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.core.paginator import InvalidPage, Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
@@ -433,7 +433,14 @@ def _ensure_user_approved(request: HttpRequest) -> bool:
     user = request.user
     if _is_worker(user):
         return False
-    if getattr(user, "status", None) != "approved":
+    status = getattr(user, "status", None)
+    if status == "banned":
+        messages.error(
+            request,
+            "Ваш аккаунт заблокирован. Функции кабинета недоступны.",
+        )
+        return False
+    if status != "approved":
         messages.warning(
             request,
             "Ваш аккаунт ещё не одобрен. Дождитесь одобрения от администратора, "
@@ -1306,8 +1313,12 @@ def leads_stats_placeholder(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def support_placeholder(request: HttpRequest) -> HttpResponse:
-    """Страница чата с поддержкой: диалог и форма с текстом и вложением. Доступна и до одобрения аккаунта."""
+    """Страница чата с поддержкой: диалог и форма с текстом и вложением.
+    Доступна и до одобрения аккаунта (pending), НО не для забаненных."""
     user = request.user
+    if getattr(user, "status", None) == "banned":
+        messages.warning(request, "Ваш аккаунт заблокирован.")
+        return redirect("dashboard")
     thread = SupportThread.objects.filter(user=user, is_closed=False).order_by("-created_at").first()
     if thread is None:
         thread = SupportThread.objects.create(user=user, is_closed=False)
@@ -1348,8 +1359,11 @@ def support_placeholder(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_http_methods(["GET", "POST"])
 def support_widget(request: HttpRequest) -> HttpResponse:
-    """Виджет поддержки: плавающее окно чата. GET — панель, POST — сохранить и вернуть список сообщений. Доступен и до одобрения."""
+    """Виджет поддержки: плавающее окно чата. GET — панель, POST — сохранить и вернуть список сообщений.
+    Доступен и до одобрения (pending), НО не для забаненных."""
     user = request.user
+    if getattr(user, "status", None) == "banned":
+        return HttpResponseForbidden("Аккаунт заблокирован.")
     thread = SupportThread.objects.filter(user=user, is_closed=False).order_by("-created_at").first()
     if thread is None:
         thread = SupportThread.objects.create(user=user, is_closed=False)

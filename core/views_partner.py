@@ -23,7 +23,11 @@ PARTNER_EARN_PER_LEAD_DEFAULT = 10  # руб. за каждый одобренн
 
 
 def _require_partner(request: HttpRequest) -> bool:
-    return getattr(request.user, "role", None) == User.Role.PARTNER
+    """Только роль «partner» со статусом approved. Забаненный партнёр теряет доступ."""
+    user = request.user
+    if getattr(user, "role", None) != User.Role.PARTNER:
+        return False
+    return getattr(user, "status", None) == "approved"
 
 
 # ─── Кабинет партнёра ──────────────────────────────────────────────────────────

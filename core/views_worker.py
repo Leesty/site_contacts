@@ -24,8 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 def _require_worker(request: HttpRequest) -> bool:
-    """Только роль «worker»."""
-    return getattr(request.user, "role", None) == "worker"
+    """Только роль «worker» со статусом approved. Забаненные/pending-воркеры — отказ."""
+    user = request.user
+    if getattr(user, "role", None) != "worker":
+        return False
+    return getattr(user, "status", None) == "approved"
 
 
 def _self_lead_duplicate_exists(raw_contact: str, exclude_self_lead_id: int | None = None) -> bool:

@@ -99,11 +99,13 @@ def admin_users_pending(request: HttpRequest) -> HttpResponse:
             user = get_object_or_404(User, pk=user_id, status=User.Status.PENDING)
             if action == "approve":
                 user.status = User.Status.APPROVED
+                user.is_active = True
                 messages.success(request, f"Пользователь @{user.username} одобрен.")
             elif action == "ban":
                 user.status = User.Status.BANNED
+                user.is_active = False  # Django auto-logout + блок логина
                 messages.warning(request, f"Пользователь @{user.username} заблокирован.")
-            user.save(update_fields=["status"])
+            user.save(update_fields=["status", "is_active"])
         return redirect("admin_users_pending")
 
     pending_users = User.objects.filter(status=User.Status.PENDING).order_by("-date_joined")
@@ -2610,11 +2612,13 @@ def admin_toggle_ban(request: HttpRequest, user_id: int) -> HttpResponse:
         return redirect("admin_all_users")
     if target.status == User.Status.BANNED:
         target.status = User.Status.APPROVED
-        target.save(update_fields=["status"])
+        target.is_active = True
+        target.save(update_fields=["status", "is_active"])
         messages.success(request, f"@{target.username} разбанен.")
     else:
         target.status = User.Status.BANNED
-        target.save(update_fields=["status"])
+        target.is_active = False  # Django auto-logout + запрет повторного логина
+        target.save(update_fields=["status", "is_active"])
         messages.success(request, f"@{target.username} забанен.")
     return redirect("admin_all_users")
 

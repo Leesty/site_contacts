@@ -29,15 +29,15 @@ class UserAdmin(admin.ModelAdmin):
 
     @admin.action(description="Одобрить выбранных пользователей")
     def mark_approved(self, request, queryset):
-        queryset.update(status=models.User.Status.APPROVED)
+        queryset.update(status=models.User.Status.APPROVED, is_active=True)
 
     @admin.action(description="Забанить выбранных пользователей")
     def mark_banned(self, request, queryset):
-        queryset.update(status=models.User.Status.BANNED)
+        queryset.update(status=models.User.Status.BANNED, is_active=False)
 
     @admin.action(description="Снять бан с выбранных пользователей")
     def mark_unbanned(self, request, queryset):
-        queryset.update(status=models.User.Status.APPROVED)
+        queryset.update(status=models.User.Status.APPROVED, is_active=True)
 
     @admin.action(description="Очистить лимиты выдачи контактов для выбранных пользователей")
     def clear_contact_limits(self, request, queryset):
