@@ -98,6 +98,18 @@
   </form>
 
   <div class="card shadow-sm">
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-header border-secondary d-flex justify-content-between align-items-center py-2 bg-transparent">
+        <span class="small text-muted">Всего страниц: {{ page_obj.paginator.num_pages }} · Результатов: {{ page_obj.paginator.count }}</span>
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if bot_filter %}&bot={{ bot_filter }}{% endif %}{% if report_filter %}&report={{ report_filter }}{% endif %}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if bot_filter %}&bot={{ bot_filter }}{% endif %}{% if report_filter %}&report={{ report_filter }}{% endif %}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-sm mb-0 align-middle table-dark-site">
@@ -151,9 +163,9 @@
       <div class="card-footer border-secondary d-flex justify-content-center py-2">
         <nav>
           <ul class="pagination pagination-sm mb-0">
-            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if bot_filter %}&bot={{ bot_filter }}{% endif %}{% if report_filter %}&report={{ report_filter }}{% endif %}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
             <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab=links{% if user_filter %}&user={{ user_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if bot_filter %}&bot={{ bot_filter }}{% endif %}{% if report_filter %}&report={{ report_filter }}{% endif %}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
           </ul>
         </nav>
       </div>
