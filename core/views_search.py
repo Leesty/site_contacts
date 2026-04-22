@@ -49,18 +49,15 @@ def _can_manage_searchlinks(request: HttpRequest) -> bool:
     return _require_approved_user(request)
 
 
-# Тестовые аккаунты, которым видна опция VK (до полного раскатывания фичи).
-# Id=285 (username="5") — тестовый аккаунт для проверки VK SearchLink.
-VK_SEARCHLINK_BETA_USER_IDS = {285}
+# VK SearchLink раскатан на всех авторизованных пользователей, которые
+# вообще могут создавать SearchLink (см. _can_manage_searchlinks).
+# Константа сохранена на случай, если понадобится снова сужать фичу.
+VK_SEARCHLINK_BETA_USER_IDS: set[int] = set()
 
 
 def _can_use_vk_platform(user) -> bool:
-    """Временный гейт на VK SearchLink: админы + тестовые аккаунты."""
-    if not user.is_authenticated:
-        return False
-    if getattr(user, "role", None) in ("admin", "main_admin"):
-        return True
-    return user.id in VK_SEARCHLINK_BETA_USER_IDS
+    """Разрешено ли создавать VK (both-platform) ссылки. Сейчас — всем авторизованным."""
+    return bool(getattr(user, "is_authenticated", False))
 
 
 def _require_support(request: HttpRequest) -> bool:
