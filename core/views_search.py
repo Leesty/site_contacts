@@ -585,6 +585,10 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         lead_owner.balance = _old + ref_reward
         lead_owner.save(update_fields=["balance"])
         log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"search_approve#{report_id} +{ref_reward}", request.user)
+        # Авто-аккредитация: баланс был в минусе и перешёл в плюс
+        if not lead_owner.is_accredited and _old < 0 and lead_owner.balance >= 0:
+            lead_owner.is_accredited = True
+            lead_owner.save(update_fields=["is_accredited"])
 
         if manager_cut > 0:
             partner = User.objects.select_for_update().get(pk=lead_owner.partner_owner_id)
@@ -593,6 +597,10 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
             partner.save(update_fields=["balance"])
             log_balance_change(partner, "balance", _old_pb, partner.balance, f"search_partner_earning report#{report_id} +{manager_cut}", request.user)
             PartnerEarning.objects.create(partner=partner, search_report=report, amount=manager_cut)
+            # Авто-аккредитация для партнёра
+            if not partner.is_accredited and _old_pb < 0 and partner.balance >= 0:
+                partner.is_accredited = True
+                partner.save(update_fields=["is_accredited"])
 
     msg = f"Отчёт #{report_id} одобрен. +{ref_reward} руб. пользователю @{report.user.username}."
     if manager_cut > 0:

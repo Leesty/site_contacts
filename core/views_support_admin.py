@@ -633,6 +633,10 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
                 partner.balance = _old_pb + partner_earning
                 partner.save(update_fields=["balance"])
                 log_balance_change(partner, "balance", _old_pb, partner.balance, f"partner_earning lead#{lead_id}", request.user)
+                # Авто-аккредитация для партнёра: баланс был в минусе и перешёл в плюс
+                if not partner.is_accredited and _old_pb < 0 and partner.balance >= 0:
+                    partner.is_accredited = True
+                    partner.save(update_fields=["is_accredited"])
         lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
         from .models import log_balance_change
         if is_dozhim:
