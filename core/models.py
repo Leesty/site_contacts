@@ -1022,7 +1022,7 @@ import random
 SEARCH_BOT_POOL = [
     "A0vqbot", "A1vqbot", "A2vqbot", "A3vqbot", "A4vqbot",
     "A6vqbot", "A7vqbot", "A8vqbot", "A9vqbot", "B0vqbot",
-    "B1vqbot", "B2vqbot", "B5vqbot", "B10vqbot", "d4rcbot", "murzz_kl_bot",
+    "B1vqbot", "B2vqbot", "B5vqbot", "B10vqbot", "murzz_kl_bot",
 ]
 
 
