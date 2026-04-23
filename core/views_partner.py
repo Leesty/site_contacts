@@ -235,9 +235,22 @@ def partner_referrals(request: HttpRequest) -> HttpResponse:
     paginator = Paginator(users_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
 
+    # У partner-роли ставка за обычный лид фиксирована в partner.partner_rate.
+    # Реф получает LEAD_APPROVE_REWARD - partner_rate, партнёр — partner_rate.
+    partner_rate = request.user.partner_rate or 10
+    search_reward_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
+    for u in page_obj:
+        u.current_ref_reward = max(0, LEAD_APPROVE_REWARD - partner_rate)
+        u.partner_cut = partner_rate
+        u.sl_ref_reward = search_reward_total - u.ref_searchlink_manager_cut if u.ref_searchlink_enabled else 0
+
     return render(request, "partner/referrals.html", {
         "page_obj": page_obj,
         "total": users_qs.count(),
+        "total_reward": LEAD_APPROVE_REWARD,
+        "search_reward": search_reward_total,
+        "partner_rate": partner_rate,
+        "ref_share": max(0, LEAD_APPROVE_REWARD - partner_rate),
     })
 
 
@@ -532,15 +545,18 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["POST"])
 def user_referral_searchlink_toggle(request: HttpRequest, user_id: int) -> HttpResponse:
     """AJAX: настройки реферала — ставка за лид + SearchLink (вкл/выкл, доля менеджера)."""
-    if not _require_user_approved(request):
+    # Доступ: approved-user (нативная ref-система) ИЛИ partner (role=partner).
+    is_partner = getattr(request.user, "role", None) == User.Role.PARTNER
+    if not _require_user_approved(request) and not is_partner:
         return HttpResponseForbidden()
     referral = get_object_or_404(User, pk=user_id, partner_owner=request.user)
     search_reward_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
     update_fields = []
 
-    # Ставка рефералу за обычный лид
+    # Ставка рефералу за обычный лид — только для role=user (у партнёра ставка
+    # фиксирована в partner.partner_rate, per-referral override не используется).
     ref_lead_reward_raw = request.POST.get("ref_lead_reward")
-    if ref_lead_reward_raw is not None:
+    if ref_lead_reward_raw is not None and not is_partner:
         try:
             val = int(ref_lead_reward_raw)
         except (TypeError, ValueError):
