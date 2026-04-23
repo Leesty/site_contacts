@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -230,6 +231,22 @@ def search_link_go(request: HttpRequest, code: str) -> HttpResponse:
         "tg_web_url": link.tg_deep_link,
         "bot_username": link.bot_username,
     })
+
+
+def search_link_fallback_redirect(request: HttpRequest, code: str, junk: str = "") -> HttpResponse:
+    """Catch-all для битых URL вида /s/<code>/<мусор>/, например /s/abc123/x.
+
+    Бывает, что клиент или мессенджер при пересылке добавляет лишний символ —
+    открывается 404. Если код валидный — редиректим на каноничный лендинг,
+    чтобы реф не терялся. Query-параметры (если есть) сохраняем.
+    """
+    if not SearchLink.objects.filter(code=code).exists():
+        return render(request, "search/unavailable.html", status=404)
+    target = reverse("search_link_landing", kwargs={"code": code})
+    if request.META.get("QUERY_STRING"):
+        target = f"{target}?{request.META['QUERY_STRING']}"
+    logger.info("SearchLink fallback redirect: /s/%s/%s → %s", code, junk, target)
+    return redirect(target, permanent=True)
 
 
 # ─── Менеджер: отчёт ─────────────────────────────────────────────────────────
