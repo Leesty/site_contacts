@@ -220,8 +220,16 @@ def search_link_go(request: HttpRequest, code: str) -> HttpResponse:
     p = (request.GET.get("p") or "").strip().lower()
     if p == "vk":
         return redirect(link.vk_deep_link)
-    # Default и p=tg → telegram
-    return redirect(link.tg_deep_link)
+    # Default и p=tg → telegram. Вместо 302 на https://t.me/ отдаём HTML,
+    # который сначала пытается открыть нативный tg:// (приложение подхватит
+    # start-параметр гарантированно), а через 1.8 сек фолбэк на https://t.me/.
+    # Это решает кейс iOS Safari-handoff, где ?start=<code> ломается при 302.
+    tg_app_uri = f"tg://resolve?domain={link.bot_username}&start={link.code}"
+    return render(request, "search/tg_handoff.html", {
+        "tg_app_uri": tg_app_uri,
+        "tg_web_url": link.tg_deep_link,
+        "bot_username": link.bot_username,
+    })
 
 
 # ─── Менеджер: отчёт ─────────────────────────────────────────────────────────
