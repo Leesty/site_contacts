@@ -69,7 +69,7 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
 
     receiptless_withdrawals = list(
         WithdrawalRequest.objects.filter(user=user, status="approved")
-        .exclude(receipt_status="approved")
+        .exclude(receipt_status__in=["approved", "waived"])
         .order_by("-created_at")[:5]
     )
 

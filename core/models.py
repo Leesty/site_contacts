@@ -552,7 +552,13 @@ class WithdrawalRequest(TimeStampedModel):
     receipt_checked = models.BooleanField(default=False, help_text="Чек проверен админом (deprecated, use receipt_status).")
     receipt_status = models.CharField(
         max_length=20,
-        choices=[("none", "Нет чека"), ("pending", "На проверке"), ("approved", "Одобрен"), ("rejected", "Отклонён")],
+        choices=[
+            ("none", "Нет чека"),
+            ("pending", "На проверке"),
+            ("approved", "Одобрен"),
+            ("rejected", "Отклонён"),
+            ("waived", "Без чека (архив)"),
+        ],
         default="none",
         help_text="Статус проверки чека.",
     )

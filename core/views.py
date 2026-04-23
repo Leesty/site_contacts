@@ -186,7 +186,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 "current_rate": rate,
                 "receiptless_withdrawals": list(
                     WithdrawalRequest.objects.filter(user=user, status="approved")
-                    .exclude(receipt_status="approved")
+                    .exclude(receipt_status__in=["approved", "waived"])
                     .order_by("-created_at")[:5]
                 ),
             },
@@ -274,7 +274,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "unchecked_receipts_count": unchecked_receipts_count,
             "receiptless_withdrawals": list(
                 WithdrawalRequest.objects.filter(user=user, status="approved")
-                .exclude(receipt_status="approved")
+                .exclude(receipt_status__in=["approved", "waived"])
                 .order_by("-created_at")[:5]
             ),
         }
@@ -330,7 +330,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     from django.db.models import Q as _Q
     receiptless_withdrawals = list(
         WithdrawalRequest.objects.filter(user=user, status="approved")
-        .exclude(receipt_status="approved")
+        .exclude(receipt_status__in=["approved", "waived"])
         .order_by("-created_at")[:5]
     )
     # Плашка «Заявка отклонена» только если последняя заявка юзера — reject.
@@ -751,7 +751,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         # Блокировка: есть выплата без одобренного чека
         has_unchecked = WithdrawalRequest.objects.filter(
             user=user, status="approved",
-        ).exclude(receipt_status="approved").exists()
+        ).exclude(receipt_status__in=["approved", "waived"]).exists()
         if has_unchecked:
             messages.warning(request, "Загрузите и дождитесь одобрения чека по предыдущей выплате.")
             return redirect("dashboard")
