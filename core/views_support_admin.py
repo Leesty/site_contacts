@@ -3004,13 +3004,32 @@ def admin_robocall_test(request: HttpRequest) -> HttpResponse:
                 method="POST",
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
+            body = ""
+            status_code = 0
             try:
                 with _urlreq_zv.urlopen(req, timeout=10) as resp:
                     body = resp.read().decode("utf-8", errors="replace")
                     status_code = resp.status
+            except _urlreq_zv.HTTPError as http_e:
+                # Важно: zvonok возвращает JSON с причиной в теле даже при 4xx
+                try:
+                    body = http_e.read().decode("utf-8", errors="replace")
+                except Exception:
+                    body = str(http_e)
+                status_code = http_e.code
             except Exception as e:
                 body = str(e)
                 status_code = 0
+
+            # Пытаемся выдернуть читаемое сообщение из JSON
+            import json as _json_zv
+            parsed_msg = ""
+            try:
+                parsed = _json_zv.loads(body)
+                if isinstance(parsed, dict):
+                    parsed_msg = parsed.get("data") or parsed.get("error") or parsed.get("message") or ""
+            except Exception:
+                pass
 
             if status_code == 200:
                 st.zvonok_last_tested_at = timezone.now()
@@ -3020,9 +3039,13 @@ def admin_robocall_test(request: HttpRequest) -> HttpResponse:
                     f"Звонок поставлен в очередь на {phone}. Ответ zvonok.com: {body[:300]}",
                 )
             else:
+                hint = ""
+                if parsed_msg and "duplicate" in parsed_msg.lower():
+                    hint = " (на этот номер уже есть активный звонок в кампании — дождитесь завершения или удалите звонок в панели zvonok.com)"
+                reason = parsed_msg or body[:500] or "без деталей"
                 messages.error(
                     request,
-                    f"Ошибка zvonok.com (HTTP {status_code}): {body[:500]}",
+                    f"Ошибка zvonok.com (HTTP {status_code}): {reason}{hint}",
                 )
             return redirect("admin_robocall_test")
 
