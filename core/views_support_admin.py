@@ -2936,3 +2936,97 @@ def admin_moderation_by_admin_detail(request: HttpRequest, admin_id: int) -> Htt
         "counts": counts,
     })
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Zvonok.com — тестовый звонок роботом (только main_admin)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import re as _re_zv
+import urllib.parse as _urlparse_zv
+import urllib.request as _urlreq_zv
+
+
+def _normalize_phone_for_zvonok(phone: str) -> str | None:
+    """Приводит номер к международному формату +7XXXXXXXXXX (или возвращает None если битый)."""
+    digits = _re_zv.sub(r"\D", "", phone or "")
+    if not digits:
+        return None
+    if digits.startswith("8") and len(digits) == 11:
+        digits = "7" + digits[1:]
+    if len(digits) == 10 and digits[0] == "9":
+        digits = "7" + digits
+    if len(digits) < 10 or len(digits) > 15:
+        return None
+    return "+" + digits
+
+
+@login_required
+def admin_robocall_test(request: HttpRequest) -> HttpResponse:
+    """Страница главного админа: тестовый звонок роботом через zvonok.com API.
+
+    GET  — форма + текущие настройки (public_key, campaign_id).
+    POST action=save_config — сохранить ключ/кампанию.
+    POST action=test_call   — отправить тестовый звонок на указанный номер.
+    """
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
+
+    st = SiteSettings.get_settings()
+
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+
+        if action == "save_config":
+            st.zvonok_public_key = (request.POST.get("public_key") or "").strip()[:255]
+            st.zvonok_campaign_id = (request.POST.get("campaign_id") or "").strip()[:64]
+            st.save(update_fields=["zvonok_public_key", "zvonok_campaign_id"])
+            messages.success(request, "Настройки zvonok.com сохранены.")
+            return redirect("admin_robocall_test")
+
+        if action == "test_call":
+            phone_raw = (request.POST.get("phone") or "").strip()
+            phone = _normalize_phone_for_zvonok(phone_raw)
+            if not phone:
+                messages.error(request, f"Номер «{phone_raw}» невалидный. Укажите в формате +7XXXXXXXXXX.")
+                return redirect("admin_robocall_test")
+            if not st.zvonok_public_key or not st.zvonok_campaign_id:
+                messages.error(request, "Сначала сохраните public_key и campaign_id.")
+                return redirect("admin_robocall_test")
+
+            data = _urlparse_zv.urlencode({
+                "public_key": st.zvonok_public_key,
+                "phone": phone,
+                "campaign_id": st.zvonok_campaign_id,
+            }).encode("utf-8")
+            req = _urlreq_zv.Request(
+                "https://zvonok.com/manager/cabapi_external/api/v1/phones/call/",
+                data=data,
+                method="POST",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            try:
+                with _urlreq_zv.urlopen(req, timeout=10) as resp:
+                    body = resp.read().decode("utf-8", errors="replace")
+                    status_code = resp.status
+            except Exception as e:
+                body = str(e)
+                status_code = 0
+
+            if status_code == 200:
+                st.zvonok_last_tested_at = timezone.now()
+                st.save(update_fields=["zvonok_last_tested_at"])
+                messages.success(
+                    request,
+                    f"Звонок поставлен в очередь на {phone}. Ответ zvonok.com: {body[:300]}",
+                )
+            else:
+                messages.error(
+                    request,
+                    f"Ошибка zvonok.com (HTTP {status_code}): {body[:500]}",
+                )
+            return redirect("admin_robocall_test")
+
+    return render(request, "core/admin_robocall_test.html", {
+        "site_settings": st,
+    })
+

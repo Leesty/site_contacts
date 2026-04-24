@@ -957,6 +957,23 @@ class SiteSettings(models.Model):
         default=False,
         help_text="Автоматически одобрять новых пользователей при регистрации.",
     )
+    # Zvonok.com — автодозвон через API
+    zvonok_public_key = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Public key zvonok.com (сгенерить в Настройках профиля на zvonok.com).",
+    )
+    zvonok_campaign_id = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="ID кампании zvonok.com, в которой настроен робот.",
+    )
+    zvonok_last_tested_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Когда последний раз тестировался звонок через API.",
+    )
 
     class Meta:
         verbose_name = "Настройки сайта"

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Тестовый звонок роботом — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">📞 Тестовый звонок (zvonok.com)</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} py-2 small">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  {# ═══ Настройки API ═══ #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Настройки API</strong>
+    </div>
+    <div class="card-body">
+      <form method="post" class="row g-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_config">
+        <div class="col-md-7">
+          <label class="form-label small mb-1">Public key</label>
+          <input type="text" name="public_key" class="form-control form-control-sm"
+                 value="{{ site_settings.zvonok_public_key }}"
+                 placeholder="Сгенерить в профиле zvonok.com → Настройки → API">
+          <div class="form-text small">
+            <a href="https://zvonok.com/manager/users/profile-settings/" target="_blank" rel="noopener">Получить ключ →</a>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Campaign ID</label>
+          <input type="text" name="campaign_id" class="form-control form-control-sm"
+                 value="{{ site_settings.zvonok_campaign_id }}"
+                 placeholder="например 123456">
+          <div class="form-text small">
+            <a href="https://zvonok.com/manager/phones/all/" target="_blank" rel="noopener">Список кампаний →</a>
+          </div>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ═══ Тестовый звонок ═══ #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Позвонить на номер</strong>
+    </div>
+    <div class="card-body">
+      {% if site_settings.zvonok_public_key and site_settings.zvonok_campaign_id %}
+        <form method="post" class="row g-2" onsubmit="return confirm('Отправить тестовый звонок на указанный номер?');">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="test_call">
+          <div class="col-md-8">
+            <label class="form-label small mb-1">Телефон (любой формат — система нормализует)</label>
+            <input type="tel" name="phone" class="form-control form-control-sm"
+                   placeholder="+7 999 123-45-67" required autofocus>
+            <div class="form-text small">
+              Номер приведётся к формату <code>+7XXXXXXXXXX</code>. Звонок будет запущен из кампании
+              <strong>ID {{ site_settings.zvonok_campaign_id }}</strong> — робот уже настроен в zvonok.com.
+            </div>
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <button type="submit" class="btn btn-success btn-sm w-100">📞 Позвонить</button>
+          </div>
+        </form>
+        {% if site_settings.zvonok_last_tested_at %}
+          <div class="small text-muted mt-2">
+            Последний тестовый звонок: {{ site_settings.zvonok_last_tested_at|date:"d.m.Y H:i" }}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="alert alert-warning mb-0 small">
+          Сначала сохраните <strong>public_key</strong> и <strong>campaign_id</strong> в форме выше.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ═══ Справка ═══ #}
+  <div class="card shadow-sm">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Как это работает</strong>
+    </div>
+    <div class="card-body small">
+      <ol class="mb-0 ps-3">
+        <li>В личном кабинете <a href="https://zvonok.com/manager/" target="_blank" rel="noopener">zvonok.com</a> зайдите в <em>Настройки профиля → API</em> и сгенерируйте <strong>Public key</strong>.</li>
+        <li>Создайте (или выберите существующую) <strong>кампанию с роботом</strong>: <em>Автодозвон → Новая кампания → загрузить аудиоролик или задать текст</em>. Скопируйте её ID.</li>
+        <li>Введите оба значения в форму настроек выше и сохраните.</li>
+        <li>В форме «Позвонить на номер» укажите телефон и нажмите «Позвонить» — робот перезвонит клиенту по сценарию этой кампании.</li>
+        <li>Результат звонка zvonok вернёт через webhook (если настроен в кампании) или можно посмотреть в панели zvonok.com.</li>
+      </ol>
+      <div class="mt-2 text-muted">
+        <strong>Стоимость:</strong> каждый тестовый звонок тарифицируется с вашего баланса zvonok.com.
+      </div>
+    </div>
+  </div>
+{% endblock %}

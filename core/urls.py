@@ -363,6 +363,7 @@ urlpatterns = [
     path("staff/search-reports/<int:report_id>/attachment/", views_search.admin_search_report_attachment, name="admin_search_report_attachment"),
     path("staff/search-stats/", views_search.admin_search_stats, name="admin_search_stats"),
     # Ban/unban
+    path("staff/robocall-test/", views_support_admin.admin_robocall_test, name="admin_robocall_test"),
     path("staff/users/<int:user_id>/toggle-ban/", views_support_admin.admin_toggle_ban, name="admin_toggle_ban"),
     path("staff/users/<int:user_id>/toggle-accredited/", views_support_admin.admin_toggle_accredited, name="admin_toggle_accredited"),
     # Balance admin: payment
