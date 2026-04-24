@@ -61,6 +61,23 @@ def _can_use_vk_platform(user) -> bool:
     return bool(getattr(user, "is_authenticated", False))
 
 
+# Phone-callback SearchLink — закрытая бета. Только username="5" и админы.
+PHONE_CALLBACK_BETA_USERNAMES = {"5"}
+
+
+def _can_use_phone_callback(user) -> bool:
+    """Кто может отправлять phone_callback отчёты и видит тумблер в форме.
+
+    На время теста: username="5" и роли админа. Остальные — не видят опцию,
+    и даже если подделают POST — сервер отвергнет.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "role", None) in ("admin", "main_admin", "support"):
+        return True
+    return getattr(user, "username", "") in PHONE_CALLBACK_BETA_USERNAMES
+
+
 def _require_support(request: HttpRequest) -> bool:
     user = request.user
     if not user.is_authenticated:
@@ -277,15 +294,25 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         comment = (request.POST.get("comment") or "").strip()
         report_type_raw = (request.POST.get("report_type") or "bot_start").strip()
         is_phone = report_type_raw == "phone_callback"
+        # Бета-гейт: phone-callback разрешён только username="5" + админам.
+        # Если кто-то подделал POST — молча откатываем к bot_start.
+        if is_phone and not _can_use_phone_callback(request.user):
+            is_phone = False
         client_phone_raw = (request.POST.get("client_phone") or "").strip()
         callback_at_raw = (request.POST.get("callback_at") or "").strip()
 
         if not raw_contact and not is_phone:
             messages.error(request, "Укажите контакт или ссылку на клиента.")
-            return render(request, "search/report_form.html", {"link": link})
+            return render(request, "search/report_form.html", {
+        "link": link,
+        "can_use_phone_callback": _can_use_phone_callback(request.user),
+    })
         if not attachment:
             messages.error(request, "Приложите скриншот или видео.")
-            return render(request, "search/report_form.html", {"link": link})
+            return render(request, "search/report_form.html", {
+        "link": link,
+        "can_use_phone_callback": _can_use_phone_callback(request.user),
+    })
 
         # Для phone_callback валидируем номер и время
         client_phone = ""
@@ -295,15 +322,24 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
             client_phone = _norm_phone(client_phone_raw) or ""
             if not client_phone:
                 messages.error(request, f"Номер «{client_phone_raw}» невалидный. Формат: +7XXXXXXXXXX.")
-                return render(request, "search/report_form.html", {"link": link})
+                return render(request, "search/report_form.html", {
+        "link": link,
+        "can_use_phone_callback": _can_use_phone_callback(request.user),
+    })
             if not callback_at_raw:
                 messages.error(request, "Укажите дату и время созвона.")
-                return render(request, "search/report_form.html", {"link": link})
+                return render(request, "search/report_form.html", {
+        "link": link,
+        "can_use_phone_callback": _can_use_phone_callback(request.user),
+    })
             from django.utils.dateparse import parse_datetime
             callback_at = parse_datetime(callback_at_raw)
             if callback_at is None:
                 messages.error(request, "Не удалось распознать дату/время созвона.")
-                return render(request, "search/report_form.html", {"link": link})
+                return render(request, "search/report_form.html", {
+        "link": link,
+        "can_use_phone_callback": _can_use_phone_callback(request.user),
+    })
             if timezone.is_naive(callback_at):
                 callback_at = timezone.make_aware(callback_at, timezone.get_current_timezone())
 
@@ -343,7 +379,10 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
 
         return redirect("search_links_my")
 
-    return render(request, "search/report_form.html", {"link": link})
+    return render(request, "search/report_form.html", {
+        "link": link,
+        "can_use_phone_callback": _can_use_phone_callback(request.user),
+    })
 
 
 @login_required

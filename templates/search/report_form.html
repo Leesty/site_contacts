@@ -21,7 +21,8 @@
           <form method="post" enctype="multipart/form-data" id="report-form">
             {% csrf_token %}
 
-            {# Переключатель типа отчёта #}
+            {% if can_use_phone_callback %}
+            {# Переключатель типа отчёта (бета-фича, пока только для тестового аккаунта) #}
             <div class="mb-3">
               <label class="form-label">Тип отчёта</label>
               <div class="btn-group w-100" role="group">
@@ -33,6 +34,9 @@
               </div>
               <div class="form-text text-muted">Для варианта «Оставил номер» робот автоматически прозвонит клиента 3 раза и попросит нажать 1. Только после нажатия отчёт пойдёт админу.</div>
             </div>
+            {% else %}
+            <input type="hidden" name="report_type" value="bot_start">
+            {% endif %}
 
             <div class="mb-3">
               <label class="form-label" for="lead_date">Дата лида</label>
@@ -42,11 +46,12 @@
             {# Поля обычного отчёта (bot_start) #}
             <div id="fields-bot" class="mb-3">
               <label class="form-label" for="raw_contact">Контакт / ссылка на клиента</label>
-              <input type="text" class="form-control" id="raw_contact" name="raw_contact" placeholder="Ссылка, телефон, @username" maxlength="500">
+              <input type="text" class="form-control" id="raw_contact" name="raw_contact" placeholder="Ссылка, телефон, @username" {% if not can_use_phone_callback %}required{% endif %} maxlength="500">
               <div class="form-text text-muted">Ссылка на профиль клиента, телефон или юзернейм.</div>
             </div>
 
-            {# Поля phone-callback варианта #}
+            {% if can_use_phone_callback %}
+            {# Поля phone-callback варианта (только для бета-аккаунтов) #}
             <div id="fields-phone" style="display: none;">
               <div class="mb-3">
                 <label class="form-label" for="client_phone">Номер клиента</label>
@@ -59,6 +64,7 @@
                 <div class="form-text text-muted">Звонки робота: сейчас + за 1 час до указанного времени + за 10 минут.</div>
               </div>
             </div>
+            {% endif %}
 
             <div class="mb-3">
               <label class="form-label" for="attachment">Скриншот / видео</label>
@@ -72,6 +78,7 @@
             <button type="submit" class="btn btn-primary w-100">Отправить отчёт</button>
           </form>
 
+          {% if can_use_phone_callback %}
           <script>
           (function() {
             var rtBot = document.getElementById('rt_bot');
@@ -102,6 +109,7 @@
             updateUI();
           })();
           </script>
+          {% endif %}
         </div>
       </div>
     </div>
