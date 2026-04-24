@@ -8,11 +8,7 @@
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
   </div>
 
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} py-2 small">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
+  {# messages рендерятся в base.html, локально не дублируем #}
 
   {# ═══ Настройки API ═══ #}
   <div class="card shadow-sm mb-3">
