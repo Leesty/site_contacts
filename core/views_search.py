@@ -275,25 +275,72 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         raw_contact = (request.POST.get("raw_contact") or "").strip()
         attachment = request.FILES.get("attachment")
         comment = (request.POST.get("comment") or "").strip()
+        report_type_raw = (request.POST.get("report_type") or "bot_start").strip()
+        is_phone = report_type_raw == "phone_callback"
+        client_phone_raw = (request.POST.get("client_phone") or "").strip()
+        callback_at_raw = (request.POST.get("callback_at") or "").strip()
 
-        if not raw_contact:
+        if not raw_contact and not is_phone:
             messages.error(request, "Укажите контакт или ссылку на клиента.")
             return render(request, "search/report_form.html", {"link": link})
         if not attachment:
             messages.error(request, "Приложите скриншот или видео.")
             return render(request, "search/report_form.html", {"link": link})
 
+        # Для phone_callback валидируем номер и время
+        client_phone = ""
+        callback_at = None
+        if is_phone:
+            from .robocall import normalize_phone as _norm_phone
+            client_phone = _norm_phone(client_phone_raw) or ""
+            if not client_phone:
+                messages.error(request, f"Номер «{client_phone_raw}» невалидный. Формат: +7XXXXXXXXXX.")
+                return render(request, "search/report_form.html", {"link": link})
+            if not callback_at_raw:
+                messages.error(request, "Укажите дату и время созвона.")
+                return render(request, "search/report_form.html", {"link": link})
+            from django.utils.dateparse import parse_datetime
+            callback_at = parse_datetime(callback_at_raw)
+            if callback_at is None:
+                messages.error(request, "Не удалось распознать дату/время созвона.")
+                return render(request, "search/report_form.html", {"link": link})
+            if timezone.is_naive(callback_at):
+                callback_at = timezone.make_aware(callback_at, timezone.get_current_timezone())
+
         report = SearchReport.objects.create(
             user=request.user,
             search_link=link,
             lead_date=lead_date or timezone.now().date(),
-            raw_contact=raw_contact,
+            raw_contact=raw_contact or client_phone,
             attachment=attachment,
             comment=comment,
+            report_type=(
+                SearchReport.ReportType.PHONE_CALLBACK if is_phone
+                else SearchReport.ReportType.BOT_START
+            ),
+            client_phone=client_phone,
+            callback_at=callback_at,
+            status=(
+                SearchReport.Status.PENDING_CALLBACK if is_phone
+                else SearchReport.Status.PENDING
+            ),
         )
         from .lead_utils import compress_lead_attachment
         compress_lead_attachment(report)
-        messages.success(request, "Отчёт отправлен.")
+
+        # Для phone_callback сразу ставим 3 звонка и стреляем stage 1
+        if is_phone:
+            try:
+                from .robocall import schedule_phone_callback_attempts
+                schedule_phone_callback_attempts(report)
+            except Exception as e:
+                logger.exception("Не удалось запланировать робо-звонки для отчёта %s: %s", report.pk, e)
+                messages.warning(request, "Отчёт создан, но звонки не поставлены. Админ разберётся.")
+            else:
+                messages.success(request, f"Отчёт создан. Робот сейчас позвонит на {client_phone}, далее ещё 2 звонка по расписанию. Отчёт попадёт на проверку после первого нажатия 1.")
+        else:
+            messages.success(request, "Отчёт отправлен.")
+
         return redirect("search_links_my")
 
     return render(request, "search/report_form.html", {"link": link})
@@ -571,9 +618,17 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         if report.status == SearchReport.Status.APPROVED:
             messages.info(request, "Отчёт уже одобрен.")
             return redirect("admin_search_reports_list")
-        if not report.search_link.bot_started:
-            messages.error(request, "Бот не стартован — нельзя одобрить.")
-            return redirect("admin_search_reports_list")
+        # Для bot_start — нужен подтверждённый старт бота.
+        # Для phone_callback — нужен callback_confirmed_at (нажатие 1 где-то).
+        is_phone_report = report.report_type == SearchReport.ReportType.PHONE_CALLBACK
+        if is_phone_report:
+            if not report.callback_confirmed_at:
+                messages.error(request, "Phone-отчёт нельзя одобрить: клиент ещё не нажал 1 ни в одном звонке.")
+                return redirect("admin_search_reports_list")
+        else:
+            if not report.search_link.bot_started:
+                messages.error(request, "Бот не стартован — нельзя одобрить.")
+                return redirect("admin_search_reports_list")
         # Проверка накрутки: флаг self_click ставится при клике на кнопку «Перейти в бота»
         _sl = report.search_link
         if _sl.self_click:
@@ -592,13 +647,23 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         lead_owner = User.objects.select_for_update().get(pk=report.user_id)
         from .models import PartnerEarning, log_balance_change
 
-        # Разделение награды для рефералов
+        # Суммарная ставка в зависимости от типа отчёта
+        PHONE_REWARD = getattr(settings, "SEARCH_PHONE_REPORT_REWARD", 65)
+        total_reward = PHONE_REWARD if is_phone_report else SEARCH_REPORT_REWARD
+
+        # Разделение награды для рефералов. Пропорция партнёрского cut'а сохраняется
+        # относительно SEARCH_REPORT_REWARD (обычного): phone_cut = cut * (total/150).
         if lead_owner.partner_owner_id and lead_owner.ref_searchlink_enabled:
-            manager_cut = max(1, min(SEARCH_REPORT_REWARD - 1, lead_owner.ref_searchlink_manager_cut))
-            ref_reward = SEARCH_REPORT_REWARD - manager_cut
+            base_cut = lead_owner.ref_searchlink_manager_cut
+            if is_phone_report:
+                scaled_cut = round(base_cut * total_reward / SEARCH_REPORT_REWARD)
+                manager_cut = max(1, min(total_reward - 1, scaled_cut))
+            else:
+                manager_cut = max(1, min(total_reward - 1, base_cut))
+            ref_reward = total_reward - manager_cut
         else:
             manager_cut = 0
-            ref_reward = SEARCH_REPORT_REWARD
+            ref_reward = total_reward
 
         report.status = SearchReport.Status.APPROVED
         report.reviewed_at = timezone.now()

@@ -19,7 +19,7 @@
       <form method="post" class="row g-2">
         {% csrf_token %}
         <input type="hidden" name="action" value="save_config">
-        <div class="col-md-7">
+        <div class="col-md-8">
           <label class="form-label small mb-1">Public key</label>
           <input type="text" name="public_key" class="form-control form-control-sm"
                  value="{{ site_settings.zvonok_public_key }}"
@@ -28,19 +28,55 @@
             <a href="https://zvonok.com/manager/users/profile-settings/" target="_blank" rel="noopener">Получить ключ →</a>
           </div>
         </div>
-        <div class="col-md-3">
-          <label class="form-label small mb-1">Campaign ID</label>
+        <div class="col-md-4">
+          <label class="form-label small mb-1">Campaign ID (тест)</label>
           <input type="text" name="campaign_id" class="form-control form-control-sm"
                  value="{{ site_settings.zvonok_campaign_id }}"
-                 placeholder="например 123456">
-          <div class="form-text small">
-            <a href="https://zvonok.com/manager/phones/all/" target="_blank" rel="noopener">Список кампаний →</a>
+                 placeholder="для тест-звонка с этой страницы">
+        </div>
+
+        <div class="col-12 mt-3">
+          <hr class="my-1">
+          <div class="small text-muted mb-2">
+            <strong>Три кампании для phone-callback отчётов</strong> — одна на каждый из 3 звонков (сразу / за 1 час / за 10 минут до созвона).
+            Создайте в zvonok три кампании с разными текстами (в конце — «нажмите 1») и впишите ID.
           </div>
         </div>
-        <div class="col-md-2 d-flex align-items-end">
-          <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить</button>
+        <div class="col-md-4">
+          <label class="form-label small mb-1">Campaign 1 — сразу</label>
+          <input type="text" name="campaign_id_now" class="form-control form-control-sm"
+                 value="{{ site_settings.zvonok_campaign_id_now }}"
+                 placeholder="ID кампании">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small mb-1">Campaign 2 — за 1 час</label>
+          <input type="text" name="campaign_id_1h" class="form-control form-control-sm"
+                 value="{{ site_settings.zvonok_campaign_id_1h }}"
+                 placeholder="ID кампании">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small mb-1">Campaign 3 — за 10 минут</label>
+          <input type="text" name="campaign_id_10min" class="form-control form-control-sm"
+                 value="{{ site_settings.zvonok_campaign_id_10min }}"
+                 placeholder="ID кампании">
+        </div>
+
+        <div class="col-12 d-flex justify-content-end mt-2">
+          <button type="submit" class="btn btn-primary btn-sm px-4">Сохранить</button>
         </div>
       </form>
+
+      {% if webhook_url %}
+      <hr class="my-3">
+      <div class="small">
+        <strong>Webhook URL для кнопки «1» в zvonok-кампаниях:</strong>
+        <div class="input-group input-group-sm mt-1" style="max-width: 700px;">
+          <input type="text" readonly class="form-control font-monospace" value="{{ webhook_url }}" onclick="this.select()">
+          <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText('{{ webhook_url }}').then(()=>{this.textContent='OK'})">Копировать</button>
+        </div>
+        <div class="form-text">В zvonok → каждая из 3 кампаний → кнопка 1 → «Webhook» → вставить эту ссылку. Тогда нажатие 1 будет залетать к нам.</div>
+      </div>
+      {% endif %}
     </div>
   </div>
 

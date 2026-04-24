@@ -974,6 +974,23 @@ class SiteSettings(models.Model):
         null=True, blank=True,
         help_text="Когда последний раз тестировался звонок через API.",
     )
+    # Phone-callback: три кампании с разным текстом (сейчас / за 1 час / за 10 мин до созвона)
+    zvonok_campaign_id_now = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="Campaign ID zvonok.com для стадии 1 — звонок сразу после подачи отчёта.",
+    )
+    zvonok_campaign_id_1h = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="Campaign ID для стадии 2 — звонок за 1 час до времени созвона.",
+    )
+    zvonok_campaign_id_10min = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="Campaign ID для стадии 3 — звонок за 10 минут до времени созвона.",
+    )
+    zvonok_webhook_secret = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="Секрет для проверки webhook'ов от zvonok.com (используется в URL callback'а).",
+    )
 
     class Meta:
         verbose_name = "Настройки сайта"
@@ -1245,6 +1262,11 @@ class SearchReport(TimeStampedModel):
         APPROVED = "approved", "Одобрен"
         REJECTED = "rejected", "Отклонён"
         REWORK = "rework", "На доработке"
+        PENDING_CALLBACK = "pending_callback", "Ждём нажатия 1"
+
+    class ReportType(models.TextChoices):
+        BOT_START = "bot_start", "Бот запущен"
+        PHONE_CALLBACK = "phone_callback", "Номер для созвона"
 
     user = models.ForeignKey(
         User,
@@ -1296,6 +1318,26 @@ class SearchReport(TimeStampedModel):
         default=0,
         help_text="Сколько реально начислено менеджеру на момент одобрения (без партнёрского cut). Для старых/не одобренных записей — 0.",
     )
+    # Phone-callback режим (альтернатива запуску бота): клиент оставил номер, робот обзванивает
+    report_type = models.CharField(
+        max_length=20,
+        choices=ReportType.choices,
+        default=ReportType.BOT_START,
+        db_index=True,
+        help_text="Тип отчёта: bot_start — клиент запустил бота (150₽); phone_callback — клиент оставил номер, робот прозванивает (65₽).",
+    )
+    client_phone = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Номер клиента в формате +7XXXXXXXXXX (только для phone_callback).",
+    )
+    callback_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Дата/время желаемого созвона с клиентом (только для phone_callback).",
+    )
+    callback_confirmed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Когда клиент впервые нажал 1 на любом из звонков.",
+    )
 
     class Meta:
         verbose_name = "Отчёт SearchLink"
@@ -1304,4 +1346,70 @@ class SearchReport(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"SearchReport #{self.pk} (link={self.search_link.code})"
+
+
+class RobocallAttempt(TimeStampedModel):
+    """Одна попытка роботизированного звонка в рамках phone_callback отчёта.
+
+    Каждому phone-отчёту соответствует 3 attempt'а — stage=1 (сразу), stage=2
+    (за 1 ч до callback_at), stage=3 (за 10 мин до callback_at).
+    """
+
+    class Stage(models.IntegerChoices):
+        IMMEDIATE = 1, "Сразу"
+        HOUR_BEFORE = 2, "За 1 час"
+        TEN_MIN_BEFORE = 3, "За 10 минут"
+
+    search_report = models.ForeignKey(
+        SearchReport,
+        on_delete=models.CASCADE,
+        related_name="robocall_attempts",
+    )
+    stage = models.IntegerField(choices=Stage.choices)
+    zvonok_campaign_id = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="ID кампании zvonok.com, из которой запускался звонок.",
+    )
+    scheduled_at = models.DateTimeField(
+        db_index=True,
+        help_text="Когда по плану должен улететь запрос в zvonok (UTC).",
+    )
+    fired_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Когда реально ушёл POST к zvonok API.",
+    )
+    skipped = models.BooleanField(
+        default=False,
+        help_text="Пропущен (например, scheduled_at ушёл в прошлое > grace period до запуска планировщика).",
+    )
+    skip_reason = models.CharField(max_length=255, blank=True, default="")
+    zvonok_call_id = models.CharField(
+        max_length=64, blank=True, default="",
+        db_index=True,
+        help_text="call_id от zvonok (используется для матчинга webhook callback).",
+    )
+    zvonok_response = models.TextField(
+        blank=True, default="",
+        help_text="Последний сырой ответ от zvonok API (для диагностики).",
+    )
+    button_pressed = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Клиент нажал 1 по этому звонку (из webhook).",
+    )
+    button_pressed_at = models.DateTimeField(null=True, blank=True)
+    dial_status = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="Статус набора из webhook (answered/no_answer/busy/...).",
+    )
+    webhook_received_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Звонок робота"
+        verbose_name_plural = "Звонки робота"
+        ordering = ["search_report_id", "stage"]
+        unique_together = ("search_report", "stage")
+
+    def __str__(self) -> str:
+        return f"RobocallAttempt #{self.pk} report={self.search_report_id} stage={self.stage}"
 

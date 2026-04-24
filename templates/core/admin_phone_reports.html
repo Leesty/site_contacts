@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Phone-отчёты SearchLink — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">📞 Phone-отчёты SearchLink</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_search_reports_list' %}">Обычные отчёты</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_robocall_test' %}">Настройки zvonok</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Всего номеров</div><strong>{{ totals.total }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Единичка нажата</div><strong class="text-success">{{ totals.confirmed }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Ждут звонков</div><strong class="text-warning">{{ totals.pending_callback }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Одобрено</div><strong class="text-success">{{ totals.approved }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Отклонено</div><strong class="text-danger">{{ totals.rejected }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Звонков сделано</div><strong>{{ attempts_fired }}/{{ attempts_total }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Единиц нажато (всего)</div><strong>{{ attempts_pressed }}</strong></div></div>
+  </div>
+
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item"><a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all{% if q %}&q={{ q|urlencode }}{% endif %}">Все</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'confirmed' %}active{% endif %}" href="?tab=confirmed{% if q %}&q={{ q|urlencode }}{% endif %}">С нажатием 1</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'unconfirmed' %}active{% endif %}" href="?tab=unconfirmed{% if q %}&q={{ q|urlencode }}{% endif %}">Без нажатия</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved{% if q %}&q={{ q|urlencode }}{% endif %}">Одобренные</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected{% if q %}&q={{ q|urlencode }}{% endif %}">Отклонённые</a></li>
+  </ul>
+
+  <form method="get" class="mb-3 d-flex gap-2">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="text" name="q" class="form-control form-control-sm" style="max-width: 300px;"
+           placeholder="Номер, менеджер, код ссылки" value="{{ q }}">
+    <button type="submit" class="btn btn-outline-primary btn-sm">Найти</button>
+    {% if q %}<a class="btn btn-outline-danger btn-sm" href="?tab={{ tab }}">Сброс</a>{% endif %}
+  </form>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Менеджер</th>
+              <th>Номер клиента</th>
+              <th>Созвон</th>
+              <th>Звонок 1<br><small class="text-muted">сразу</small></th>
+              <th>Звонок 2<br><small class="text-muted">за 1ч</small></th>
+              <th>Звонок 3<br><small class="text-muted">за 10м</small></th>
+              <th>1 нажата</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for report in page_obj %}
+              <tr>
+                <td class="text-muted small">{{ report.search_link.display_id|default:report.id }}</td>
+                <td><a href="{% url 'admin_user_leads_list' report.user_id %}">@{{ report.user.username }}</a></td>
+                <td class="font-monospace">{{ report.client_phone }}</td>
+                <td class="small">{{ report.callback_at|date:"d.m H:i"|default:"—" }}</td>
+                {% for a in report.robocall_attempts_ordered %}
+                  <td class="small">
+                    {% if a.skipped %}<span class="badge bg-secondary" title="{{ a.skip_reason }}">skip</span>
+                    {% elif a.button_pressed %}<span class="badge bg-success">✓1</span><br><small>{{ a.button_pressed_at|date:"H:i" }}</small>
+                    {% elif a.fired_at %}<span class="badge bg-info text-dark">отправлен</span><br><small>{{ a.fired_at|date:"d.m H:i" }}</small>
+                    {% else %}<span class="badge bg-warning text-dark">⏳</span><br><small>{{ a.scheduled_at|date:"d.m H:i" }}</small>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+                {# На случай если attempts меньше 3 — добавляем пустые ячейки #}
+                {% for _ in report.missing_stage_placeholders %}<td class="text-muted">—</td>{% endfor %}
+                <td>
+                  {% if report.callback_confirmed_at %}
+                    <span class="badge bg-success">Да</span>
+                    <div class="small text-muted">{{ report.callback_confirmed_at|date:"d.m H:i" }}</div>
+                  {% else %}
+                    <span class="badge bg-secondary">Нет</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if report.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                  {% elif report.status == 'pending' %}<span class="badge bg-warning text-dark">На проверке</span>
+                  {% elif report.status == 'pending_callback' %}<span class="badge bg-secondary">Ждём 1</span>
+                  {% elif report.status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>
+                  {% elif report.status == 'rework' %}<span class="badge bg-warning text-dark">Доработка</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="9" class="text-muted text-center py-4">Phone-отчётов пока нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer border-secondary d-flex justify-content-center py-2">
+          <nav>
+            <ul class="pagination pagination-sm mb-0">
+              {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
+              <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+              {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

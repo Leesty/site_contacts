@@ -18,17 +18,48 @@
     <div class="col-md-6">
       <div class="card shadow-sm">
         <div class="card-body">
-          <form method="post" enctype="multipart/form-data">
+          <form method="post" enctype="multipart/form-data" id="report-form">
             {% csrf_token %}
+
+            {# Переключатель типа отчёта #}
+            <div class="mb-3">
+              <label class="form-label">Тип отчёта</label>
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="report_type" id="rt_bot" value="bot_start" checked>
+                <label class="btn btn-outline-primary" for="rt_bot">🤖 Клиент в боте (150 ₽)</label>
+
+                <input type="radio" class="btn-check" name="report_type" id="rt_phone" value="phone_callback">
+                <label class="btn btn-outline-primary" for="rt_phone">📞 Оставил номер (65 ₽)</label>
+              </div>
+              <div class="form-text text-muted">Для варианта «Оставил номер» робот автоматически прозвонит клиента 3 раза и попросит нажать 1. Только после нажатия отчёт пойдёт админу.</div>
+            </div>
+
             <div class="mb-3">
               <label class="form-label" for="lead_date">Дата лида</label>
               <input type="date" class="form-control" id="lead_date" name="lead_date" required>
             </div>
-            <div class="mb-3">
+
+            {# Поля обычного отчёта (bot_start) #}
+            <div id="fields-bot" class="mb-3">
               <label class="form-label" for="raw_contact">Контакт / ссылка на клиента</label>
-              <input type="text" class="form-control" id="raw_contact" name="raw_contact" placeholder="Ссылка, телефон, @username" required maxlength="500">
+              <input type="text" class="form-control" id="raw_contact" name="raw_contact" placeholder="Ссылка, телефон, @username" maxlength="500">
               <div class="form-text text-muted">Ссылка на профиль клиента, телефон или юзернейм.</div>
             </div>
+
+            {# Поля phone-callback варианта #}
+            <div id="fields-phone" style="display: none;">
+              <div class="mb-3">
+                <label class="form-label" for="client_phone">Номер клиента</label>
+                <input type="tel" class="form-control" id="client_phone" name="client_phone" placeholder="+7 999 123-45-67" maxlength="32">
+                <div class="form-text text-muted">Любой формат — система приведёт к +7XXXXXXXXXX.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="callback_at">Дата и время созвона</label>
+                <input type="datetime-local" class="form-control" id="callback_at" name="callback_at">
+                <div class="form-text text-muted">Звонки робота: сейчас + за 1 час до указанного времени + за 10 минут.</div>
+              </div>
+            </div>
+
             <div class="mb-3">
               <label class="form-label" for="attachment">Скриншот / видео</label>
               <input type="file" class="form-control" id="attachment" name="attachment" accept="image/*,video/*" required>
@@ -40,6 +71,37 @@
             </div>
             <button type="submit" class="btn btn-primary w-100">Отправить отчёт</button>
           </form>
+
+          <script>
+          (function() {
+            var rtBot = document.getElementById('rt_bot');
+            var rtPhone = document.getElementById('rt_phone');
+            var fieldsBot = document.getElementById('fields-bot');
+            var fieldsPhone = document.getElementById('fields-phone');
+            var rawContact = document.getElementById('raw_contact');
+            var clientPhone = document.getElementById('client_phone');
+            var callbackAt = document.getElementById('callback_at');
+
+            function updateUI() {
+              if (rtPhone.checked) {
+                fieldsBot.style.display = 'none';
+                fieldsPhone.style.display = 'block';
+                rawContact.required = false;
+                clientPhone.required = true;
+                callbackAt.required = true;
+              } else {
+                fieldsBot.style.display = 'block';
+                fieldsPhone.style.display = 'none';
+                rawContact.required = true;
+                clientPhone.required = false;
+                callbackAt.required = false;
+              }
+            }
+            rtBot.addEventListener('change', updateUI);
+            rtPhone.addEventListener('change', updateUI);
+            updateUI();
+          })();
+          </script>
         </div>
       </div>
     </div>

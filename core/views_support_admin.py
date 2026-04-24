@@ -2941,9 +2941,13 @@ def admin_moderation_by_admin_detail(request: HttpRequest, admin_id: int) -> Htt
 # Zvonok.com — тестовый звонок роботом (только main_admin)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+import json as _json_zv_top
 import re as _re_zv
 import urllib.parse as _urlparse_zv
 import urllib.request as _urlreq_zv
+
+from django.views.decorators.csrf import csrf_exempt as _csrf_exempt_zv
+from .robocall import dispatch_pending_attempts as _zv_dispatch, get_or_create_webhook_secret as _zv_get_secret
 
 
 def _normalize_phone_for_zvonok(phone: str) -> str | None:
@@ -2979,7 +2983,13 @@ def admin_robocall_test(request: HttpRequest) -> HttpResponse:
         if action == "save_config":
             st.zvonok_public_key = (request.POST.get("public_key") or "").strip()[:255]
             st.zvonok_campaign_id = (request.POST.get("campaign_id") or "").strip()[:64]
-            st.save(update_fields=["zvonok_public_key", "zvonok_campaign_id"])
+            st.zvonok_campaign_id_now = (request.POST.get("campaign_id_now") or "").strip()[:64]
+            st.zvonok_campaign_id_1h = (request.POST.get("campaign_id_1h") or "").strip()[:64]
+            st.zvonok_campaign_id_10min = (request.POST.get("campaign_id_10min") or "").strip()[:64]
+            st.save(update_fields=[
+                "zvonok_public_key", "zvonok_campaign_id",
+                "zvonok_campaign_id_now", "zvonok_campaign_id_1h", "zvonok_campaign_id_10min",
+            ])
             messages.success(request, "Настройки zvonok.com сохранены.")
             return redirect("admin_robocall_test")
 
@@ -3049,7 +3059,171 @@ def admin_robocall_test(request: HttpRequest) -> HttpResponse:
                 )
             return redirect("admin_robocall_test")
 
+    # Генерируем secret если надо и строим полный URL webhook'а для копирования в zvonok
+    secret = _zv_get_secret()
+    webhook_url = request.build_absolute_uri(reverse("zvonok_webhook") + f"?secret={secret}")
+
     return render(request, "core/admin_robocall_test.html", {
         "site_settings": st,
+        "webhook_url": webhook_url,
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Webhook от zvonok.com (нажатие кнопки 1) + cron-endpoint для dispatch'а
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@_csrf_exempt_zv
+def zvonok_webhook(request: HttpRequest) -> HttpResponse:
+    """Принимает POST от zvonok.com при нажатии клиентом кнопки 1.
+
+    URL: /api/zvonok-callback/?secret=<secret>
+    Zvonok шлёт в теле POST (form-urlencoded или JSON) данные звонка:
+      - call_id (обязательно)
+      - phone, dial_status, button_num, action_type, ivr_num и т.п.
+
+    Мы находим RobocallAttempt по call_id, ставим button_pressed, и если это
+    первое подтверждение для отчёта — переводим SearchReport.status в pending.
+    """
+    st = SiteSettings.get_settings()
+    expected_secret = st.zvonok_webhook_secret
+    provided_secret = request.GET.get("secret", "") or request.headers.get("X-Webhook-Secret", "")
+    if not expected_secret or provided_secret != expected_secret:
+        return HttpResponseForbidden("Bad secret")
+
+    # Пробуем распарсить и form-data, и JSON (zvonok шлёт по-разному в зависимости от настройки)
+    data = dict(request.POST.items()) if request.POST else {}
+    if not data and request.body:
+        try:
+            parsed = _json_zv_top.loads(request.body)
+            if isinstance(parsed, dict):
+                data = {str(k): v for k, v in parsed.items()}
+        except Exception:
+            pass
+    # GET fallback — некоторые вебхуки zvonok шлют параметры в query
+    if not data:
+        data = dict(request.GET.items())
+
+    call_id = str(data.get("call_id") or data.get("ce_call_id") or "").strip()
+    button_num = data.get("button_num") or data.get("ivr_num") or data.get("user_choice")
+    dial_status = str(data.get("dial_status") or data.get("call_status") or "")[:64]
+    if not call_id:
+        return JsonResponse({"ok": False, "error": "missing call_id"}, status=400)
+
+    from .models import RobocallAttempt, SearchReport
+
+    attempt = RobocallAttempt.objects.select_related("search_report").filter(zvonok_call_id=call_id).first()
+    if not attempt:
+        # Это может быть звонок из test-flow или из другой кампании — не ошибка
+        return JsonResponse({"ok": True, "matched": False, "reason": "call_id not in our DB"})
+
+    attempt.webhook_received_at = timezone.now()
+    attempt.dial_status = dial_status
+    # Признак нажатия 1
+    pressed_one = False
+    try:
+        pressed_one = int(str(button_num).strip()) == 1
+    except (TypeError, ValueError):
+        pressed_one = False
+
+    if pressed_one:
+        attempt.button_pressed = True
+        attempt.button_pressed_at = timezone.now()
+        attempt.save(update_fields=["webhook_received_at", "dial_status", "button_pressed", "button_pressed_at", "updated_at"])
+
+        # Если это ПЕРВОЕ подтверждение для отчёта — переводим его в pending
+        report = attempt.search_report
+        if not report.callback_confirmed_at:
+            report.callback_confirmed_at = timezone.now()
+            if report.status == SearchReport.Status.PENDING_CALLBACK:
+                report.status = SearchReport.Status.PENDING
+            report.save(update_fields=["callback_confirmed_at", "status", "updated_at"])
+    else:
+        attempt.save(update_fields=["webhook_received_at", "dial_status", "updated_at"])
+
+    return JsonResponse({"ok": True, "matched": True, "pressed_one": pressed_one})
+
+
+@_csrf_exempt_zv
+def zvonok_dispatch_cron(request: HttpRequest) -> HttpResponse:
+    """Cron-endpoint: бот-сервер раз в минуту дергает это, чтобы запустить отложенные звонки.
+
+    URL: /api/cron/dispatch-robocalls/?secret=<secret>
+    """
+    st = SiteSettings.get_settings()
+    expected_secret = st.zvonok_webhook_secret
+    provided_secret = request.GET.get("secret", "") or request.headers.get("X-Webhook-Secret", "")
+    if not expected_secret or provided_secret != expected_secret:
+        return HttpResponseForbidden("Bad secret")
+
+    summary = _zv_dispatch()
+    return JsonResponse(summary)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phone-reports dashboard — страница со списком всех телефон-отчётов
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@login_required
+def admin_phone_reports(request: HttpRequest) -> HttpResponse:
+    """Страница главного админа/админа: все phone_callback отчёты с прозвонами и статистикой."""
+    if not (_require_support(request) or getattr(request.user, "role", None) == "main_admin"):
+        return HttpResponseForbidden("Недостаточно прав.")
+
+    from .models import RobocallAttempt
+
+    reports_qs = (
+        SearchReport.objects
+        .filter(report_type=SearchReport.ReportType.PHONE_CALLBACK)
+        .select_related("user", "search_link", "reviewed_by")
+        .prefetch_related("robocall_attempts")
+        .order_by("-created_at")
+    )
+
+    # Фильтры
+    q = (request.GET.get("q") or "").strip()
+    tab = request.GET.get("tab", "all")
+    if q:
+        reports_qs = reports_qs.filter(
+            Q(client_phone__icontains=q) | Q(user__username__icontains=q) | Q(search_link__code__icontains=q)
+        )
+    if tab == "confirmed":
+        reports_qs = reports_qs.filter(callback_confirmed_at__isnull=False)
+    elif tab == "unconfirmed":
+        reports_qs = reports_qs.filter(callback_confirmed_at__isnull=True)
+    elif tab == "approved":
+        reports_qs = reports_qs.filter(status=SearchReport.Status.APPROVED)
+    elif tab == "rejected":
+        reports_qs = reports_qs.filter(status=SearchReport.Status.REJECTED)
+
+    paginator = Paginator(reports_qs, 50)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    # Для каждого отчёта — список attempts по stage в порядке 1/2/3
+    for r in page_obj:
+        by_stage = {a.stage: a for a in r.robocall_attempts.all()}
+        r.robocall_attempts_ordered = [by_stage[s] for s in (1, 2, 3) if s in by_stage]
+        r.missing_stage_placeholders = list(range(3 - len(r.robocall_attempts_ordered)))
+
+    # Агрегированная статистика
+    totals = SearchReport.objects.filter(report_type=SearchReport.ReportType.PHONE_CALLBACK).aggregate(
+        total=Count("id"),
+        confirmed=Count("id", filter=Q(callback_confirmed_at__isnull=False)),
+        approved=Count("id", filter=Q(status=SearchReport.Status.APPROVED)),
+        rejected=Count("id", filter=Q(status=SearchReport.Status.REJECTED)),
+        pending_callback=Count("id", filter=Q(status=SearchReport.Status.PENDING_CALLBACK)),
+    )
+    attempts_total = RobocallAttempt.objects.count()
+    attempts_fired = RobocallAttempt.objects.exclude(fired_at__isnull=True).count()
+    attempts_pressed = RobocallAttempt.objects.filter(button_pressed=True).count()
+
+    return render(request, "core/admin_phone_reports.html", {
+        "page_obj": page_obj,
+        "q": q,
+        "tab": tab,
+        "totals": totals,
+        "attempts_total": attempts_total,
+        "attempts_fired": attempts_fired,
+        "attempts_pressed": attempts_pressed,
     })
 
