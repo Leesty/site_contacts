@@ -3170,7 +3170,7 @@ def admin_phone_reports(request: HttpRequest) -> HttpResponse:
     if not (_require_support(request) or getattr(request.user, "role", None) == "main_admin"):
         return HttpResponseForbidden("Недостаточно прав.")
 
-    from .models import RobocallAttempt
+    from .models import RobocallAttempt, SearchReport
 
     reports_qs = (
         SearchReport.objects
