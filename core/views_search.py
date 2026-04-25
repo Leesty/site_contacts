@@ -550,6 +550,12 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
 
     link.save(update_fields=update_fields)
 
+    # Anti-fraud: identity клиента совпадает с менеджером ИЛИ этот identity уже стартовал бот в другой ссылке
+    try:
+        _detect_searchlink_fraud(link, telegram_username, vk_user_id, vk_screen_name)
+    except Exception as e:
+        logger.warning("SearchLink fraud check failed link=%s: %s", link.code, e)
+
     # Автодобавление лида в базу контактов менеджера (base_type=telegram|vk)
     try:
         _autoadd_lead_contact(link, platform)
@@ -557,6 +563,64 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
         logger.warning("SearchLink autoadd contact failed link=%s: %s", link.code, e)
 
     return JsonResponse({"ok": True})
+
+
+def _detect_searchlink_fraud(link: SearchLink, telegram_username: str, vk_user_id, vk_screen_name: str) -> None:
+    """Помечает SearchLink как self_click (накрутка) если найден один из паттернов:
+
+      1) telegram_username клиента совпадает с username менеджера (case-insensitive).
+      2) vk_screen_name клиента совпадает с username менеджера.
+      3) Этот же telegram_username уже стартовал бот в ДРУГОЙ ссылке ранее.
+      4) Этот же vk_user_id уже стартовал бот в ДРУГОЙ ссылке ранее.
+
+    Тестовый аккаунт user_id=285 (username="5") пропускается полностью.
+    """
+    if link.user_id == 285:  # бета/тестовый аккаунт — без проверок
+        return
+    if link.self_click:
+        return  # уже помечен (например, IP-чеком на /go/)
+
+    manager_username = (link.user.username or "").strip().lower()
+    fraud_reason = ""
+
+    # 1+2: identity совпадает с менеджером
+    if manager_username:
+        if telegram_username and telegram_username.strip().lower() == manager_username:
+            fraud_reason = f"telegram_username={telegram_username} = manager.username"
+        elif vk_screen_name and vk_screen_name.strip().lower() == manager_username:
+            fraud_reason = f"vk_screen_name={vk_screen_name} = manager.username"
+
+    # 3: тот же telegram_username уже стартовал в другой ссылке
+    if not fraud_reason and telegram_username:
+        prior = (
+            SearchLink.objects
+            .filter(bot_started=True, telegram_username__iexact=telegram_username)
+            .exclude(pk=link.pk)
+            .order_by("bot_started_at")
+            .first()
+        )
+        if prior:
+            fraud_reason = f"telegram_username={telegram_username} уже стартовал в ссылке #{prior.display_id or prior.code}"
+
+    # 4: тот же vk_user_id уже стартовал
+    if not fraud_reason and vk_user_id:
+        prior = (
+            SearchLink.objects
+            .filter(bot_started=True, vk_user_id=vk_user_id)
+            .exclude(pk=link.pk)
+            .order_by("bot_started_at")
+            .first()
+        )
+        if prior:
+            fraud_reason = f"vk_user_id={vk_user_id} уже стартовал в ссылке #{prior.display_id or prior.code}"
+
+    if fraud_reason:
+        link.self_click = True
+        link.save(update_fields=["self_click", "updated_at"])
+        logger.warning(
+            "SearchLink fraud detected: link=%s manager=@%s reason=%s",
+            link.code, link.user.username, fraud_reason,
+        )
 
 
 def _autoadd_lead_contact(link: SearchLink, platform: str) -> None:
