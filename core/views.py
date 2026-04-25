@@ -707,22 +707,36 @@ def smz_registration(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def receipt_upload(request: HttpRequest, wr_id: int) -> HttpResponse:
-    """Загрузка чека для выплаты."""
+    """Загрузка чеков для выплаты. Теперь поддерживает несколько файлов разом
+    (выплата может быть частями)."""
     if request.method != "POST":
         return redirect("dashboard")
     user = request.user
-    from django.db.models import Q
     wr = get_object_or_404(WithdrawalRequest, pk=wr_id, user=user, status="approved")
-    attachment = request.FILES.get("receipt")
-    if not attachment:
-        messages.error(request, "Прикрепите файл чека.")
+
+    # Принимаем сразу несколько файлов: name="receipt" с multiple
+    files = request.FILES.getlist("receipt")
+    if not files:
+        # Старая форма с одним полем — fallback
+        single = request.FILES.get("receipt")
+        if single:
+            files = [single]
+    if not files:
+        messages.error(request, "Прикрепите хотя бы один файл чека.")
         return redirect("dashboard")
-    wr.receipt = attachment
+
+    from .models import WithdrawalReceipt
+    saved = 0
+    for f in files:
+        WithdrawalReceipt.objects.create(withdrawal_request=wr, file=f)
+        saved += 1
+
     wr.receipt_uploaded_at = timezone.now()
-    wr.receipt_status = "pending"
+    if wr.receipt_status not in ("approved", "waived"):
+        wr.receipt_status = "pending"
     wr.receipt_reject_reason = ""
-    wr.save(update_fields=["receipt", "receipt_uploaded_at", "receipt_status", "receipt_reject_reason", "updated_at"])
-    messages.success(request, "Чек загружен и отправлен на проверку.")
+    wr.save(update_fields=["receipt_uploaded_at", "receipt_status", "receipt_reject_reason", "updated_at"])
+    messages.success(request, f"Загружено чеков: {saved}. Отправлено на проверку.")
     return redirect("dashboard")
 
 

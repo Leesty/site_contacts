@@ -569,6 +569,59 @@ class WithdrawalRequest(TimeStampedModel):
         verbose_name_plural = "Заявки на вывод"
         ordering = ["-created_at"]
 
+    @property
+    def all_receipts(self):
+        """Все чеки заявки: новые из WithdrawalReceipt + legacy `receipt` (если был).
+
+        Удобно итерировать в шаблонах. Возвращает список объектов с .file и .uploaded_at.
+        """
+        result = list(self.receipts.all())
+        if self.receipt and not result:
+            # Legacy-режим: одиночный чек ещё не мигрирован в WithdrawalReceipt
+            result.append(_LegacyReceiptShim(self))
+        return result
+
+
+class _LegacyReceiptShim:
+    """Прокси для старого WithdrawalRequest.receipt (один файл).
+    Чтобы шаблон мог обрабатывать его так же как WithdrawalReceipt."""
+
+    def __init__(self, wr):
+        self._wr = wr
+        self.id = None
+        self.file = wr.receipt
+        self.uploaded_at = wr.receipt_uploaded_at
+
+
+class WithdrawalReceipt(TimeStampedModel):
+    """Один чек (или скрин выплаты) для заявки на вывод. Их может быть несколько.
+
+    Используется когда выплата разбивается на части — каждая часть со своим чеком.
+    """
+
+    withdrawal_request = models.ForeignKey(
+        "WithdrawalRequest",
+        on_delete=models.CASCADE,
+        related_name="receipts",
+    )
+    file = models.FileField(
+        upload_to="receipts/",
+        help_text="Файл чека (скриншот).",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True, help_text="Когда загружен этот чек.")
+    note = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Опционально: пометка к чеку (например, «частичная оплата 1/2»).",
+    )
+
+    class Meta:
+        verbose_name = "Чек выплаты"
+        verbose_name_plural = "Чеки выплат"
+        ordering = ["uploaded_at"]
+
+    def __str__(self) -> str:
+        return f"WithdrawalReceipt #{self.pk} (wr={self.withdrawal_request_id})"
+
     def __str__(self) -> str:
         return f"Вывод {self.amount} от {self.user} ({self.get_status_display()})"
 
