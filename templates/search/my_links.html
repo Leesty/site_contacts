@@ -145,11 +145,6 @@
                               style="font-size: 10px;" title="Прямая ссылка на TG-бота с реф-кодом">
                         📨 TG
                       </button>
-                      <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 js-copy-direct"
-                              data-copy="{{ link.vk_deep_link }}"
-                              style="font-size: 10px; background-color: rgba(76,117,163,0.1);" title="Прямая ссылка на VK-сообщество с реф-кодом">
-                        🟪 VK
-                      </button>
                     </div>
                   </td>
                   <td class="text-muted small">{{ link.created_at|date:"d.m.Y H:i" }}</td>
@@ -248,8 +243,7 @@
         document.execCommand('copy');
         document.body.removeChild(ta);
       }
-      var label = btn.textContent.trim();
-      showCopyToast(label.indexOf('TG') >= 0 ? 'Ссылка на Telegram-бота скопирована' : 'Ссылка на VK-сообщество скопирована');
+      showCopyToast('Ссылка на Telegram-бота скопирована');
     });
   });
   </script>
