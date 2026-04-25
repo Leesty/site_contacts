@@ -27,12 +27,11 @@
               <label class="form-label">Тип отчёта</label>
               <div class="btn-group w-100" role="group">
                 <input type="radio" class="btn-check" name="report_type" id="rt_bot" value="bot_start" checked>
-                <label class="btn btn-outline-primary" for="rt_bot">🤖 Клиент в боте (150 ₽)</label>
+                <label class="btn btn-outline-primary" for="rt_bot">🤖 Клиент в боте</label>
 
                 <input type="radio" class="btn-check" name="report_type" id="rt_phone" value="phone_callback">
-                <label class="btn btn-outline-primary" for="rt_phone">📞 Оставил номер (65 ₽)</label>
+                <label class="btn btn-outline-primary" for="rt_phone">📞 Оставил номер</label>
               </div>
-              <div class="form-text text-muted">Для варианта «Оставил номер» робот автоматически прозвонит клиента 3 раза и попросит нажать 1. Только после нажатия отчёт пойдёт админу.</div>
             </div>
             {% else %}
             <input type="hidden" name="report_type" value="bot_start">
