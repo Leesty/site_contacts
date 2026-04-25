@@ -101,10 +101,10 @@
               <tr>
                 <th>Имя лида</th>
                 <th>Ссылка</th>
-                <th>Создано</th>
+                <th class="d-none d-lg-table-cell">Создано</th>
                 <th>Бот</th>
-                <th>Контакт</th>
-                <th>Вложение</th>
+                <th class="d-none d-md-table-cell">Контакт</th>
+                <th class="d-none d-md-table-cell">Вложение</th>
                 <th>Статус</th>
                 <th></th>
               </tr>
@@ -131,23 +131,22 @@
                     {% endif %}
                   </td>
                   <td>
-                    <div class="d-flex align-items-center gap-1 mb-1">
-                      <input type="text" class="form-control form-control-sm font-monospace js-copy-input" style="font-size: 11px; min-width: 280px;"
-                             value="{{ site_url }}/s/{{ link.code }}/"
-                             readonly onclick="this.select();">
-                      <button class="btn btn-outline-secondary btn-sm py-0 px-1 js-copy-btn" type="button" title="Копировать ссылку на лендинг">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/></svg>
+                    <div class="d-flex flex-wrap gap-1">
+                      <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-copy-direct"
+                              data-copy="{{ site_url }}/s/{{ link.code }}/"
+                              data-toast="Ссылка-лендинг скопирована"
+                              style="font-size: 11px;" title="{{ site_url }}/s/{{ link.code }}/">
+                        📋 Лендинг
                       </button>
-                    </div>
-                    <div class="d-flex gap-1">
                       <button type="button" class="btn btn-outline-info btn-sm py-0 px-2 js-copy-direct"
                               data-copy="{{ link.tg_deep_link }}"
-                              style="font-size: 10px;" title="Прямая ссылка на TG-бота с реф-кодом">
+                              data-toast="Прямая TG-ссылка скопирована"
+                              style="font-size: 11px;" title="{{ link.tg_deep_link }}">
                         📨 TG
                       </button>
                     </div>
                   </td>
-                  <td class="text-muted small">{{ link.created_at|date:"d.m.Y H:i" }}</td>
+                  <td class="text-muted small text-nowrap d-none d-lg-table-cell">{{ link.created_at|date:"d.m H:i" }}</td>
                   <td>
                     {% if link.bot_started %}
                       <span class="badge bg-success">Запущен</span>
@@ -156,10 +155,10 @@
                     {% endif %}
                   </td>
                   {% with report=link.report_obj %}
-                  <td class="small text-break" style="max-width: 150px;">
+                  <td class="small text-break d-none d-md-table-cell" style="max-width: 150px;">
                     {% if report and report.raw_contact %}{{ report.raw_contact|truncatechars:40 }}{% else %}<span class="text-muted">—</span>{% endif %}
                   </td>
-                  <td>
+                  <td class="d-none d-md-table-cell">
                     {% if report and report.attachment %}
                       <a href="{% url 'search_report_attachment' link.code %}" target="_blank" class="btn btn-outline-primary btn-sm py-0">Файл</a>
                     {% else %}<span class="text-muted">—</span>{% endif %}
@@ -216,34 +215,25 @@
     toast.style.display = 'block';
     setTimeout(function() { toast.style.display = 'none'; }, 2000);
   }
-  document.querySelectorAll('.js-copy-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var input = btn.previousElementSibling;
-      input.select();
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(input.value);
-      } else {
-        document.execCommand('copy');
-      }
-      showCopyToast('Ссылка-лендинг скопирована');
-    });
-  });
-  // Прямые ссылки TG и VK
+  function copyToClipboard(text) {
+    if (navigator.clipboard) {
+      return navigator.clipboard.writeText(text);
+    }
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    return Promise.resolve();
+  }
   document.querySelectorAll('.js-copy-direct').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var text = btn.getAttribute('data-copy') || '';
       if (!text) return;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(text);
-      } else {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
-      showCopyToast('Ссылка на Telegram-бота скопирована');
+      copyToClipboard(text);
+      var toastText = btn.getAttribute('data-toast') || 'Ссылка скопирована';
+      showCopyToast(toastText);
     });
   });
   </script>

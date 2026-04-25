@@ -44,13 +44,13 @@
         <table class="table table-sm mb-0 align-middle table-dark-site">
           <thead>
             <tr>
-              <th>#</th>
+              <th class="d-none d-md-table-cell">#</th>
               <th>Менеджер</th>
-              <th>Номер клиента</th>
-              <th>Созвон</th>
-              <th>Звонок 1<br><small class="text-muted">сразу</small></th>
-              <th>Звонок 2<br><small class="text-muted">за 1ч</small></th>
-              <th>Звонок 3<br><small class="text-muted">за 10м</small></th>
+              <th>Номер</th>
+              <th class="d-none d-md-table-cell">Созвон</th>
+              <th class="d-none d-lg-table-cell">Звонок 1<br><small class="text-muted">сразу</small></th>
+              <th class="d-none d-lg-table-cell">Звонок 2<br><small class="text-muted">за 1ч</small></th>
+              <th class="d-none d-lg-table-cell">Звонок 3<br><small class="text-muted">за 10м</small></th>
               <th>1 нажата</th>
               <th>Статус</th>
             </tr>
@@ -58,12 +58,12 @@
           <tbody>
             {% for report in page_obj %}
               <tr>
-                <td class="text-muted small">{{ report.search_link.display_id|default:report.id }}</td>
+                <td class="text-muted small d-none d-md-table-cell">{{ report.search_link.display_id|default:report.id }}</td>
                 <td><a href="{% url 'admin_user_leads_list' report.user_id %}">@{{ report.user.username }}</a></td>
-                <td class="font-monospace">{{ report.client_phone }}</td>
-                <td class="small">{{ report.callback_at|date:"d.m H:i"|default:"—" }}</td>
+                <td class="font-monospace small">{{ report.client_phone }}</td>
+                <td class="small d-none d-md-table-cell">{{ report.callback_at|date:"d.m H:i"|default:"—" }}</td>
                 {% for a in report.robocall_attempts_ordered %}
-                  <td class="small">
+                  <td class="small d-none d-lg-table-cell">
                     {% if a.skipped %}<span class="badge bg-secondary" title="{{ a.skip_reason }}">skip</span>
                     {% elif a.button_pressed %}<span class="badge bg-success">✓1</span><br><small>{{ a.button_pressed_at|date:"H:i" }}</small>
                     {% elif a.fired_at %}<span class="badge bg-info text-dark">отправлен</span><br><small>{{ a.fired_at|date:"d.m H:i" }}</small>
@@ -72,7 +72,7 @@
                   </td>
                 {% endfor %}
                 {# На случай если attempts меньше 3 — добавляем пустые ячейки #}
-                {% for _ in report.missing_stage_placeholders %}<td class="text-muted">—</td>{% endfor %}
+                {% for _ in report.missing_stage_placeholders %}<td class="text-muted d-none d-lg-table-cell">—</td>{% endfor %}
                 <td>
                   {% if report.callback_confirmed_at %}
                     <span class="badge bg-success">Да</span>
