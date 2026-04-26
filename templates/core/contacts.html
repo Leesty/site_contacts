@@ -10,7 +10,11 @@
 
   <p class="text-muted">
     Выберите тип базы, из которой хотите получить контакты.
-    Лимит зависит от настроек базы и дополнительных лимитов менеджера.
+    {% if user.is_accredited %}
+      У вас аккредитация <span class="badge bg-success">✓</span> — берите контакты без лимита, нажимайте кнопку столько раз, сколько нужно.
+    {% else %}
+      Лимит зависит от настроек базы и дополнительных лимитов менеджера.
+    {% endif %}
   </p>
 
   {% if reason == 'already_got' %}
@@ -24,12 +28,14 @@
     </div>
   {% elif reason == 'not_enough' %}
     <div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2">
-      <span class="flex-grow-1">К сожалению, в этой базе сейчас недостаточно свободных контактов. Обратитесь к менеджеру.</span>
-      <form method="post" action="{% url 'request_contact_create' %}" class="d-inline">
-        {% csrf_token %}
-        {% if selected_base %}<input type="hidden" name="base_type" value="{{ selected_base.pk }}">{% endif %}
-        <button type="submit" class="btn btn-primary btn-sm">Обратиться</button>
-      </form>
+      <span class="flex-grow-1">К сожалению, в этой базе сейчас недостаточно свободных контактов.{% if not user.is_accredited %} Обратитесь к менеджеру.{% endif %}</span>
+      {% if not user.is_accredited %}
+        <form method="post" action="{% url 'request_contact_create' %}" class="d-inline">
+          {% csrf_token %}
+          {% if selected_base %}<input type="hidden" name="base_type" value="{{ selected_base.pk }}">{% endif %}
+          <button type="submit" class="btn btn-primary btn-sm">Обратиться</button>
+        </form>
+      {% endif %}
     </div>
   {% endif %}
 
@@ -56,7 +62,7 @@
     <ul class="list-group mt-2">
       {% for contact in allocated_contacts %}
         <li class="list-group-item d-flex align-items-center gap-2 contact-row" data-contact-value="{{ contact.value|default:'' }}">
-          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-copy-contact flex-shrink-0" title="Скопировать" data-value="{{ contact.value|default:'' }}">📋</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-copy-contact flex-shrink-0" title="Скопировать" aria-label="Скопировать контакт {{ contact.value|default:'' }}" data-value="{{ contact.value|default:'' }}"><span aria-hidden="true">📋</span></button>
           <span class="text-break flex-grow-1 user-select-none">{{ contact.value }}</span>
           <span class="js-copied-mark text-success flex-shrink-0" style="display:none;">✓</span>
         </li>
@@ -110,7 +116,8 @@
     </div>
     <p class="text-muted small mb-1">Скачать контакты за конкретную дату:</p>
     <form action="{% url 'download_my_contacts_txt' %}" method="get" class="d-flex flex-wrap gap-2 align-items-center">
-      <input type="date" name="date" class="form-control form-control-sm" style="width: auto;" required>
+      <label for="contacts-date-filter" class="visually-hidden">Дата скачивания контактов</label>
+      <input type="date" name="date" id="contacts-date-filter" class="form-control form-control-sm" style="width: auto;" required aria-label="Выберите дату для скачивания контактов">
       <button type="submit" class="btn btn-outline-primary btn-sm">Скачать за дату</button>
     </form>
     <p class="text-muted small mt-1">Ссылка на скачивание действует только при входе в аккаунт. Если сохранили ссылку или открываете с другого устройства — сначала войдите на сайт, затем снова нажмите «Скачать».</p>

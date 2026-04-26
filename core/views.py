@@ -478,11 +478,20 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
         total_allowed = base_limit + extra_limit
 
         with transaction.atomic():
-            current = Contact.objects.filter(base_type=selected_base, assigned_to=user).count()
-            if current >= total_allowed:
-                reason = "already_got"
+            if user.is_accredited:
+                # Аккредитированные — без лимита, выдаём пачку base_limit за клик
+                can_give = base_limit
+                partial_ok = True
             else:
-                can_give = total_allowed - current
+                current = Contact.objects.filter(base_type=selected_base, assigned_to=user).count()
+                if current >= total_allowed:
+                    reason = "already_got"
+                    can_give = 0
+                else:
+                    can_give = total_allowed - current
+                partial_ok = False
+
+            if can_give > 0:
                 free_qs = (
                     Contact.objects.select_for_update()
                     .filter(base_type=selected_base, assigned_to__isnull=True, is_active=True)
@@ -500,11 +509,12 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
                     if already_issued_values:
                         free_qs = free_qs.exclude(value__in=already_issued_values)
                 free_count = free_qs.count()
-                if free_count < can_give:
+                if free_count == 0 or (not partial_ok and free_count < can_give):
                     reason = "not_enough"
                 else:
                     now = timezone.now()
-                    contacts_to_give = list(free_qs[:can_give])
+                    actual_give = min(can_give, free_count)
+                    contacts_to_give = list(free_qs[:actual_give])
                     ids = [c.pk for c in contacts_to_give]
                     Contact.objects.filter(pk__in=ids).update(
                         assigned_to=user, assigned_at=now
