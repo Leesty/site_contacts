@@ -2947,7 +2947,11 @@ import urllib.parse as _urlparse_zv
 import urllib.request as _urlreq_zv
 
 from django.views.decorators.csrf import csrf_exempt as _csrf_exempt_zv
-from .robocall import dispatch_pending_attempts as _zv_dispatch, get_or_create_webhook_secret as _zv_get_secret
+from .robocall import (
+    dispatch_pending_attempts as _zv_dispatch,
+    get_or_create_webhook_secret as _zv_get_secret,
+    poll_call_results as _zv_poll,
+)
 
 
 def _normalize_phone_for_zvonok(phone: str) -> str | None:
@@ -3157,7 +3161,8 @@ def zvonok_dispatch_cron(request: HttpRequest) -> HttpResponse:
         return HttpResponseForbidden("Bad secret")
 
     summary = _zv_dispatch()
-    return JsonResponse(summary)
+    poll_summary = _zv_poll()
+    return JsonResponse({"dispatch": summary, "poll": poll_summary})
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

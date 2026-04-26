@@ -209,6 +209,118 @@ def dispatch_pending_attempts() -> dict:
     return {"checked": total, "fired": fired, "skipped": skipped_count, "errors": errors}
 
 
+# Поллинг результатов: вместо webhook'а от zvonok сами тянем статус каждого
+# отстреленного звонка, проверяем button_num. Так надёжнее (от сети не зависит)
+# и не требует настройки в zvonok UI (где webhook нельзя поставить рядом с SMS).
+
+POLL_CALL_BY_ID_URL = "https://zvonok.com/manager/cabapi_external/api/v1/phones/call_by_id/"
+POLL_LOOKBACK_HOURS = 12  # звонки старше — не опрашиваем (zvonok их обычно завершает в минуты)
+
+
+def poll_call_results() -> dict:
+    """Опрашивает zvonok для каждого отстреленного, но ещё не закрытого attempt'а.
+
+    Закрывает attempt (выставляет webhook_received_at) и при button_num==1 ставит
+    button_pressed=True. Если это ПЕРВОЕ подтверждение для отчёта — переводит
+    SearchReport.status: PENDING_CALLBACK → PENDING (на проверку админу).
+    """
+    from .models import RobocallAttempt, SearchReport, SiteSettings
+
+    st = SiteSettings.get_settings()
+    if not st.zvonok_public_key:
+        return {"polled": 0, "pressed": 0, "errors": 0, "skipped": 0}
+
+    cutoff = timezone.now() - timedelta(hours=POLL_LOOKBACK_HOURS)
+    qs = (
+        RobocallAttempt.objects
+        .filter(
+            fired_at__isnull=False,
+            webhook_received_at__isnull=True,
+            fired_at__gte=cutoff,
+        )
+        .exclude(zvonok_call_id="")
+        .select_related("search_report")
+    )
+
+    polled = pressed_count = errors = skipped = 0
+    for att in qs:
+        try:
+            url = (
+                f"{POLL_CALL_BY_ID_URL}"
+                f"?public_key={urllib.parse.quote(st.zvonok_public_key)}"
+                f"&call_id={urllib.parse.quote(att.zvonok_call_id)}&expand=1"
+            )
+            req = urllib.request.Request(url)
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    body = resp.read().decode("utf-8", errors="replace")
+                    code = resp.status
+            except urllib.request.HTTPError as e:
+                body = e.read().decode("utf-8", errors="replace") if hasattr(e, "read") else str(e)
+                code = e.code
+            if code != 200:
+                logger.info("poll attempt=%s call_id=%s HTTP %s: %s", att.pk, att.zvonok_call_id, code, body[:200])
+                skipped += 1
+                continue
+
+            try:
+                data = json.loads(body)
+            except Exception:
+                skipped += 1
+                continue
+            if isinstance(data, list):
+                data = data[0] if data else {}
+
+            dial_status = (data.get("call_status_display") or data.get("status_display") or data.get("dial_status_display") or "")[:64]
+            button_num = data.get("button_num")
+            call_status = data.get("call_status") or data.get("status") or ""
+
+            # Проверяем что звонок терминальный (завершён). Если ещё в процессе — пропускаем
+            terminal_statuses = {
+                "compl_finished", "user", "duplicate_in_process", "no_answer",
+                "busy", "failed", "cancelled", "completed", "hangup",
+            }
+            is_terminal = call_status in terminal_statuses or bool(dial_status)
+            if not is_terminal:
+                skipped += 1
+                continue
+
+            att.webhook_received_at = timezone.now()
+            att.dial_status = dial_status
+
+            pressed_one = False
+            if button_num is not None:
+                try:
+                    pressed_one = int(str(button_num).strip()) == 1
+                except (TypeError, ValueError):
+                    pressed_one = False
+
+            update_flds = ["webhook_received_at", "dial_status", "updated_at"]
+            if pressed_one:
+                att.button_pressed = True
+                att.button_pressed_at = timezone.now()
+                update_flds.extend(["button_pressed", "button_pressed_at"])
+                pressed_count += 1
+            att.save(update_fields=update_flds)
+
+            # Если это первое подтверждение для отчёта — переводим в pending
+            if pressed_one:
+                report = att.search_report
+                if not report.callback_confirmed_at:
+                    report.callback_confirmed_at = timezone.now()
+                    if report.status == SearchReport.Status.PENDING_CALLBACK:
+                        report.status = SearchReport.Status.PENDING
+                    report.save(update_fields=["callback_confirmed_at", "status", "updated_at"])
+                    logger.info("Phone-report #%s confirmed via polling (call_id=%s)", report.pk, att.zvonok_call_id)
+
+            polled += 1
+        except Exception as e:
+            errors += 1
+            logger.exception("poll fail for attempt %s: %s", att.pk, e)
+
+    return {"polled": polled, "pressed": pressed_count, "errors": errors, "skipped": skipped}
+
+
 def get_or_create_webhook_secret() -> str:
     """Получает текущий webhook-секрет; если не задан — генерирует."""
     from .models import SiteSettings
