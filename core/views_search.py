@@ -299,7 +299,9 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         if is_phone and not _can_use_phone_callback(request.user):
             is_phone = False
         client_phone_raw = (request.POST.get("client_phone") or "").strip()
-        callback_at_raw = (request.POST.get("callback_at") or "").strip()
+        # Дата вводится как «дд.мм» (год — текущий), время как «чч:мм». MSK.
+        callback_date_raw = (request.POST.get("callback_date") or "").strip()
+        callback_time_raw = (request.POST.get("callback_time") or "").strip()
 
         if not raw_contact and not is_phone:
             messages.error(request, "Укажите контакт или ссылку на клиента.")
@@ -320,28 +322,40 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         if is_phone:
             from .robocall import normalize_phone as _norm_phone
             client_phone = _norm_phone(client_phone_raw) or ""
+            ctx_err = {
+                "link": link,
+                "can_use_phone_callback": _can_use_phone_callback(request.user),
+            }
             if not client_phone:
                 messages.error(request, f"Номер «{client_phone_raw}» невалидный. Формат: +7XXXXXXXXXX.")
-                return render(request, "search/report_form.html", {
-        "link": link,
-        "can_use_phone_callback": _can_use_phone_callback(request.user),
-    })
-            if not callback_at_raw:
-                messages.error(request, "Укажите дату и время созвона.")
-                return render(request, "search/report_form.html", {
-        "link": link,
-        "can_use_phone_callback": _can_use_phone_callback(request.user),
-    })
-            from django.utils.dateparse import parse_datetime
-            callback_at = parse_datetime(callback_at_raw)
-            if callback_at is None:
-                messages.error(request, "Не удалось распознать дату/время созвона.")
-                return render(request, "search/report_form.html", {
-        "link": link,
-        "can_use_phone_callback": _can_use_phone_callback(request.user),
-    })
-            if timezone.is_naive(callback_at):
-                callback_at = timezone.make_aware(callback_at, timezone.get_current_timezone())
+                return render(request, "search/report_form.html", ctx_err)
+            if not callback_date_raw or not callback_time_raw:
+                messages.error(request, "Укажите дату (дд.мм) и время (чч:мм) созвона.")
+                return render(request, "search/report_form.html", ctx_err)
+            # Парсим «дд.мм» + «чч:мм» в datetime МСК
+            import re as _re_cb, datetime as _dt_cb
+            from zoneinfo import ZoneInfo as _ZI_cb
+            m_date = _re_cb.match(r"^\s*(\d{1,2})\.(\d{1,2})\s*$", callback_date_raw)
+            m_time = _re_cb.match(r"^\s*(\d{1,2}):(\d{2})\s*$", callback_time_raw)
+            if not m_date or not m_time:
+                messages.error(request, "Дата должна быть в формате дд.мм, время — чч:мм.")
+                return render(request, "search/report_form.html", ctx_err)
+            try:
+                day = int(m_date.group(1))
+                month = int(m_date.group(2))
+                hour = int(m_time.group(1))
+                minute = int(m_time.group(2))
+                msk_tz = _ZI_cb("Europe/Moscow")
+                now_msk = timezone.now().astimezone(msk_tz)
+                year = now_msk.year
+                candidate = _dt_cb.datetime(year, month, day, hour, minute, 0, tzinfo=msk_tz)
+                # Если дата уже прошла в текущем году — переносим на следующий год
+                if candidate.date() < now_msk.date():
+                    candidate = candidate.replace(year=year + 1)
+                callback_at = candidate
+            except (ValueError, TypeError) as e:
+                messages.error(request, f"Невалидная дата/время: {e}")
+                return render(request, "search/report_form.html", ctx_err)
 
         report = SearchReport.objects.create(
             user=request.user,
@@ -373,7 +387,10 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
                 logger.exception("Не удалось запланировать робо-звонки для отчёта %s: %s", report.pk, e)
                 messages.warning(request, "Отчёт создан, но звонки не поставлены. Админ разберётся.")
             else:
-                messages.success(request, f"Отчёт создан. Робот сейчас позвонит на {client_phone}, далее ещё 2 звонка по расписанию. Отчёт попадёт на проверку после первого нажатия 1.")
+                from zoneinfo import ZoneInfo as _ZI_msg
+                _cb_msk = callback_at.astimezone(_ZI_msg("Europe/Moscow"))
+                _cb_str = _cb_msk.strftime("%d.%m %H:%M")
+                messages.success(request, f"Отчёт создан. Робот сейчас позвонит на {client_phone}, далее ещё 2 звонка ({_cb_str} МСК минус 1 час и минус 10 минут). Отчёт попадёт на проверку после первого нажатия 1.")
         else:
             messages.success(request, "Отчёт отправлен.")
 

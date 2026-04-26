@@ -57,10 +57,23 @@
                 <input type="tel" class="form-control" id="client_phone" name="client_phone" placeholder="+7 999 123-45-67" maxlength="32">
                 <div class="form-text text-muted">Любой формат — система приведёт к +7XXXXXXXXXX.</div>
               </div>
-              <div class="mb-3">
-                <label class="form-label" for="callback_at">Дата и время созвона</label>
-                <input type="datetime-local" class="form-control" id="callback_at" name="callback_at">
-                <div class="form-text text-muted">Звонки робота: сейчас + за 1 час до указанного времени + за 10 минут.</div>
+              <div class="row g-2 mb-3">
+                <div class="col-7">
+                  <label class="form-label" for="callback_date">Дата созвона</label>
+                  <input type="text" class="form-control" id="callback_date" name="callback_date"
+                         placeholder="26.04" pattern="^\d{1,2}\.\d{1,2}$" inputmode="numeric"
+                         autocomplete="off">
+                  <div class="form-text text-muted">Формат «день.месяц», например 26.04. Год — текущий.</div>
+                </div>
+                <div class="col-5">
+                  <label class="form-label" for="callback_time">Время (МСК)</label>
+                  <input type="time" class="form-control" id="callback_time" name="callback_time"
+                         step="60" placeholder="17:35">
+                  <div class="form-text text-muted">Часы:минуты по МСК.</div>
+                </div>
+              </div>
+              <div class="alert alert-info py-2 small mb-3">
+                Робот позвонит клиенту три раза: <strong>сразу после отправки</strong> отчёта, <strong>за 1 час</strong> до указанного времени и <strong>за 10 минут</strong>. Если клиент нажмёт «1» хотя бы в одном звонке — отчёт уйдёт админу на проверку.
               </div>
             </div>
             {% endif %}
@@ -86,7 +99,8 @@
             var fieldsPhone = document.getElementById('fields-phone');
             var rawContact = document.getElementById('raw_contact');
             var clientPhone = document.getElementById('client_phone');
-            var callbackAt = document.getElementById('callback_at');
+            var callbackDate = document.getElementById('callback_date');
+            var callbackTime = document.getElementById('callback_time');
 
             function updateUI() {
               if (rtPhone.checked) {
@@ -94,18 +108,28 @@
                 fieldsPhone.style.display = 'block';
                 rawContact.required = false;
                 clientPhone.required = true;
-                callbackAt.required = true;
+                callbackDate.required = true;
+                callbackTime.required = true;
               } else {
                 fieldsBot.style.display = 'block';
                 fieldsPhone.style.display = 'none';
                 rawContact.required = true;
                 clientPhone.required = false;
-                callbackAt.required = false;
+                callbackDate.required = false;
+                callbackTime.required = false;
               }
             }
             rtBot.addEventListener('change', updateUI);
             rtPhone.addEventListener('change', updateUI);
             updateUI();
+
+            // Префилл даты на сегодня (дд.мм)
+            if (!callbackDate.value) {
+              var d = new Date();
+              var dd = String(d.getDate()).padStart(2, '0');
+              var mm = String(d.getMonth() + 1).padStart(2, '0');
+              callbackDate.placeholder = dd + '.' + mm;
+            }
           })();
           </script>
           {% endif %}
