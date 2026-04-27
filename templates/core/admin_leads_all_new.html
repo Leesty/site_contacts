@@ -117,7 +117,21 @@
                 {% if tab != 'new' %}
                 <td>
                   {% if tab == 'all' %}
-                    {% if lead.status == 'approved' %}<span class="badge bg-success">Одобрен</span>{% elif lead.status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>{% elif lead.status == 'rework' %}<span class="badge bg-warning text-dark">На доработке</span>{% else %}<span class="badge bg-secondary">На проверке</span>{% endif %}
+                    <div class="d-flex flex-wrap align-items-center gap-1">
+                      {% if lead.status == 'approved' %}
+                        <span class="badge bg-success">Одобрен</span>
+                        <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 js-reject-btn"
+                                data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}" data-approved="1" style="font-size: 11px;">Отменить</button>
+                        <button type="button" class="btn btn-warning btn-sm text-dark py-0 px-2 js-rework-btn"
+                                data-lead-id="{{ lead.id }}" data-user-id="{{ lead.user_id }}" data-approved="1" style="font-size: 11px;">Доработка</button>
+                      {% elif lead.status == 'rejected' %}
+                        <span class="badge bg-danger">Отклонён</span>
+                      {% elif lead.status == 'rework' %}
+                        <span class="badge bg-warning text-dark">На доработке</span>
+                      {% else %}
+                        <span class="badge bg-secondary">На проверке</span>
+                      {% endif %}
+                    </div>
                   {% else %}
                     {% if lead.reviewed_by %}<a href="{% url 'admin_moderation_by_admin_detail' lead.reviewed_by.id %}?kind=lead&tab={{ tab }}" class="text-decoration-none">@{{ lead.reviewed_by.username }}</a>{% else %}—{% endif %}
                   {% endif %}

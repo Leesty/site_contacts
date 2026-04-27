@@ -387,6 +387,43 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     return render(request, "search/report_redo.html", {"link": link, "report": report})
 
 
+# ─── Ручное подтверждение старта бота (для админов) ──────────────────────────
+
+@login_required
+@require_http_methods(["POST"])
+def admin_force_confirm_bot_start(request: HttpRequest, code: str) -> HttpResponse:
+    """Ручная отметка bot_started=True для админа.
+
+    Используется когда клиент стартовал бот, но webhook не сработал
+    (например, Telegram обрезал deeplink-параметр на каком-то клиенте).
+    """
+    role = getattr(request.user, "role", None)
+    if role not in ("admin", "main_admin", "support"):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    link = SearchLink.objects.filter(code=code).first()
+    if not link:
+        return JsonResponse({"ok": False, "error": "not_found"}, status=404)
+    if link.bot_started:
+        return JsonResponse({"ok": True, "already_started": True})
+
+    link.bot_started = True
+    link.bot_started_at = timezone.now()
+    update_fields = ["bot_started", "bot_started_at", "updated_at"]
+
+    tg_username = (request.POST.get("telegram_username") or "").strip().lstrip("@")[:64]
+    if tg_username and not link.telegram_username:
+        link.telegram_username = tg_username
+        update_fields.append("telegram_username")
+
+    link.save(update_fields=update_fields)
+    logger.info(
+        "Force-confirm bot_started: link=%s admin=@%s tg_username=%s",
+        link.code, request.user.username, tg_username or "—",
+    )
+    return JsonResponse({"ok": True, "confirmed": True})
+
+
 # ─── Вебхук от бота ──────────────────────────────────────────────────────────
 
 @csrf_exempt

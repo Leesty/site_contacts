@@ -356,6 +356,7 @@ urlpatterns = [
     path("search/links/<str:code>/report/redo/", views_search.search_report_redo, name="search_report_redo"),
     path("search/links/<str:code>/report/attachment/", views_search.search_report_attachment, name="search_report_attachment"),
     path("api/search-bot-start/", views_search.search_bot_start_webhook, name="search_bot_start_webhook"),
+    path("search/links/<str:code>/force-confirm-start/", views_search.admin_force_confirm_bot_start, name="admin_force_confirm_bot_start"),
     path("staff/search-reports/", views_search.admin_search_reports_list, name="admin_search_reports_list"),
     path("staff/search-reports/<int:report_id>/approve/", views_search.admin_search_report_approve, name="admin_search_report_approve"),
     path("staff/search-reports/<int:report_id>/reject/", views_search.admin_search_report_reject, name="admin_search_report_reject"),

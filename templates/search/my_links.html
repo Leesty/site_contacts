@@ -152,6 +152,11 @@
                       <span class="badge bg-success">Запущен</span>
                     {% else %}
                       <span class="badge bg-secondary">Ожидание</span>
+                      {% if user.role == 'admin' or user.role == 'main_admin' or user.role == 'support' %}
+                        <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 ms-1 js-force-confirm-btn"
+                                data-code="{{ link.code }}" style="font-size: 11px;"
+                                title="Отметить старт вручную (если webhook не сработал)">✓ Подтвердить</button>
+                      {% endif %}
                     {% endif %}
                   </td>
                   {% with report=link.report_obj %}
@@ -236,5 +241,49 @@
       showCopyToast(toastText);
     });
   });
+
+  // Ручное подтверждение старта бота (только для admin/support)
+  function getCsrf() {
+    var el = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+  document.querySelectorAll('.js-force-confirm-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var code = btn.getAttribute('data-code');
+      if (!code) return;
+      var tgUsername = prompt('Введите @username клиента (необязательно, для аудита):', '') || '';
+      if (tgUsername === null) return;
+      if (!confirm('Отметить эту ссылку как «Бот запущен»? Действие нельзя отменить.')) return;
+      btn.disabled = true;
+      btn.textContent = '…';
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      if (tgUsername.trim()) body.append('telegram_username', tgUsername.trim());
+      fetch('/search/links/' + encodeURIComponent(code) + '/force-confirm-start/', {
+        method: 'POST', body: body,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin'
+      })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(res) {
+          if (res.ok && res.data.ok) {
+            showCopyToast('Старт подтверждён');
+            setTimeout(function() { location.reload(); }, 800);
+          } else {
+            btn.disabled = false;
+            btn.textContent = '✓ Подтвердить';
+            alert('Ошибка: ' + (res.data && res.data.error || 'неизвестная'));
+          }
+        })
+        .catch(function() {
+          btn.disabled = false;
+          btn.textContent = '✓ Подтвердить';
+          alert('Сетевая ошибка');
+        });
+    });
+  });
   </script>
+  {% csrf_token %}
 {% endblock %}
