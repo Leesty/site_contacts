@@ -107,12 +107,12 @@ class User(AbstractUser):
         help_text="Реферальная ссылка, по которой зарегистрировался пользователь (для affiliate-ставки).",
     )
     ref_searchlink_enabled = models.BooleanField(
-        default=False,
-        help_text="Разрешён ли SearchLink для реферала (включается менеджером-рефовладельцем).",
+        default=True,
+        help_text="Разрешён ли SearchLink для реферала. По умолчанию включено для всех новых рефералов.",
     )
     ref_searchlink_manager_cut = models.PositiveIntegerField(
-        default=30,
-        help_text="Доля менеджера (руб.) с одобренного SearchLink-отчёта реферала. Реферал получает 100 - cut.",
+        default=50,
+        help_text="Доля менеджера-рефовладельца (руб.) с одобренного SearchLink-отчёта реферала. По умолчанию 50 (реферал получает SEARCH_REPORT_REWARD - 50).",
     )
     ref_lead_reward = models.PositiveIntegerField(
         null=True,
