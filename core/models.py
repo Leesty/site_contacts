@@ -1027,22 +1027,16 @@ class SiteSettings(models.Model):
         null=True, blank=True,
         help_text="Когда последний раз тестировался звонок через API.",
     )
-    # Phone-callback: три кампании с разным текстом (сейчас / за 1 час / за 10 мин до созвона)
-    zvonok_campaign_id_now = models.CharField(
-        max_length=64, blank=True, default="",
-        help_text="Campaign ID zvonok.com для стадии 1 — звонок сразу после подачи отчёта.",
-    )
-    zvonok_campaign_id_1h = models.CharField(
-        max_length=64, blank=True, default="",
-        help_text="Campaign ID для стадии 2 — звонок за 1 час до времени созвона.",
-    )
-    zvonok_campaign_id_10min = models.CharField(
-        max_length=64, blank=True, default="",
-        help_text="Campaign ID для стадии 3 — звонок за 10 минут до времени созвона.",
+    # Phone-callback: ID входящей кампании zvonok, которую опрашиваем поллингом.
+    # В неё клиент звонит с одного из 5 наших номеров. После звонка с нажатой «1»
+    # отчёт с этим client_phone в нашей БД переходит в pending (на проверку).
+    zvonok_incoming_campaign_id = models.CharField(
+        max_length=64, blank=True, default="1738255164",
+        help_text="ID входящей кампании zvonok.com — где приходят звонки от клиентов на наши номера.",
     )
     zvonok_webhook_secret = models.CharField(
         max_length=64, blank=True, default="",
-        help_text="Секрет для проверки webhook'ов от zvonok.com (используется в URL callback'а).",
+        help_text="Секрет для cron-эндпоинта поллинга входящих звонков (в URL ?secret=...).",
     )
 
     class Meta:
@@ -1385,11 +1379,20 @@ class SearchReport(TimeStampedModel):
     )
     callback_at = models.DateTimeField(
         null=True, blank=True,
-        help_text="Дата/время желаемого созвона с клиентом (только для phone_callback).",
+        help_text="Устаревшее поле от старой системы исходящих звонков (не используется).",
     )
     callback_confirmed_at = models.DateTimeField(
         null=True, blank=True,
-        help_text="Когда клиент впервые нажал 1 на любом из звонков.",
+        help_text="Когда поллер подтвердил входящий звонок клиента с нажатой «1».",
+    )
+    zvonok_last_polled_at = models.DateTimeField(
+        null=True, blank=True,
+        db_index=True,
+        help_text="Когда отчёт последний раз опрашивался в zvonok API.",
+    )
+    zvonok_call_id = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="call_id от zvonok — какой звонок подтвердил отчёт (для аудита).",
     )
 
     class Meta:

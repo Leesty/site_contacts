@@ -1,16 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Тестовый звонок роботом — Партнёрка{% endblock %}
+{% block title %}Настройки zvonok.com — Партнёрка{% endblock %}
 
 {% block content %}
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">📞 Тестовый звонок (zvonok.com)</h1>
+    <h1 class="h4 mb-0">📞 zvonok.com — поллинг входящих звонков</h1>
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
   </div>
 
-  {# messages рендерятся в base.html, локально не дублируем #}
-
-  {# ═══ Настройки API ═══ #}
   <div class="card shadow-sm mb-3">
     <div class="card-header bg-transparent border-secondary py-2">
       <strong>Настройки API</strong>
@@ -29,36 +26,11 @@
           </div>
         </div>
         <div class="col-md-4">
-          <label class="form-label small mb-1">Campaign ID (тест)</label>
-          <input type="text" name="campaign_id" class="form-control form-control-sm"
-                 value="{{ site_settings.zvonok_campaign_id }}"
-                 placeholder="для тест-звонка с этой страницы">
-        </div>
-
-        <div class="col-12 mt-3">
-          <hr class="my-1">
-          <div class="small text-muted mb-2">
-            <strong>Три кампании для phone-callback отчётов</strong> — одна на каждый из 3 звонков (сразу / за 1 час / за 10 минут до созвона).
-            Создайте в zvonok три кампании с разными текстами (в конце — «нажмите 1») и впишите ID.
-          </div>
-        </div>
-        <div class="col-md-4">
-          <label class="form-label small mb-1">Campaign 1 — сразу</label>
-          <input type="text" name="campaign_id_now" class="form-control form-control-sm"
-                 value="{{ site_settings.zvonok_campaign_id_now }}"
-                 placeholder="ID кампании">
-        </div>
-        <div class="col-md-4">
-          <label class="form-label small mb-1">Campaign 2 — за 1 час</label>
-          <input type="text" name="campaign_id_1h" class="form-control form-control-sm"
-                 value="{{ site_settings.zvonok_campaign_id_1h }}"
-                 placeholder="ID кампании">
-        </div>
-        <div class="col-md-4">
-          <label class="form-label small mb-1">Campaign 3 — за 10 минут</label>
-          <input type="text" name="campaign_id_10min" class="form-control form-control-sm"
-                 value="{{ site_settings.zvonok_campaign_id_10min }}"
-                 placeholder="ID кампании">
+          <label class="form-label small mb-1">ID входящей кампании</label>
+          <input type="text" name="incoming_campaign_id" class="form-control form-control-sm"
+                 value="{{ site_settings.zvonok_incoming_campaign_id }}"
+                 placeholder="1738255164">
+          <div class="form-text small">К ней должны быть привязаны 5 наших номеров.</div>
         </div>
 
         <div class="col-12 d-flex justify-content-end mt-2">
@@ -66,72 +38,51 @@
         </div>
       </form>
 
-      {% if webhook_url %}
+      {% if cron_url %}
       <hr class="my-3">
       <div class="small">
-        <strong>Webhook URL для кнопки «1» в zvonok-кампаниях:</strong>
+        <strong>Cron URL для бота:</strong> бот-сервер должен дёргать этот URL раз в час.
         <div class="input-group input-group-sm mt-1" style="max-width: 700px;">
-          <input type="text" readonly class="form-control font-monospace" value="{{ webhook_url }}" onclick="this.select()">
-          <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText('{{ webhook_url }}').then(()=>{this.textContent='OK'})">Копировать</button>
+          <input type="text" readonly class="form-control font-monospace" value="{{ cron_url }}" onclick="this.select()">
+          <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText('{{ cron_url }}').then(()=>{this.textContent='OK'})">Копировать</button>
         </div>
-        <div class="form-text">В zvonok → каждая из 3 кампаний → кнопка 1 → «Webhook» → вставить эту ссылку. Тогда нажатие 1 будет залетать к нам.</div>
+        <div class="form-text">Throttle: каждый отчёт опрашивается не чаще раза в 55 минут.</div>
       </div>
       {% endif %}
     </div>
   </div>
 
-  {# ═══ Тестовый звонок ═══ #}
   <div class="card shadow-sm mb-3">
     <div class="card-header bg-transparent border-secondary py-2">
-      <strong>Позвонить на номер</strong>
+      <strong>Наши номера для входящих звонков</strong>
     </div>
-    <div class="card-body">
-      {% if site_settings.zvonok_public_key and site_settings.zvonok_campaign_id %}
-        <form method="post" class="row g-2" onsubmit="return confirm('Отправить тестовый звонок на указанный номер?');">
-          {% csrf_token %}
-          <input type="hidden" name="action" value="test_call">
-          <div class="col-md-8">
-            <label class="form-label small mb-1">Телефон (любой формат — система нормализует)</label>
-            <input type="tel" name="phone" class="form-control form-control-sm"
-                   placeholder="+7 999 123-45-67" required autofocus>
-            <div class="form-text small">
-              Номер приведётся к формату <code>+7XXXXXXXXXX</code>. Звонок будет запущен из кампании
-              <strong>ID {{ site_settings.zvonok_campaign_id }}</strong> — робот уже настроен в zvonok.com.
-            </div>
-          </div>
-          <div class="col-md-4 d-flex align-items-end">
-            <button type="submit" class="btn btn-success btn-sm w-100">📞 Позвонить</button>
-          </div>
-        </form>
-        {% if site_settings.zvonok_last_tested_at %}
-          <div class="small text-muted mt-2">
-            Последний тестовый звонок: {{ site_settings.zvonok_last_tested_at|date:"d.m.Y H:i" }}
-          </div>
-        {% endif %}
-      {% else %}
-        <div class="alert alert-warning mb-0 small">
-          Сначала сохраните <strong>public_key</strong> и <strong>campaign_id</strong> в форме выше.
-        </div>
-      {% endif %}
+    <div class="card-body small">
+      <div class="font-monospace mb-2">
+        +7 965 362-14-16<br>
+        +7 925 205-81-93<br>
+        +7 915 419-48-57<br>
+        +7 991 882-64-08<br>
+        +7 933 111-83-35
+      </div>
+      <div class="text-muted">
+        Эти номера показываются менеджеру в форме отчёта (тип «Клиент позвонит»). Менеджер передаёт один из них клиенту.
+        Привязка номеров к кампании настраивается в личном кабинете zvonok.com.
+      </div>
     </div>
   </div>
 
-  {# ═══ Справка ═══ #}
   <div class="card shadow-sm">
     <div class="card-header bg-transparent border-secondary py-2">
-      <strong>Как это работает</strong>
+      <strong>Как работает поллинг</strong>
     </div>
     <div class="card-body small">
       <ol class="mb-0 ps-3">
-        <li>В личном кабинете <a href="https://zvonok.com/manager/" target="_blank" rel="noopener">zvonok.com</a> зайдите в <em>Настройки профиля → API</em> и сгенерируйте <strong>Public key</strong>.</li>
-        <li>Создайте (или выберите существующую) <strong>кампанию с роботом</strong>: <em>Автодозвон → Новая кампания → загрузить аудиоролик или задать текст</em>. Скопируйте её ID.</li>
-        <li>Введите оба значения в форму настроек выше и сохраните.</li>
-        <li>В форме «Позвонить на номер» укажите телефон и нажмите «Позвонить» — робот перезвонит клиенту по сценарию этой кампании.</li>
-        <li>Результат звонка zvonok вернёт через webhook (если настроен в кампании) или можно посмотреть в панели zvonok.com.</li>
+        <li>Менеджер создаёт SearchReport с типом <em>phone_callback</em> и номером клиента.</li>
+        <li>Клиент звонит на один из 5 наших номеров — звонок попадает в кампанию zvonok ID <strong>{{ site_settings.zvonok_incoming_campaign_id }}</strong>.</li>
+        <li>В голосовом меню клиент нажимает «1».</li>
+        <li>Раз в час cron дёргает <code>/api/cron/poll-incoming-calls/</code> — поллер проходит по всем pending_callback отчётам и спрашивает у zvonok: «был ли звонок с этого номера в этой кампании, и нажата ли 1?»</li>
+        <li>Если да — отчёту проставляется <code>callback_confirmed_at</code> и статус переводится в <em>pending</em> (на проверку админу).</li>
       </ol>
-      <div class="mt-2 text-muted">
-        <strong>Стоимость:</strong> каждый тестовый звонок тарифицируется с вашего баланса zvonok.com.
-      </div>
     </div>
   </div>
 {% endblock %}

@@ -365,8 +365,7 @@ urlpatterns = [
     # Ban/unban
     path("staff/robocall-test/", views_support_admin.admin_robocall_test, name="admin_robocall_test"),
     path("staff/phone-reports/", views_support_admin.admin_phone_reports, name="admin_phone_reports"),
-    path("api/zvonok-callback/", views_support_admin.zvonok_webhook, name="zvonok_webhook"),
-    path("api/cron/dispatch-robocalls/", views_support_admin.zvonok_dispatch_cron, name="zvonok_dispatch_cron"),
+    path("api/cron/poll-incoming-calls/", views_support_admin.zvonok_poll_cron, name="zvonok_poll_cron"),
     path("staff/users/<int:user_id>/toggle-ban/", views_support_admin.admin_toggle_ban, name="admin_toggle_ban"),
     path("staff/users/<int:user_id>/toggle-accredited/", views_support_admin.admin_toggle_accredited, name="admin_toggle_accredited"),
     # Balance admin: payment

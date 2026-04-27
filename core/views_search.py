@@ -61,23 +61,6 @@ def _can_use_vk_platform(user) -> bool:
     return bool(getattr(user, "is_authenticated", False))
 
 
-# Phone-callback SearchLink — закрытая бета. Только username="5" и админы.
-PHONE_CALLBACK_BETA_USERNAMES = {"5"}
-
-
-def _can_use_phone_callback(user) -> bool:
-    """Кто может отправлять phone_callback отчёты и видит тумблер в форме.
-
-    На время теста: username="5" и роли админа. Остальные — не видят опцию,
-    и даже если подделают POST — сервер отвергнет.
-    """
-    if not getattr(user, "is_authenticated", False):
-        return False
-    if getattr(user, "role", None) in ("admin", "main_admin", "support"):
-        return True
-    return getattr(user, "username", "") in PHONE_CALLBACK_BETA_USERNAMES
-
-
 def _require_support(request: HttpRequest) -> bool:
     user = request.user
     if not user.is_authenticated:
@@ -294,68 +277,23 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         comment = (request.POST.get("comment") or "").strip()
         report_type_raw = (request.POST.get("report_type") or "bot_start").strip()
         is_phone = report_type_raw == "phone_callback"
-        # Бета-гейт: phone-callback разрешён только username="5" + админам.
-        # Если кто-то подделал POST — молча откатываем к bot_start.
-        if is_phone and not _can_use_phone_callback(request.user):
-            is_phone = False
         client_phone_raw = (request.POST.get("client_phone") or "").strip()
-        # Дата вводится как «дд.мм» (год — текущий), время как «чч:мм». MSK.
-        callback_date_raw = (request.POST.get("callback_date") or "").strip()
-        callback_time_raw = (request.POST.get("callback_time") or "").strip()
 
         if not raw_contact and not is_phone:
             messages.error(request, "Укажите контакт или ссылку на клиента.")
-            return render(request, "search/report_form.html", {
-        "link": link,
-        "can_use_phone_callback": _can_use_phone_callback(request.user),
-    })
+            return render(request, "search/report_form.html", {"link": link})
         if not attachment:
             messages.error(request, "Приложите скриншот или видео.")
-            return render(request, "search/report_form.html", {
-        "link": link,
-        "can_use_phone_callback": _can_use_phone_callback(request.user),
-    })
+            return render(request, "search/report_form.html", {"link": link})
 
-        # Для phone_callback валидируем номер и время
+        # Для phone_callback валидируем номер клиента
         client_phone = ""
-        callback_at = None
         if is_phone:
             from .robocall import normalize_phone as _norm_phone
             client_phone = _norm_phone(client_phone_raw) or ""
-            ctx_err = {
-                "link": link,
-                "can_use_phone_callback": _can_use_phone_callback(request.user),
-            }
             if not client_phone:
                 messages.error(request, f"Номер «{client_phone_raw}» невалидный. Формат: +7XXXXXXXXXX.")
-                return render(request, "search/report_form.html", ctx_err)
-            if not callback_date_raw or not callback_time_raw:
-                messages.error(request, "Укажите дату (дд.мм) и время (чч:мм) созвона.")
-                return render(request, "search/report_form.html", ctx_err)
-            # Парсим «дд.мм» + «чч:мм» в datetime МСК
-            import re as _re_cb, datetime as _dt_cb
-            from zoneinfo import ZoneInfo as _ZI_cb
-            m_date = _re_cb.match(r"^\s*(\d{1,2})\.(\d{1,2})\s*$", callback_date_raw)
-            m_time = _re_cb.match(r"^\s*(\d{1,2}):(\d{2})\s*$", callback_time_raw)
-            if not m_date or not m_time:
-                messages.error(request, "Дата должна быть в формате дд.мм, время — чч:мм.")
-                return render(request, "search/report_form.html", ctx_err)
-            try:
-                day = int(m_date.group(1))
-                month = int(m_date.group(2))
-                hour = int(m_time.group(1))
-                minute = int(m_time.group(2))
-                msk_tz = _ZI_cb("Europe/Moscow")
-                now_msk = timezone.now().astimezone(msk_tz)
-                year = now_msk.year
-                candidate = _dt_cb.datetime(year, month, day, hour, minute, 0, tzinfo=msk_tz)
-                # Если дата уже прошла в текущем году — переносим на следующий год
-                if candidate.date() < now_msk.date():
-                    candidate = candidate.replace(year=year + 1)
-                callback_at = candidate
-            except (ValueError, TypeError) as e:
-                messages.error(request, f"Невалидная дата/время: {e}")
-                return render(request, "search/report_form.html", ctx_err)
+                return render(request, "search/report_form.html", {"link": link})
 
         report = SearchReport.objects.create(
             user=request.user,
@@ -369,7 +307,6 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
                 else SearchReport.ReportType.BOT_START
             ),
             client_phone=client_phone,
-            callback_at=callback_at,
             status=(
                 SearchReport.Status.PENDING_CALLBACK if is_phone
                 else SearchReport.Status.PENDING
@@ -378,28 +315,18 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         from .lead_utils import compress_lead_attachment
         compress_lead_attachment(report)
 
-        # Для phone_callback сразу ставим 3 звонка и стреляем stage 1
         if is_phone:
-            try:
-                from .robocall import schedule_phone_callback_attempts
-                schedule_phone_callback_attempts(report)
-            except Exception as e:
-                logger.exception("Не удалось запланировать робо-звонки для отчёта %s: %s", report.pk, e)
-                messages.warning(request, "Отчёт создан, но звонки не поставлены. Админ разберётся.")
-            else:
-                from zoneinfo import ZoneInfo as _ZI_msg
-                _cb_msk = callback_at.astimezone(_ZI_msg("Europe/Moscow"))
-                _cb_str = _cb_msk.strftime("%d.%m %H:%M")
-                messages.success(request, f"Отчёт создан. Робот сейчас позвонит на {client_phone}, далее ещё 2 звонка ({_cb_str} МСК минус 1 час и минус 10 минут). Отчёт попадёт на проверку после первого нажатия 1.")
+            messages.success(
+                request,
+                f"Отчёт создан. Ждём входящий звонок от {client_phone} на любой из наших номеров. "
+                f"После звонка с нажатой «1» отчёт уйдёт на проверку.",
+            )
         else:
             messages.success(request, "Отчёт отправлен.")
 
         return redirect("search_links_my")
 
-    return render(request, "search/report_form.html", {
-        "link": link,
-        "can_use_phone_callback": _can_use_phone_callback(request.user),
-    })
+    return render(request, "search/report_form.html", {"link": link})
 
 
 @login_required

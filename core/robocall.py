@@ -1,4 +1,13 @@
-"""Интеграция с zvonok.com: запуск роботизированных звонков в рамках phone_callback SearchReport'ов."""
+"""Pull-модель zvonok.com: опрашиваем входящую кампанию по номерам клиентов.
+
+Новый флоу (с 2026-04-27):
+- Менеджер подаёт SearchReport с типом phone_callback и номером клиента.
+- Клиент звонит на один из наших 5 номеров (привязаны к входящей кампании zvonok).
+- Раз в час cron дёргает /api/cron/poll-incoming-calls/ (на бот-сервере).
+- Поллер для каждого pending_callback отчёта проверяет zvonok API:
+    GET /phones/calls_by_phone/?campaign_id=<incoming>&phone=<client_phone>
+  и если найден звонок с нажатой «1» — подтверждает отчёт.
+"""
 from __future__ import annotations
 
 import json
@@ -9,18 +18,19 @@ import urllib.parse
 import urllib.request
 from datetime import timedelta
 
-from django.conf import settings
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-ZVONOK_API_URL = "https://zvonok.com/manager/cabapi_external/api/v1/phones/call/"
-# Если scheduled_at улетел в прошлое больше чем на это значение — пропускаем звонок
-SKIP_GRACE_SECONDS = 5 * 60  # 5 минут
+CALLS_BY_PHONE_URL = "https://zvonok.com/manager/cabapi_external/api/v1/phones/calls_by_phone/"
+# Опрос пропускается, если отчёт опрашивали меньше чем POLL_THROTTLE назад
+POLL_THROTTLE = timedelta(minutes=55)
+# Максимум отчётов за один cron-проход (защита от долгих run'ов)
+POLL_BATCH_SIZE = 200
 
 
 def normalize_phone(phone: str) -> str | None:
-    """Приводит номер к международному формату +7XXXXXXXXXX (возвращает None если невалидный)."""
+    """Приводит номер к международному формату +7XXXXXXXXXX (или None если битый)."""
     digits = re.sub(r"\D", "", phone or "")
     if not digits:
         return None
@@ -33,296 +43,137 @@ def normalize_phone(phone: str) -> str | None:
     return "+" + digits
 
 
-def _call_zvonok(public_key: str, campaign_id: str, phone: str) -> tuple[int, str]:
-    """Дёргает zvonok API /phones/call/. Возвращает (status_code, body_str)."""
-    data = urllib.parse.urlencode({
+def _fetch_calls_by_phone(public_key: str, campaign_id: str, phone: str) -> tuple[int, list | dict | None, str]:
+    """GET /phones/calls_by_phone/. Возвращает (status_code, parsed_json_or_None, raw_body)."""
+    qs = urllib.parse.urlencode({
         "public_key": public_key,
-        "phone": phone,
         "campaign_id": campaign_id,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        ZVONOK_API_URL,
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
+        "phone": phone,
+    })
+    url = f"{CALLS_BY_PHONE_URL}?{qs}"
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.status, resp.read().decode("utf-8", errors="replace")
-    except urllib.request.HTTPError as http_e:
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            code = resp.status
+    except urllib.error.HTTPError as e:
+        body = ""
         try:
-            body = http_e.read().decode("utf-8", errors="replace")
+            body = e.read().decode("utf-8", errors="replace")
         except Exception:
-            body = str(http_e)
-        return http_e.code, body
+            body = str(e)
+        code = e.code
     except Exception as e:
-        return 0, str(e)
+        return 0, None, str(e)
 
-
-def _extract_call_id(body: str) -> str:
-    """Пытается выдернуть call_id из JSON-ответа zvonok (даже если ошибка)."""
     try:
         parsed = json.loads(body)
     except Exception:
-        return ""
-    if isinstance(parsed, dict):
-        # При успехе есть call_id, при ошибке его нет
-        cid = parsed.get("call_id") or (parsed.get("data") or {}).get("call_id") if isinstance(parsed.get("data"), dict) else None
-        return str(cid) if cid else ""
-    return ""
+        parsed = None
+    return code, parsed, body
 
 
-def schedule_phone_callback_attempts(search_report) -> None:
-    """Создаёт 3 RobocallAttempt'а для phone-отчёта и СРАЗУ дёргает stage=1.
-
-    Stages 2 и 3 создаются с scheduled_at = callback_at - 1h/-10min.
-    Если их scheduled_at уже в прошлом — помечаются skipped.
-    """
-    from .models import SiteSettings, RobocallAttempt
-
-    if search_report.report_type != search_report.ReportType.PHONE_CALLBACK:
-        return
-    if not search_report.callback_at or not search_report.client_phone:
-        logger.warning("phone-report #%s missing callback_at or client_phone", search_report.pk)
-        return
-
-    st = SiteSettings.get_settings()
-    now = timezone.now()
-
-    # Создаём 3 попытки
-    stage_configs = [
-        (RobocallAttempt.Stage.IMMEDIATE, now, st.zvonok_campaign_id_now),
-        (RobocallAttempt.Stage.HOUR_BEFORE, search_report.callback_at - timedelta(hours=1), st.zvonok_campaign_id_1h),
-        (RobocallAttempt.Stage.TEN_MIN_BEFORE, search_report.callback_at - timedelta(minutes=10), st.zvonok_campaign_id_10min),
-    ]
-
-    for stage, sched, camp_id in stage_configs:
-        att, created = RobocallAttempt.objects.get_or_create(
-            search_report=search_report,
-            stage=stage,
-            defaults={
-                "scheduled_at": sched,
-                "zvonok_campaign_id": camp_id,
-            },
-        )
-        # Если stage > 1 и scheduled_at в прошлом за пределами grace — skip
-        if stage != RobocallAttempt.Stage.IMMEDIATE and sched < now - timedelta(seconds=SKIP_GRACE_SECONDS):
-            att.skipped = True
-            att.skip_reason = f"scheduled_at ({sched.isoformat()}) в прошлом на момент подачи отчёта"
-            att.save(update_fields=["skipped", "skip_reason", "updated_at"])
-
-    # Stage 1 — дёргаем СРАЗУ (синхронно)
-    imm = search_report.robocall_attempts.filter(stage=RobocallAttempt.Stage.IMMEDIATE).first()
-    if imm:
-        fire_robocall_attempt(imm)
-
-
-def fire_robocall_attempt(attempt) -> bool:
-    """Делает реальный POST в zvonok API для указанного attempt'а.
-
-    Возвращает True если попытка отправлена (fired_at проставлен),
-    False если пропущена/ошибка.
-    """
-    from .models import SiteSettings
-
-    if attempt.fired_at or attempt.skipped:
-        return False
-
-    st = SiteSettings.get_settings()
-    if not st.zvonok_public_key:
-        attempt.skipped = True
-        attempt.skip_reason = "zvonok_public_key не задан в настройках"
-        attempt.save(update_fields=["skipped", "skip_reason", "updated_at"])
-        return False
-
-    campaign_id = attempt.zvonok_campaign_id or ""
-    if not campaign_id:
-        # Fallback на настройки (если добавили кампанию после создания attempt)
-        stage_campaign_map = {
-            1: st.zvonok_campaign_id_now,
-            2: st.zvonok_campaign_id_1h,
-            3: st.zvonok_campaign_id_10min,
-        }
-        campaign_id = stage_campaign_map.get(attempt.stage, "")
-
-    if not campaign_id:
-        attempt.skipped = True
-        attempt.skip_reason = f"campaign_id не задан для stage={attempt.stage}"
-        attempt.save(update_fields=["skipped", "skip_reason", "updated_at"])
-        return False
-
-    phone = normalize_phone(attempt.search_report.client_phone)
-    if not phone:
-        attempt.skipped = True
-        attempt.skip_reason = f"номер «{attempt.search_report.client_phone}» невалидный"
-        attempt.save(update_fields=["skipped", "skip_reason", "updated_at"])
-        return False
-
-    status_code, body = _call_zvonok(st.zvonok_public_key, campaign_id, phone)
-    attempt.fired_at = timezone.now()
-    attempt.zvonok_campaign_id = campaign_id
-    attempt.zvonok_response = body[:2000]
-    attempt.zvonok_call_id = _extract_call_id(body)
-    attempt.save(update_fields=[
-        "fired_at", "zvonok_campaign_id", "zvonok_response", "zvonok_call_id", "updated_at",
-    ])
-    logger.info(
-        "Robocall fired report=%s stage=%s phone=%s http=%s call_id=%s",
-        attempt.search_report_id, attempt.stage, phone, status_code, attempt.zvonok_call_id,
-    )
-    return status_code == 200
-
-
-def dispatch_pending_attempts() -> dict:
-    """Запускает все scheduled_at<=now attempt'ы (используется кроном).
-
-    Возвращает сводку: {checked, fired, skipped, errors}.
-    """
-    from .models import RobocallAttempt
-
-    now = timezone.now()
-    qs = RobocallAttempt.objects.filter(
-        fired_at__isnull=True,
-        skipped=False,
-        scheduled_at__lte=now,
-    ).select_related("search_report")
-
-    fired = skipped_count = errors = 0
-    total = qs.count()
-    for att in qs:
-        # Stage != 1: если scheduled_at в прошлом более чем на grace — skip
-        if att.stage != RobocallAttempt.Stage.IMMEDIATE and att.scheduled_at < now - timedelta(seconds=SKIP_GRACE_SECONDS):
-            att.skipped = True
-            att.skip_reason = f"scheduled_at отстал более чем на {SKIP_GRACE_SECONDS}s (был {att.scheduled_at.isoformat()})"
-            att.save(update_fields=["skipped", "skip_reason", "updated_at"])
-            skipped_count += 1
+def _extract_button_pressed(calls: list) -> tuple[bool, str]:
+    """Из списка звонков ищет звонок с нажатой «1». Возвращает (pressed, call_id)."""
+    for c in calls:
+        if not isinstance(c, dict):
             continue
-        try:
-            if fire_robocall_attempt(att):
-                fired += 1
-            else:
-                skipped_count += 1
-        except Exception as e:
-            errors += 1
-            logger.exception("dispatch fail for attempt %s: %s", att.pk, e)
-
-    return {"checked": total, "fired": fired, "skipped": skipped_count, "errors": errors}
-
-
-# Поллинг результатов: вместо webhook'а от zvonok сами тянем статус каждого
-# отстреленного звонка, проверяем button_num. Так надёжнее (от сети не зависит)
-# и не требует настройки в zvonok UI (где webhook нельзя поставить рядом с SMS).
-
-POLL_CALL_BY_ID_URL = "https://zvonok.com/manager/cabapi_external/api/v1/phones/call_by_id/"
-POLL_LOOKBACK_HOURS = 12  # звонки старше — не опрашиваем (zvonok их обычно завершает в минуты)
+        bn = c.get("button_num")
+        uc = c.get("user_choice")
+        for v in (bn, uc):
+            if v is None:
+                continue
+            try:
+                if int(str(v).strip()) == 1:
+                    return True, str(c.get("call_id") or "")
+            except (TypeError, ValueError):
+                continue
+    return False, ""
 
 
-def poll_call_results() -> dict:
-    """Опрашивает zvonok для каждого отстреленного, но ещё не закрытого attempt'а.
+def poll_incoming_calls() -> dict:
+    """Опрашивает zvonok для всех pending_callback отчётов и подтверждает их.
 
-    Закрывает attempt (выставляет webhook_received_at) и при button_num==1 ставит
-    button_pressed=True. Если это ПЕРВОЕ подтверждение для отчёта — переводит
-    SearchReport.status: PENDING_CALLBACK → PENDING (на проверку админу).
+    Возвращает сводку: {checked, confirmed, no_call, errors, skipped_throttle}.
     """
-    from .models import RobocallAttempt, SearchReport, SiteSettings
+    from .models import SearchReport, SiteSettings
 
     st = SiteSettings.get_settings()
     if not st.zvonok_public_key:
-        return {"polled": 0, "pressed": 0, "errors": 0, "skipped": 0}
+        return {"checked": 0, "confirmed": 0, "no_call": 0, "errors": 0, "skipped_throttle": 0, "skip_reason": "no_public_key"}
+    campaign_id = (st.zvonok_incoming_campaign_id or "").strip()
+    if not campaign_id:
+        return {"checked": 0, "confirmed": 0, "no_call": 0, "errors": 0, "skipped_throttle": 0, "skip_reason": "no_incoming_campaign_id"}
 
-    cutoff = timezone.now() - timedelta(hours=POLL_LOOKBACK_HOURS)
+    now = timezone.now()
+    cutoff = now - POLL_THROTTLE
+
     qs = (
-        RobocallAttempt.objects
+        SearchReport.objects
         .filter(
-            fired_at__isnull=False,
-            webhook_received_at__isnull=True,
-            fired_at__gte=cutoff,
+            report_type=SearchReport.ReportType.PHONE_CALLBACK,
+            status=SearchReport.Status.PENDING_CALLBACK,
+            callback_confirmed_at__isnull=True,
         )
-        .exclude(zvonok_call_id="")
-        .select_related("search_report")
+        .exclude(client_phone="")
+        .order_by("zvonok_last_polled_at", "id")
     )
 
-    polled = pressed_count = errors = skipped = 0
-    for att in qs:
+    checked = confirmed = no_call = errors = skipped_throttle = 0
+    for report in qs[:POLL_BATCH_SIZE]:
+        if report.zvonok_last_polled_at and report.zvonok_last_polled_at > cutoff:
+            skipped_throttle += 1
+            continue
+
+        phone = normalize_phone(report.client_phone) or report.client_phone
         try:
-            url = (
-                f"{POLL_CALL_BY_ID_URL}"
-                f"?public_key={urllib.parse.quote(st.zvonok_public_key)}"
-                f"&call_id={urllib.parse.quote(att.zvonok_call_id)}&expand=1"
-            )
-            req = urllib.request.Request(url)
-            try:
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    body = resp.read().decode("utf-8", errors="replace")
-                    code = resp.status
-            except urllib.request.HTTPError as e:
-                body = e.read().decode("utf-8", errors="replace") if hasattr(e, "read") else str(e)
-                code = e.code
-            if code != 200:
-                logger.info("poll attempt=%s call_id=%s HTTP %s: %s", att.pk, att.zvonok_call_id, code, body[:200])
-                skipped += 1
-                continue
-
-            try:
-                data = json.loads(body)
-            except Exception:
-                skipped += 1
-                continue
-            if isinstance(data, list):
-                data = data[0] if data else {}
-
-            dial_status = (data.get("call_status_display") or data.get("status_display") or data.get("dial_status_display") or "")[:64]
-            button_num = data.get("button_num")
-            call_status = data.get("call_status") or data.get("status") or ""
-
-            # Проверяем что звонок терминальный (завершён). Если ещё в процессе — пропускаем
-            terminal_statuses = {
-                "compl_finished", "user", "duplicate_in_process", "no_answer",
-                "busy", "failed", "cancelled", "completed", "hangup",
-            }
-            is_terminal = call_status in terminal_statuses or bool(dial_status)
-            if not is_terminal:
-                skipped += 1
-                continue
-
-            att.webhook_received_at = timezone.now()
-            att.dial_status = dial_status
-
-            pressed_one = False
-            if button_num is not None:
-                try:
-                    pressed_one = int(str(button_num).strip()) == 1
-                except (TypeError, ValueError):
-                    pressed_one = False
-
-            update_flds = ["webhook_received_at", "dial_status", "updated_at"]
-            if pressed_one:
-                att.button_pressed = True
-                att.button_pressed_at = timezone.now()
-                update_flds.extend(["button_pressed", "button_pressed_at"])
-                pressed_count += 1
-            att.save(update_fields=update_flds)
-
-            # Если это первое подтверждение для отчёта — переводим в pending
-            if pressed_one:
-                report = att.search_report
-                if not report.callback_confirmed_at:
-                    report.callback_confirmed_at = timezone.now()
-                    if report.status == SearchReport.Status.PENDING_CALLBACK:
-                        report.status = SearchReport.Status.PENDING
-                    report.save(update_fields=["callback_confirmed_at", "status", "updated_at"])
-                    logger.info("Phone-report #%s confirmed via polling (call_id=%s)", report.pk, att.zvonok_call_id)
-
-            polled += 1
+            code, parsed, raw = _fetch_calls_by_phone(st.zvonok_public_key, campaign_id, phone)
         except Exception as e:
+            logger.exception("poll_incoming_calls: report=%s phone=%s exception: %s", report.pk, phone, e)
             errors += 1
-            logger.exception("poll fail for attempt %s: %s", att.pk, e)
+            continue
 
-    return {"polled": polled, "pressed": pressed_count, "errors": errors, "skipped": skipped}
+        report.zvonok_last_polled_at = now
+        update_fields = ["zvonok_last_polled_at", "updated_at"]
+
+        # «Phone doesn't exist» — клиент ещё не звонил. Это норма, не ошибка.
+        if isinstance(parsed, dict) and parsed.get("status") == "error":
+            no_call += 1
+            report.save(update_fields=update_fields)
+            checked += 1
+            continue
+
+        if not isinstance(parsed, list):
+            logger.info("poll_incoming_calls: unexpected response report=%s code=%s body=%s", report.pk, code, raw[:200])
+            errors += 1
+            report.save(update_fields=update_fields)
+            continue
+
+        pressed, call_id = _extract_button_pressed(parsed)
+        if pressed:
+            report.callback_confirmed_at = now
+            report.zvonok_call_id = call_id[:64]
+            if report.status == SearchReport.Status.PENDING_CALLBACK:
+                report.status = SearchReport.Status.PENDING
+            update_fields.extend(["callback_confirmed_at", "zvonok_call_id", "status"])
+            confirmed += 1
+            logger.info("poll_incoming_calls: report=%s phone=%s CONFIRMED via call_id=%s", report.pk, phone, call_id)
+        else:
+            no_call += 1
+
+        report.save(update_fields=update_fields)
+        checked += 1
+
+    return {
+        "checked": checked,
+        "confirmed": confirmed,
+        "no_call": no_call,
+        "errors": errors,
+        "skipped_throttle": skipped_throttle,
+    }
 
 
 def get_or_create_webhook_secret() -> str:
-    """Получает текущий webhook-секрет; если не задан — генерирует."""
+    """Получает текущий секрет cron-эндпоинта; если не задан — генерирует."""
     from .models import SiteSettings
 
     st = SiteSettings.get_settings()

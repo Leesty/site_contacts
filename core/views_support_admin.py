@@ -2938,156 +2938,45 @@ def admin_moderation_by_admin_detail(request: HttpRequest, admin_id: int) -> Htt
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Zvonok.com — тестовый звонок роботом (только main_admin)
+# Zvonok.com — настройки + cron поллинга входящих звонков
 # ═══════════════════════════════════════════════════════════════════════════════
-
-import json as _json_zv_top
-import re as _re_zv
-import urllib.parse as _urlparse_zv
-import urllib.request as _urlreq_zv
 
 from django.views.decorators.csrf import csrf_exempt as _csrf_exempt_zv
 from .robocall import (
-    dispatch_pending_attempts as _zv_dispatch,
     get_or_create_webhook_secret as _zv_get_secret,
-    poll_call_results as _zv_poll,
+    poll_incoming_calls as _zv_poll_incoming,
 )
-
-
-def _normalize_phone_for_zvonok(phone: str) -> str | None:
-    """Приводит номер к международному формату +7XXXXXXXXXX (или возвращает None если битый)."""
-    digits = _re_zv.sub(r"\D", "", phone or "")
-    if not digits:
-        return None
-    if digits.startswith("8") and len(digits) == 11:
-        digits = "7" + digits[1:]
-    if len(digits) == 10 and digits[0] == "9":
-        digits = "7" + digits
-    if len(digits) < 10 or len(digits) > 15:
-        return None
-    return "+" + digits
 
 
 @login_required
 def admin_robocall_test(request: HttpRequest) -> HttpResponse:
-    """Страница главного админа: тестовый звонок роботом через zvonok.com API.
-
-    GET  — форма + текущие настройки (public_key, campaign_id).
-    POST action=save_config — сохранить ключ/кампанию.
-    POST action=test_call   — отправить тестовый звонок на указанный номер.
-    """
+    """Страница главного админа: настройки zvonok + URL cron-эндпоинта поллинга."""
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
 
     st = SiteSettings.get_settings()
 
-    if request.method == "POST":
-        action = request.POST.get("action", "")
+    if request.method == "POST" and request.POST.get("action") == "save_config":
+        st.zvonok_public_key = (request.POST.get("public_key") or "").strip()[:255]
+        st.zvonok_incoming_campaign_id = (request.POST.get("incoming_campaign_id") or "").strip()[:64]
+        st.save(update_fields=["zvonok_public_key", "zvonok_incoming_campaign_id"])
+        messages.success(request, "Настройки zvonok.com сохранены.")
+        return redirect("admin_robocall_test")
 
-        if action == "save_config":
-            st.zvonok_public_key = (request.POST.get("public_key") or "").strip()[:255]
-            st.zvonok_campaign_id = (request.POST.get("campaign_id") or "").strip()[:64]
-            st.zvonok_campaign_id_now = (request.POST.get("campaign_id_now") or "").strip()[:64]
-            st.zvonok_campaign_id_1h = (request.POST.get("campaign_id_1h") or "").strip()[:64]
-            st.zvonok_campaign_id_10min = (request.POST.get("campaign_id_10min") or "").strip()[:64]
-            st.save(update_fields=[
-                "zvonok_public_key", "zvonok_campaign_id",
-                "zvonok_campaign_id_now", "zvonok_campaign_id_1h", "zvonok_campaign_id_10min",
-            ])
-            messages.success(request, "Настройки zvonok.com сохранены.")
-            return redirect("admin_robocall_test")
-
-        if action == "test_call":
-            phone_raw = (request.POST.get("phone") or "").strip()
-            phone = _normalize_phone_for_zvonok(phone_raw)
-            if not phone:
-                messages.error(request, f"Номер «{phone_raw}» невалидный. Укажите в формате +7XXXXXXXXXX.")
-                return redirect("admin_robocall_test")
-            if not st.zvonok_public_key or not st.zvonok_campaign_id:
-                messages.error(request, "Сначала сохраните public_key и campaign_id.")
-                return redirect("admin_robocall_test")
-
-            data = _urlparse_zv.urlencode({
-                "public_key": st.zvonok_public_key,
-                "phone": phone,
-                "campaign_id": st.zvonok_campaign_id,
-            }).encode("utf-8")
-            req = _urlreq_zv.Request(
-                "https://zvonok.com/manager/cabapi_external/api/v1/phones/call/",
-                data=data,
-                method="POST",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-            body = ""
-            status_code = 0
-            try:
-                with _urlreq_zv.urlopen(req, timeout=10) as resp:
-                    body = resp.read().decode("utf-8", errors="replace")
-                    status_code = resp.status
-            except _urlreq_zv.HTTPError as http_e:
-                # Важно: zvonok возвращает JSON с причиной в теле даже при 4xx
-                try:
-                    body = http_e.read().decode("utf-8", errors="replace")
-                except Exception:
-                    body = str(http_e)
-                status_code = http_e.code
-            except Exception as e:
-                body = str(e)
-                status_code = 0
-
-            # Пытаемся выдернуть читаемое сообщение из JSON
-            import json as _json_zv
-            parsed_msg = ""
-            try:
-                parsed = _json_zv.loads(body)
-                if isinstance(parsed, dict):
-                    parsed_msg = parsed.get("data") or parsed.get("error") or parsed.get("message") or ""
-            except Exception:
-                pass
-
-            if status_code == 200:
-                st.zvonok_last_tested_at = timezone.now()
-                st.save(update_fields=["zvonok_last_tested_at"])
-                messages.success(
-                    request,
-                    f"Звонок поставлен в очередь на {phone}. Ответ zvonok.com: {body[:300]}",
-                )
-            else:
-                hint = ""
-                if parsed_msg and "duplicate" in parsed_msg.lower():
-                    hint = " (на этот номер уже есть активный звонок в кампании — дождитесь завершения или удалите звонок в панели zvonok.com)"
-                reason = parsed_msg or body[:500] or "без деталей"
-                messages.error(
-                    request,
-                    f"Ошибка zvonok.com (HTTP {status_code}): {reason}{hint}",
-                )
-            return redirect("admin_robocall_test")
-
-    # Генерируем secret если надо и строим полный URL webhook'а для копирования в zvonok
     secret = _zv_get_secret()
-    webhook_url = request.build_absolute_uri(reverse("zvonok_webhook") + f"?secret={secret}")
+    cron_url = request.build_absolute_uri(reverse("zvonok_poll_cron") + f"?secret={secret}")
 
     return render(request, "core/admin_robocall_test.html", {
         "site_settings": st,
-        "webhook_url": webhook_url,
+        "cron_url": cron_url,
     })
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Webhook от zvonok.com (нажатие кнопки 1) + cron-endpoint для dispatch'а
-# ═══════════════════════════════════════════════════════════════════════════════
-
 @_csrf_exempt_zv
-def zvonok_webhook(request: HttpRequest) -> HttpResponse:
-    """Принимает POST от zvonok.com при нажатии клиентом кнопки 1.
+def zvonok_poll_cron(request: HttpRequest) -> HttpResponse:
+    """Cron-endpoint: бот-сервер раз в час дёргает это, чтобы поллить входящие звонки.
 
-    URL: /api/zvonok-callback/?secret=<secret>
-    Zvonok шлёт в теле POST (form-urlencoded или JSON) данные звонка:
-      - call_id (обязательно)
-      - phone, dial_status, button_num, action_type, ivr_num и т.п.
-
-    Мы находим RobocallAttempt по call_id, ставим button_pressed, и если это
-    первое подтверждение для отчёта — переводим SearchReport.status в pending.
+    URL: /api/cron/poll-incoming-calls/?secret=<secret>
     """
     st = SiteSettings.get_settings()
     expected_secret = st.zvonok_webhook_secret
@@ -3095,74 +2984,7 @@ def zvonok_webhook(request: HttpRequest) -> HttpResponse:
     if not expected_secret or provided_secret != expected_secret:
         return HttpResponseForbidden("Bad secret")
 
-    # Пробуем распарсить и form-data, и JSON (zvonok шлёт по-разному в зависимости от настройки)
-    data = dict(request.POST.items()) if request.POST else {}
-    if not data and request.body:
-        try:
-            parsed = _json_zv_top.loads(request.body)
-            if isinstance(parsed, dict):
-                data = {str(k): v for k, v in parsed.items()}
-        except Exception:
-            pass
-    # GET fallback — некоторые вебхуки zvonok шлют параметры в query
-    if not data:
-        data = dict(request.GET.items())
-
-    call_id = str(data.get("call_id") or data.get("ce_call_id") or "").strip()
-    button_num = data.get("button_num") or data.get("ivr_num") or data.get("user_choice")
-    dial_status = str(data.get("dial_status") or data.get("call_status") or "")[:64]
-    if not call_id:
-        return JsonResponse({"ok": False, "error": "missing call_id"}, status=400)
-
-    from .models import RobocallAttempt, SearchReport
-
-    attempt = RobocallAttempt.objects.select_related("search_report").filter(zvonok_call_id=call_id).first()
-    if not attempt:
-        # Это может быть звонок из test-flow или из другой кампании — не ошибка
-        return JsonResponse({"ok": True, "matched": False, "reason": "call_id not in our DB"})
-
-    attempt.webhook_received_at = timezone.now()
-    attempt.dial_status = dial_status
-    # Признак нажатия 1
-    pressed_one = False
-    try:
-        pressed_one = int(str(button_num).strip()) == 1
-    except (TypeError, ValueError):
-        pressed_one = False
-
-    if pressed_one:
-        attempt.button_pressed = True
-        attempt.button_pressed_at = timezone.now()
-        attempt.save(update_fields=["webhook_received_at", "dial_status", "button_pressed", "button_pressed_at", "updated_at"])
-
-        # Если это ПЕРВОЕ подтверждение для отчёта — переводим его в pending
-        report = attempt.search_report
-        if not report.callback_confirmed_at:
-            report.callback_confirmed_at = timezone.now()
-            if report.status == SearchReport.Status.PENDING_CALLBACK:
-                report.status = SearchReport.Status.PENDING
-            report.save(update_fields=["callback_confirmed_at", "status", "updated_at"])
-    else:
-        attempt.save(update_fields=["webhook_received_at", "dial_status", "updated_at"])
-
-    return JsonResponse({"ok": True, "matched": True, "pressed_one": pressed_one})
-
-
-@_csrf_exempt_zv
-def zvonok_dispatch_cron(request: HttpRequest) -> HttpResponse:
-    """Cron-endpoint: бот-сервер раз в минуту дергает это, чтобы запустить отложенные звонки.
-
-    URL: /api/cron/dispatch-robocalls/?secret=<secret>
-    """
-    st = SiteSettings.get_settings()
-    expected_secret = st.zvonok_webhook_secret
-    provided_secret = request.GET.get("secret", "") or request.headers.get("X-Webhook-Secret", "")
-    if not expected_secret or provided_secret != expected_secret:
-        return HttpResponseForbidden("Bad secret")
-
-    summary = _zv_dispatch()
-    poll_summary = _zv_poll()
-    return JsonResponse({"dispatch": summary, "poll": poll_summary})
+    return JsonResponse({"poll": _zv_poll_incoming()})
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3171,21 +2993,19 @@ def zvonok_dispatch_cron(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_phone_reports(request: HttpRequest) -> HttpResponse:
-    """Страница главного админа/админа: все phone_callback отчёты с прозвонами и статистикой."""
+    """Страница главного админа/админа: все phone_callback отчёты со статусом поллинга."""
     if not (_require_support(request) or getattr(request.user, "role", None) == "main_admin"):
         return HttpResponseForbidden("Недостаточно прав.")
 
-    from .models import RobocallAttempt, SearchReport
+    from .models import SearchReport
 
     reports_qs = (
         SearchReport.objects
         .filter(report_type=SearchReport.ReportType.PHONE_CALLBACK)
         .select_related("user", "search_link", "reviewed_by")
-        .prefetch_related("robocall_attempts")
         .order_by("-created_at")
     )
 
-    # Фильтры
     q = (request.GET.get("q") or "").strip()
     tab = request.GET.get("tab", "all")
     if q:
@@ -3204,13 +3024,6 @@ def admin_phone_reports(request: HttpRequest) -> HttpResponse:
     paginator = Paginator(reports_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
-    # Для каждого отчёта — список attempts по stage в порядке 1/2/3
-    for r in page_obj:
-        by_stage = {a.stage: a for a in r.robocall_attempts.all()}
-        r.robocall_attempts_ordered = [by_stage[s] for s in (1, 2, 3) if s in by_stage]
-        r.missing_stage_placeholders = list(range(3 - len(r.robocall_attempts_ordered)))
-
-    # Агрегированная статистика
     totals = SearchReport.objects.filter(report_type=SearchReport.ReportType.PHONE_CALLBACK).aggregate(
         total=Count("id"),
         confirmed=Count("id", filter=Q(callback_confirmed_at__isnull=False)),
@@ -3218,17 +3031,11 @@ def admin_phone_reports(request: HttpRequest) -> HttpResponse:
         rejected=Count("id", filter=Q(status=SearchReport.Status.REJECTED)),
         pending_callback=Count("id", filter=Q(status=SearchReport.Status.PENDING_CALLBACK)),
     )
-    attempts_total = RobocallAttempt.objects.count()
-    attempts_fired = RobocallAttempt.objects.exclude(fired_at__isnull=True).count()
-    attempts_pressed = RobocallAttempt.objects.filter(button_pressed=True).count()
 
     return render(request, "core/admin_phone_reports.html", {
         "page_obj": page_obj,
         "q": q,
         "tab": tab,
         "totals": totals,
-        "attempts_total": attempts_total,
-        "attempts_fired": attempts_fired,
-        "attempts_pressed": attempts_pressed,
     })
 

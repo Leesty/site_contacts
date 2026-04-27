@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-04-27 (вечер) — переход phone_callback на pull-модель
+
+### Полный реверс системы звонков: теперь не мы звоним клиенту, а клиент звонит нам
+- Менеджер выбирает в форме отчёта тип «📞 Клиент позвонит», вводит номер клиента и получает 5 наших номеров для передачи: +7 965 362-14-16 / +7 925 205-81-93 / +7 915 419-48-57 / +7 991 882-64-08 / +7 933 111-83-35
+- Клиент звонит на любой из этих номеров (привязаны к входящей кампании zvonok ID 1738255164), нажимает «1» в IVR
+- Раз в час бот-сервер дёргает `/api/cron/poll-incoming-calls/?secret=...` — поллер проходит по всем `pending_callback` отчётам и опрашивает zvonok через `GET /phones/calls_by_phone/`
+- Если найден звонок с нажатой «1» — `callback_confirmed_at = now`, статус → `pending` (на проверку админу)
+- Throttle: каждый отчёт опрашивается не чаще раза в 55 минут, batch ≤ 200 за прогон
+- Бета-гейт `PHONE_CALLBACK_BETA_USERNAMES` снят — phone_callback доступен всем менеджерам
+
+### Удалено
+- Исходящие robocalls (3 stage'а: сразу / -1ч / -10мин)
+- `RobocallAttempt` модель не используется (но таблица оставлена ради исторических данных)
+- View `zvonok_webhook` (вебхук от zvonok), `zvonok_dispatch_cron` (диспатч исходящих)
+- Routes `/api/zvonok-callback/`, `/api/cron/dispatch-robocalls/`
+- Поля формы «Дата созвона / Время созвона»
+- Mgmt command `dispatch_robocalls` → переименована в `poll_incoming_calls`
+
+### Новые поля БД
+- `SiteSettings.zvonok_incoming_campaign_id` (default `1738255164`)
+- `SearchReport.zvonok_last_polled_at` (datetime, indexed) — для throttle поллера
+- `SearchReport.zvonok_call_id` (varchar 64) — какой звонок подтвердил отчёт
+- Старые `zvonok_campaign_id_now/_1h/_10min` оставлены в БД до отдельной cleanup-миграции (для безопасного автодеплоя)
+
 ## 2026-04-27
 
 ### Аккредитованные пользователи: безлимит на выдачу контактов

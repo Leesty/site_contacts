@@ -15,11 +15,9 @@
   <div class="row g-2 mb-3">
     <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Всего номеров</div><strong>{{ totals.total }}</strong></div></div>
     <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Единичка нажата</div><strong class="text-success">{{ totals.confirmed }}</strong></div></div>
-    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Ждут звонков</div><strong class="text-warning">{{ totals.pending_callback }}</strong></div></div>
+    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Ждут звонка</div><strong class="text-warning">{{ totals.pending_callback }}</strong></div></div>
     <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Одобрено</div><strong class="text-success">{{ totals.approved }}</strong></div></div>
     <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Отклонено</div><strong class="text-danger">{{ totals.rejected }}</strong></div></div>
-    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Звонков сделано</div><strong>{{ attempts_fired }}/{{ attempts_total }}</strong></div></div>
-    <div class="col-auto"><div class="card card-body py-2 px-3"><div class="small text-muted">Единиц нажато (всего)</div><strong>{{ attempts_pressed }}</strong></div></div>
   </div>
 
   <ul class="nav nav-tabs mb-3">
@@ -46,12 +44,10 @@
             <tr>
               <th class="d-none d-md-table-cell">#</th>
               <th>Менеджер</th>
-              <th>Номер</th>
-              <th class="d-none d-md-table-cell">Созвон</th>
-              <th class="d-none d-lg-table-cell">Звонок 1<br><small class="text-muted">сразу</small></th>
-              <th class="d-none d-lg-table-cell">Звонок 2<br><small class="text-muted">за 1ч</small></th>
-              <th class="d-none d-lg-table-cell">Звонок 3<br><small class="text-muted">за 10м</small></th>
-              <th>1 нажата</th>
+              <th>Номер клиента</th>
+              <th class="d-none d-md-table-cell">Создан</th>
+              <th class="d-none d-md-table-cell">Последняя проверка</th>
+              <th>Звонок с «1»</th>
               <th>Статус</th>
             </tr>
           </thead>
@@ -61,22 +57,15 @@
                 <td class="text-muted small d-none d-md-table-cell">{{ report.search_link.display_id|default:report.id }}</td>
                 <td><a href="{% url 'admin_user_leads_list' report.user_id %}">@{{ report.user.username }}</a></td>
                 <td class="font-monospace small">{{ report.client_phone }}</td>
-                <td class="small d-none d-md-table-cell">{{ report.callback_at|date:"d.m H:i"|default:"—" }}</td>
-                {% for a in report.robocall_attempts_ordered %}
-                  <td class="small d-none d-lg-table-cell">
-                    {% if a.skipped %}<span class="badge bg-secondary" title="{{ a.skip_reason }}">skip</span>
-                    {% elif a.button_pressed %}<span class="badge bg-success">✓1</span><br><small>{{ a.button_pressed_at|date:"H:i" }}</small>
-                    {% elif a.fired_at %}<span class="badge bg-info text-dark">отправлен</span><br><small>{{ a.fired_at|date:"d.m H:i" }}</small>
-                    {% else %}<span class="badge bg-warning text-dark">⏳</span><br><small>{{ a.scheduled_at|date:"d.m H:i" }}</small>
-                    {% endif %}
-                  </td>
-                {% endfor %}
-                {# На случай если attempts меньше 3 — добавляем пустые ячейки #}
-                {% for _ in report.missing_stage_placeholders %}<td class="text-muted d-none d-lg-table-cell">—</td>{% endfor %}
+                <td class="small d-none d-md-table-cell">{{ report.created_at|date:"d.m H:i" }}</td>
+                <td class="small d-none d-md-table-cell text-muted">
+                  {% if report.zvonok_last_polled_at %}{{ report.zvonok_last_polled_at|date:"d.m H:i" }}{% else %}—{% endif %}
+                </td>
                 <td>
                   {% if report.callback_confirmed_at %}
                     <span class="badge bg-success">Да</span>
                     <div class="small text-muted">{{ report.callback_confirmed_at|date:"d.m H:i" }}</div>
+                    {% if report.zvonok_call_id %}<div class="small text-muted font-monospace">id {{ report.zvonok_call_id }}</div>{% endif %}
                   {% else %}
                     <span class="badge bg-secondary">Нет</span>
                   {% endif %}
@@ -91,7 +80,7 @@
                 </td>
               </tr>
             {% empty %}
-              <tr><td colspan="9" class="text-muted text-center py-4">Phone-отчётов пока нет.</td></tr>
+              <tr><td colspan="7" class="text-muted text-center py-4">Phone-отчётов пока нет.</td></tr>
             {% endfor %}
           </tbody>
         </table>
