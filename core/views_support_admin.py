@@ -2524,17 +2524,16 @@ def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
-    """Страница статистики начислений админов (2.5р за действие). Только main_admin."""
+    """Страница статистики начислений админов: 2.5₽ за Lead-action, 10₽ за SearchLink-action."""
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
-    from .models import LeadReviewLog
-    from decimal import Decimal
+    from .admin_earnings import total_actions, total_earned
 
     admins = User.objects.filter(role="admin").order_by("username")
     admin_stats = []
     for admin in admins:
-        actions = LeadReviewLog.objects.filter(admin=admin).count()
-        earned = int(actions * Decimal("2.5"))
+        actions = total_actions(admin)
+        earned = total_earned(admin)
         withdrawn = WithdrawalRequest.objects.filter(user=admin, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
         admin_stats.append({
             "user": admin,
@@ -2548,6 +2547,7 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
     logs = []
     admin_id = request.GET.get("admin_id")
     if admin_id:
+        from .models import LeadReviewLog
         selected_admin = User.objects.filter(pk=admin_id, role="admin").first()
         if selected_admin:
             logs = (

@@ -235,9 +235,10 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             status=Lead.Status.PENDING,
             lead_type__slug="dozhim",
         ).count()
-        # Заработок админа: 2.5р за каждое действие (approve/reject/rework)
-        admin_actions = LeadReviewLog.objects.filter(admin=user).count()
-        admin_earned = int(admin_actions * Decimal("2.5"))
+        # Заработок админа: 2.5₽ за Lead-action + 10₽ за SearchLink-action.
+        from .admin_earnings import total_actions as _ae_actions, total_earned as _ae_earned
+        admin_actions = _ae_actions(user)
+        admin_earned = _ae_earned(user)
         admin_withdrawn = WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
         admin_balance = max(0, admin_earned - admin_withdrawn)
         admin_withdrawal_pending = WithdrawalRequest.objects.filter(user=user, status="pending").exists()
@@ -286,8 +287,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             admin_stats_list = []
             for a in all_staff:
                 if a.role in ("admin", "main_admin"):
-                    a_actions = LeadReviewLog.objects.filter(admin=a).count()
-                    a_earned = int(a_actions * Decimal("2.5"))
+                    a_actions = _ae_actions(a)
+                    a_earned = _ae_earned(a)
                     a_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
                     admin_stats_list.append({"user": a, "role_label": "Админ", "actions": a_actions, "earned": a_earned, "available": max(0, a_earned - a_withdrawn)})
                 elif a.role == "partner":
@@ -367,11 +368,9 @@ def account_updates_api(request: HttpRequest) -> HttpResponse:
     balance = getattr(user, "balance", 0) or 0
     # Для role=admin/main_admin баланс считается из LeadReviewLog
     if getattr(user, "role", None) in ("admin", "main_admin"):
-        from .models import LeadReviewLog
-        from django.db.models import Count, Sum
-        from decimal import Decimal
-        _admin_actions = LeadReviewLog.objects.filter(admin=user).count()
-        _admin_earned = int(_admin_actions * Decimal("2.5"))
+        from django.db.models import Sum
+        from .admin_earnings import total_earned as _ae_total_earned
+        _admin_earned = _ae_total_earned(user)
         _admin_withdrawn = WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
         balance = max(0, _admin_earned - _admin_withdrawn)
     dozhim_balance = getattr(user, "dozhim_balance", 0) or 0
@@ -805,10 +804,8 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         balance = max(0, earned - withdrawn)
     elif getattr(user, "role", None) in ("admin", "main_admin"):
         from django.db.models import Sum
-        from .models import LeadReviewLog
-        from decimal import Decimal
-        admin_actions = LeadReviewLog.objects.filter(admin=user).count()
-        earned = int(admin_actions * Decimal("2.5"))
+        from .admin_earnings import total_earned as _ae_total_earned
+        earned = _ae_total_earned(user)
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -880,10 +877,8 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 )
             elif _role in ("admin", "main_admin"):
                 from django.db.models import Sum
-                from .models import LeadReviewLog
-                from decimal import Decimal
-                admin_actions = LeadReviewLog.objects.filter(admin=user_refresh).count()
-                earned = int(admin_actions * Decimal("2.5"))
+                from .admin_earnings import total_earned as _ae_total_earned
+                earned = _ae_total_earned(user_refresh)
                 withdrawn = (
                     WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
                     .aggregate(s=Sum("amount"))
