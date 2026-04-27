@@ -148,16 +148,24 @@
                   </td>
                   <td class="text-muted small text-nowrap d-none d-lg-table-cell">{{ link.created_at|date:"d.m H:i" }}</td>
                   <td>
-                    {% if link.bot_started %}
-                      <span class="badge bg-success">Запущен</span>
-                    {% else %}
-                      <span class="badge bg-secondary">Ожидание</span>
-                      {% if user.role == 'admin' or user.role == 'main_admin' or user.role == 'support' %}
-                        <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 ms-1 js-force-confirm-btn"
-                                data-code="{{ link.code }}" style="font-size: 11px;"
-                                title="Отметить старт вручную (если webhook не сработал)">✓ Подтвердить</button>
+                    {% with _r=link.report_obj %}
+                      {% if _r and _r.report_type == 'phone_callback' %}
+                        {% if _r.callback_confirmed_at %}
+                          <span class="badge bg-success">Звонок получен</span>
+                        {% else %}
+                          <span class="badge bg-secondary">Ожидание звонка</span>
+                        {% endif %}
+                      {% elif link.bot_started %}
+                        <span class="badge bg-success">Запущен</span>
+                      {% else %}
+                        <span class="badge bg-secondary">Ожидание</span>
+                        {% if user.role == 'admin' or user.role == 'main_admin' or user.role == 'support' %}
+                          <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 ms-1 js-force-confirm-btn"
+                                  data-code="{{ link.code }}" style="font-size: 11px;"
+                                  title="Отметить старт вручную (если webhook не сработал)">✓ Подтвердить</button>
+                        {% endif %}
                       {% endif %}
-                    {% endif %}
+                    {% endwith %}
                   </td>
                   {% with report=link.report_obj %}
                   <td class="small text-break d-none d-md-table-cell" style="max-width: 150px;">

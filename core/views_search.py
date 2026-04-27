@@ -318,8 +318,7 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         if is_phone:
             messages.success(
                 request,
-                f"Отчёт создан. Ждём входящий звонок от {client_phone} на любой из наших номеров. "
-                f"После звонка с нажатой «1» отчёт уйдёт на проверку.",
+                f"Отчёт создан. Ждём звонок с {client_phone} на любой из наших номеров.",
             )
         else:
             messages.success(request, "Отчёт отправлен.")
