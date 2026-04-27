@@ -53,8 +53,7 @@
               <li class="nav-item"><a class="nav-link px-2" href="{% url 'dozhim_leads_stats' %}">Статистика</a></li>
                 {% else %}
               <li class="nav-item"><a class="nav-link px-2" href="{% url 'contacts' %}">Контакты</a></li>
-              <li class="nav-item"><a class="nav-link px-2" href="{% url 'leads_report' %}">Отчёт</a></li>
-              <li class="nav-item"><a class="nav-link px-2" href="{% url 'leads_my_list' %}">Мои лиды</a></li>
+              {# «Отчёт» и «Мои лиды» (старая Lead-система) скрыты для менеджеров. #}
               <li class="nav-item"><a class="nav-link px-2" href="{% url 'leads_stats' %}">Статистика</a></li>
                 {% endif %}
               {% endif %}

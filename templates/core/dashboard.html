@@ -158,30 +158,7 @@
         </div>
       </div>
     </div>
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon leads mb-2" aria-hidden="true">📋</div>
-          <h2 class="h5 mb-2">Мои лиды</h2>
-          <p class="text-muted small mb-3">
-            Список ваших лидов, статусы проверки. Одобренные лиды оплачиваются автоматически.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'leads_my_list' %}">Перейти</a>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon report mb-2" aria-hidden="true">📄</div>
-          <h2 class="h5 mb-2">Отчёт по лидам</h2>
-          <p class="text-muted small mb-3">
-            Загрузка файлов и скриншотов, фиксация результатов работы по каждому контакту.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'leads_report' %}">Перейти</a>
-        </div>
-      </div>
-    </div>
+    {# Карточки «Мои лиды» и «Отчёт по лидам» (старая Lead-система) скрыты для менеджеров. #}
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
