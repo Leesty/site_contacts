@@ -387,6 +387,155 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     return render(request, "search/report_redo.html", {"link": link, "report": report})
 
 
+# ─── Авто-матчинг с базой бота (когда webhook не сработал) ────────────────────
+
+def auto_match_searchlinks_with_bot_convs() -> dict:
+    """Кросс-DB матчинг: для unstarted SearchLink'ов ищет conversation в боте.
+
+    Когда webhook от бота не доходит (Telegram съел deeplink-параметр на
+    каком-то клиенте), conversation в боте всё равно создаётся. Функция
+    кросс-проверяет windowgram.conversations против наших unstarted ссылок.
+
+    Стратегия — только однозначные матчи:
+    1. Для каждого conversation созданного после T0 (cutoff) на боте B,
+       мы НЕ привязанного ещё к SearchLink (по telegram_id).
+    2. Считаем количество unstarted SearchLink'ов того же бота B,
+       созданных в окне [conv.created_at - 6h, conv.created_at].
+    3. Если ровно ОДИН — матчим. Если 0 или >1 — пропускаем (ambiguous).
+
+    Это предотвращает false-positive когда менеджер создаёт несколько
+    ссылок одного бота подряд и непонятно к какой относится клиент.
+    """
+    from datetime import timedelta as _td
+    from django.db import connections
+
+    cutoff = timezone.now() - _td(hours=24)
+    match_window = _td(hours=6)
+
+    unstarted = list(
+        SearchLink.objects
+        .filter(
+            bot_started=False,
+            visitor_ip__isnull=False,
+            created_at__gte=cutoff,
+        )
+        .exclude(bot_username="")
+        .exclude(visitor_ip="")
+        .order_by("bot_username", "created_at")
+        .values("id", "code", "bot_username", "created_at")
+    )
+    if not unstarted:
+        return {"checked": 0, "matched": 0, "ambiguous": 0, "no_conv": 0, "errors": 0}
+
+    # Группируем по bot_username
+    by_bot: dict[str, list[dict]] = {}
+    for u in unstarted:
+        by_bot.setdefault(u["bot_username"], []).append(u)
+
+    matched = ambiguous = errors = no_conv = 0
+
+    try:
+        with connections["windowgram"].cursor() as wg:
+            # Резолвим bot_id'ы из windowgram
+            wg.execute(
+                "SELECT id, telegram_username FROM bots WHERE telegram_username = ANY(%s) AND platform='telegram'",
+                [list(by_bot.keys())],
+            )
+            bot_id_by_username = {row[1]: str(row[0]) for row in wg.fetchall()}
+
+            # telegram_id'ы уже зафиксированные на наших SL за окно — чтобы не привязать второй раз
+            taken_tg_ids = set(
+                SearchLink.objects.filter(
+                    telegram_id__isnull=False,
+                    created_at__gte=cutoff,
+                ).values_list("telegram_id", flat=True)
+            )
+
+            for bot_username, links in by_bot.items():
+                bot_uuid = bot_id_by_username.get(bot_username)
+                if not bot_uuid:
+                    continue
+
+                earliest_link_time = min(l["created_at"] for l in links)
+                wg.execute(
+                    """
+                    SELECT c.id, c.created_at, t.telegram_id, t.username, t.first_name
+                    FROM conversations c
+                    JOIN telegram_users t ON t.id = c.telegram_user_id
+                    WHERE c.bot_id = %s::uuid
+                      AND c.created_at >= %s
+                    ORDER BY c.created_at ASC
+                    """,
+                    [bot_uuid, earliest_link_time - match_window],
+                )
+                convs = wg.fetchall()
+                if not convs:
+                    no_conv += len(links)
+                    continue
+
+                # Для каждого conv ищем единственную подходящую ссылку
+                links_remaining = links[:]
+                for cid, c_created, tg_id, tg_username, tg_first in convs:
+                    if not tg_id or tg_id in taken_tg_ids:
+                        continue
+                    # Конвертим naive datetime из windowgram в aware (UTC) — bot DB хранит без TZ
+                    import datetime as _dt
+                    if c_created.tzinfo is None:
+                        c_created = c_created.replace(tzinfo=_dt.timezone.utc)
+
+                    # Кандидаты: unstarted ссылки в окне [c_created - 6h, c_created]
+                    candidates = [
+                        l for l in links_remaining
+                        if l["created_at"] - match_window <= c_created
+                        and c_created >= l["created_at"]
+                    ]
+                    if len(candidates) == 0:
+                        continue
+                    if len(candidates) > 1:
+                        ambiguous += 1
+                        continue
+
+                    link = candidates[0]
+                    try:
+                        sl = SearchLink.objects.get(pk=link["id"])
+                        if sl.bot_started:
+                            links_remaining.remove(link)
+                            continue
+                        sl.bot_started = True
+                        sl.bot_started_at = timezone.now()
+                        update_fields = ["bot_started", "bot_started_at", "updated_at"]
+                        sl.telegram_id = tg_id
+                        update_fields.append("telegram_id")
+                        taken_tg_ids.add(tg_id)
+                        if tg_username and not sl.telegram_username:
+                            sl.telegram_username = tg_username[:64]
+                            update_fields.append("telegram_username")
+                        if tg_first and not sl.telegram_first_name:
+                            sl.telegram_first_name = tg_first[:128]
+                            update_fields.append("telegram_first_name")
+                        sl.save(update_fields=update_fields)
+                        links_remaining.remove(link)
+                        matched += 1
+                        logger.info(
+                            "SearchLink auto-matched: code=%s bot=%s tg_id=%s @%s",
+                            sl.code, bot_username, tg_id, tg_username or "—",
+                        )
+                    except Exception as e:
+                        errors += 1
+                        logger.exception("auto_match: failed for link=%s: %s", link["id"], e)
+    except Exception as e:
+        logger.exception("auto_match: cross-DB query failed: %s", e)
+        return {"checked": len(unstarted), "matched": matched, "errors": errors + 1}
+
+    return {
+        "checked": len(unstarted),
+        "matched": matched,
+        "ambiguous": ambiguous,
+        "no_conv": no_conv,
+        "errors": errors,
+    }
+
+
 # ─── Ручное подтверждение старта бота (для админов) ──────────────────────────
 
 @login_required

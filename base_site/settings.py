@@ -86,6 +86,8 @@ WSGI_APPLICATION = "base_site.wsgi.application"
 
 # Database: PostgreSQL (настраивается через переменные окружения)
 _db_host = os.getenv("DB_HOST", "127.0.0.1")
+DATABASE_ROUTERS = ["base_site.db_router.WindowgramRouter"]
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -98,11 +100,26 @@ DATABASES = {
         "CONN_MAX_AGE": 300,
         # Проверять живое ли соединение перед использованием — при долгом простое иначе 500.
         "CONN_HEALTH_CHECKS": True,
-    }
+    },
+    # Read-only подключение к базе бота (windowgram) — нужно для авто-матчинга
+    # SearchLink'ов с реальными conversations в боте. Используется только в
+    # auto_match_searchlinks_with_bot_convs (см. core/views_search.py).
+    # NB: Django никогда не создаёт миграции в этой БД (она не наша).
+    "windowgram": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("WG_DB_NAME", "windowgram"),
+        "USER": os.getenv("WG_DB_USER", os.getenv("DB_USER", "")),
+        "PASSWORD": os.getenv("WG_DB_PASSWORD", os.getenv("DB_PASSWORD", "")),
+        "HOST": os.getenv("WG_DB_HOST", _db_host),
+        "PORT": os.getenv("WG_DB_PORT", os.getenv("DB_PORT", "5432")),
+        "CONN_MAX_AGE": 300,
+        "CONN_HEALTH_CHECKS": True,
+    },
 }
 # SSL для подключения к БД по публичному хосту (например Timeweb *.twc1.net)
 if ".twc1.net" in _db_host or _db_host not in ("127.0.0.1", "localhost"):
     DATABASES["default"]["OPTIONS"] = {"sslmode": "require"}
+    DATABASES["windowgram"]["OPTIONS"] = {"sslmode": "require"}
 
 
 AUTH_PASSWORD_VALIDATORS: list[dict] = []

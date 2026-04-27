@@ -2984,7 +2984,16 @@ def zvonok_poll_cron(request: HttpRequest) -> HttpResponse:
     if not expected_secret or provided_secret != expected_secret:
         return HttpResponseForbidden("Bad secret")
 
-    return JsonResponse({"poll": _zv_poll_incoming()})
+    # Заодно матчим SearchLink'и — webhook от бота не всегда доходит, добиваем
+    # через кросс-DB к windowgram. Дешёво (одна выборка по unstarted-ссылкам).
+    from .views_search import auto_match_searchlinks_with_bot_convs as _sl_match
+    sl_summary = {}
+    try:
+        sl_summary = _sl_match()
+    except Exception as e:
+        sl_summary = {"error": str(e)}
+
+    return JsonResponse({"poll": _zv_poll_incoming(), "searchlink_match": sl_summary})
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
