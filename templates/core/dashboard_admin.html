@@ -143,10 +143,11 @@
       <div class="card h-100 shadow-sm">
         <div class="card-body py-3">
           <div class="d-flex align-items-center justify-content-between mb-1">
-            <span class="fw-semibold" style="font-size: 14px;">📥 Контакты</span>
+            <span class="fw-semibold" style="font-size: 14px;">📥 Выдача баз</span>
             <span id="admin-contact-requests" class="badge bg-danger" style="{% if not contact_requests_pending_count %}display:none;{% endif %}">{{ contact_requests_pending_count|default:0 }}</span>
           </div>
-          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_contact_requests' %}">Запросы</a>
+          <p class="text-muted small mb-2" style="font-size: 11px;">Заявки от пользователей на дополнительные контакты.</p>
+          <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'admin_contact_requests' %}">Открыть</a>
         </div>
       </div>
     </div>

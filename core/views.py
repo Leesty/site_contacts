@@ -976,9 +976,20 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_http_methods(["POST"])
 def request_contact_create(request: HttpRequest) -> HttpResponse:
-    """Создать заявку на дополнительный лимит контактов (кнопка «Обратиться»)."""
+    """Создать заявку на дополнительный лимит контактов (кнопка «Обратиться»).
+
+    Аккредитованным юзерам заявка не нужна — для них на странице контактов
+    лимита нет (см. contacts_placeholder). Если такой юзер всё-таки сюда
+    попал (старая закладка / случайный POST) — отвечаем без создания заявки.
+    """
     if not _ensure_user_approved(request):
         return redirect("dashboard")
+    if request.user.is_accredited:
+        messages.info(
+            request,
+            "У вас аккредитация — заявки не нужны. Берите базы прямо со страницы контактов «Получить контакты» сколько угодно раз.",
+        )
+        return redirect("contacts")
     if ContactRequest.objects.filter(user=request.user, status="pending").exists():
         messages.info(request, "У вас уже есть активная заявка. Ожидайте ответа менеджера.")
         return redirect("contacts")
