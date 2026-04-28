@@ -11,6 +11,7 @@ from . import views_worker
 urlpatterns = [
     path("health/", views.health_check, name="health_check"),
     path("", views.index, name="index"),
+    path("pricing/", views.pricing, name="pricing"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("account/updates/", views.account_updates_api, name="account_updates_api"),
     path("register/", views.register, name="register"),

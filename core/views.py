@@ -45,6 +45,11 @@ def index(request: HttpRequest) -> HttpResponse:
     return render(request, "core/index.html")
 
 
+def pricing(request: HttpRequest) -> HttpResponse:
+    """Публичная страница со стоимостью услуг (200 ₽ за целевое обращение)."""
+    return render(request, "core/pricing.html")
+
+
 def register(request: HttpRequest) -> HttpResponse:
     """Регистрация нового пользователя.
 

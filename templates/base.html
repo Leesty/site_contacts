@@ -60,6 +60,12 @@
             {% endif %}
           </ul>
           <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center">
+            {# Контакты — всегда справа #}
+            <li class="nav-item me-2 align-self-center">
+              <a href="tel:+79635229362" class="text-white-50 text-decoration-none small" style="font-size: 12px;" aria-label="Контакты, телефон">
+                📞 +7 963 522-93-62
+              </a>
+            </li>
             {% if user.is_authenticated %}
               {# Уведомления (колокольчик) #}
               {% if not user.is_staff and not user.is_superuser and user.role != 'support' and user.role != 'admin' and user.role != 'standalone_admin' and user.role != 'balance_admin' and user.status == 'approved' %}
@@ -227,12 +233,31 @@
     <footer class="mt-5 py-3 border-top border-secondary" role="contentinfo">
       <div class="container">
         <nav aria-label="Документы">
-          <div class="d-flex flex-wrap justify-content-center gap-3 small text-muted">
+          <div class="d-flex flex-wrap justify-content-center gap-3 small text-muted mb-2">
+            <a href="{% url 'pricing' %}" class="text-muted text-decoration-none">Стоимость услуг</a>
+            <a href="{% static 'docs/Условия_возврата_ИП_Вальц.docx' %}" download class="text-muted text-decoration-none" aria-label="Условия возврата (скачать Word-документ)">Условия возврата</a>
             <a href="{% static 'docs/Оферта_ИП Вальц А.А..docx' %}" download class="text-muted text-decoration-none" aria-label="Оферта (скачать Word-документ)">Оферта</a>
             <a href="{% static 'docs/Политика_ИП_Вальц.docx' %}" download class="text-muted text-decoration-none" aria-label="Политика конфиденциальности (скачать Word-документ)">Политика конфиденциальности</a>
             <a href="{% static 'docs/Согласие_ПД_ИП Вальц.docx' %}" download class="text-muted text-decoration-none" aria-label="Согласие на обработку ПД (скачать Word-документ)">Согласие на обработку ПД</a>
           </div>
         </nav>
+        <details class="small text-muted">
+          <summary class="text-center" style="cursor: pointer;">Реквизиты ИП</summary>
+          <div class="row g-2 mt-2 mx-auto" style="max-width: 900px; font-size: 11px;">
+            <div class="col-md-6">
+              <div><strong>Название:</strong> ИП Вальц Артём Александрович</div>
+              <div><strong>ИНН:</strong> 227901844963</div>
+              <div><strong>ОГРНИП:</strong> 325220200056410</div>
+              <div><strong>Юр. адрес:</strong> 659070, Алтайский край, Топчихинский р-н, с. Топчиха, пер. Школьный, д. 10</div>
+            </div>
+            <div class="col-md-6">
+              <div><strong>Расч. счёт:</strong> 40802810900008354259</div>
+              <div><strong>Банк:</strong> АО «ТБанк», ИНН 7710140679, БИК 044525974</div>
+              <div><strong>Корр. счёт:</strong> 30101810145250000974</div>
+              <div><strong>Адрес банка:</strong> 127287, г. Москва, ул. Хуторская 2-я, д. 38А, стр. 26</div>
+            </div>
+          </div>
+        </details>
       </div>
     </footer>
   </body>
