@@ -976,23 +976,14 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_http_methods(["POST"])
 def request_contact_create(request: HttpRequest) -> HttpResponse:
-    """Создать заявку на дополнительный лимит контактов (кнопка «Обратиться»).
+    """«Обратиться» / «Получить базу» из алертов.
 
-    Аккредитованным юзерам заявка не нужна — для них на странице контактов
-    лимита нет (см. contacts_placeholder). Если такой юзер всё-таки сюда
-    попал (старая закладка / случайный POST) — отвечаем без создания заявки.
+    - Аккредитованным юзерам выдаём базу сразу (без ContactRequest и без сообщений-заглушек).
+    - Остальным — создаём заявку для админа, как и раньше.
     """
     if not _ensure_user_approved(request):
         return redirect("dashboard")
-    if request.user.is_accredited:
-        messages.info(
-            request,
-            "У вас аккредитация — заявки не нужны. Берите базы прямо со страницы контактов «Получить контакты» сколько угодно раз.",
-        )
-        return redirect("contacts")
-    if ContactRequest.objects.filter(user=request.user, status="pending").exists():
-        messages.info(request, "У вас уже есть активная заявка. Ожидайте ответа менеджера.")
-        return redirect("contacts")
+
     base_type_id = request.POST.get("base_type")
     base_type = None
     if base_type_id:
@@ -1000,9 +991,57 @@ def request_contact_create(request: HttpRequest) -> HttpResponse:
             base_type = BaseType.objects.get(pk=base_type_id)
         except (BaseType.DoesNotExist, ValueError):
             pass
+
+    if request.user.is_accredited and base_type:
+        # Аккредитованный — выдаём базу прямо сейчас (та же логика, что в contacts_placeholder).
+        issued = _issue_base_for_accredited(request.user, base_type)
+        if issued:
+            messages.success(
+                request,
+                f"Вы получили {issued} контактов из базы «{base_type.name}».",
+            )
+        else:
+            messages.info(request, f"В базе «{base_type.name}» сейчас нет свободных контактов. Попробуйте позже.")
+        return redirect("contacts")
+
+    if ContactRequest.objects.filter(user=request.user, status="pending").exists():
+        messages.info(request, "У вас уже есть активная заявка. Ожидайте ответа менеджера.")
+        return redirect("contacts")
     ContactRequest.objects.create(user=request.user, base_type=base_type, status="pending")
     messages.success(request, "Заявка отправлена. Менеджер свяжется с вами по поводу лимита контактов.")
     return redirect("contacts")
+
+
+def _issue_base_for_accredited(user, base_type) -> int:
+    """Выдать аккредитованному юзеру пачку контактов из base_type. Возвращает сколько выдано."""
+    PHONE_BASE_SLUGS = ("whatsapp", "max", "viber")
+    can_give = base_type.default_daily_limit
+    if can_give <= 0:
+        return 0
+    with transaction.atomic():
+        free_qs = (
+            Contact.objects.select_for_update()
+            .filter(base_type=base_type, assigned_to__isnull=True, is_active=True)
+            .order_by("id")
+        )
+        if base_type.slug in PHONE_BASE_SLUGS:
+            other_phone_bases = BaseType.objects.filter(slug__in=PHONE_BASE_SLUGS).exclude(pk=base_type.pk)
+            already_issued_values = set(
+                Contact.objects.filter(
+                    base_type__in=other_phone_bases,
+                    assigned_to=user,
+                ).values_list("value", flat=True)
+            )
+            if already_issued_values:
+                free_qs = free_qs.exclude(value__in=already_issued_values)
+        contacts_to_give = list(free_qs[:can_give])
+        if not contacts_to_give:
+            return 0
+        ids = [c.pk for c in contacts_to_give]
+        Contact.objects.filter(pk__in=ids).update(
+            assigned_to=user, assigned_at=timezone.now()
+        )
+        return len(contacts_to_give)
 
 
 def _dozhim_lead_exists(raw_contact: str, exclude_lead_id: int | None = None) -> bool:
