@@ -200,6 +200,8 @@
                       <a href="{% url 'search_report_create' link.code %}" class="btn btn-primary btn-sm py-0">Отчёт</a>
                     {% elif report.status == 'rework' %}
                       <a href="{% url 'search_report_redo' link.code %}" class="btn btn-warning btn-sm py-0">Доработать</a>
+                    {% elif report.status == 'pending' or report.status == 'pending_callback' %}
+                      <a href="{% url 'search_report_redo' link.code %}" class="btn btn-outline-secondary btn-sm py-0" title="Изменить контакт или переключить бот↔телефон">Изменить</a>
                     {% endif %}
                   </td>
                   {% endwith %}

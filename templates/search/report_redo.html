@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Доработка отчёта — {{ link.lead_name }}{% endblock %}
+{% block title %}Изменить отчёт — {{ link.lead_name }}{% endblock %}
 
 {% block content %}
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">Доработка: {{ link.lead_name }}</h1>
+    <h1 class="h4 mb-0">{% if report.status == 'rework' %}Доработка{% else %}Изменить отчёт{% endif %}: {{ link.lead_name }}</h1>
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'search_links_my' %}">← Мои ссылки</a>
   </div>
 
@@ -20,10 +20,58 @@
         <div class="card-body">
           <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
+
             <div class="mb-3">
-              <label class="form-label" for="raw_contact">Контакт / ссылка на клиента</label>
-              <input type="text" class="form-control" id="raw_contact" name="raw_contact" value="{{ report.raw_contact }}" placeholder="Ссылка, телефон, @username" required maxlength="500">
+              <label class="form-label d-block">Тип отчёта</label>
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="report_type" id="rt-bot" value="bot_start" {% if report.report_type == 'bot_start' %}checked{% endif %}>
+                <label class="btn btn-outline-primary" for="rt-bot">🤖 Запуск бота</label>
+                <input type="radio" class="btn-check" name="report_type" id="rt-phone" value="phone_callback" {% if report.report_type == 'phone_callback' %}checked{% endif %}>
+                <label class="btn btn-outline-primary" for="rt-phone">📞 Клиент позвонит</label>
+              </div>
+              <div class="form-text text-muted">Можно переключиться между типами — например, если бот не сработал, перевести на телефонный звонок.</div>
             </div>
+
+            {# Поля для bot_start #}
+            <div id="fields-bot" class="mb-3">
+              <label class="form-label" for="raw_contact">Контакт / ссылка на клиента</label>
+              <input type="text" class="form-control" id="raw_contact" name="raw_contact" value="{{ report.raw_contact }}" placeholder="Ссылка, телефон, @username" maxlength="500">
+            </div>
+
+            {# Поля для phone_callback #}
+            <div id="fields-phone" style="display: none;">
+              <div class="mb-3">
+                <label class="form-label" for="client_phone">Номер клиента</label>
+                <input type="tel" class="form-control" id="client_phone" name="client_phone" value="{{ report.client_phone }}" placeholder="+7 999 123-45-67" maxlength="32">
+                <div class="form-text text-muted">Номер, с которого клиент будет звонить. Любой формат — система приведёт к +7XXXXXXXXXX.</div>
+              </div>
+              <div class="alert alert-info py-2 mb-3 small">
+                <div class="fw-bold mb-2">📞 Дайте клиенту один из этих номеров для звонка:</div>
+                <div class="d-flex flex-column gap-1">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="font-monospace">+7 965 362-14-16</span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-copy-phone" data-phone="+79653621416" style="font-size:11px;">📋 Копировать</button>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="font-monospace">+7 925 205-81-93</span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-copy-phone" data-phone="+79252058193" style="font-size:11px;">📋 Копировать</button>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="font-monospace">+7 915 419-48-57</span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-copy-phone" data-phone="+79154194857" style="font-size:11px;">📋 Копировать</button>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="font-monospace">+7 991 882-64-08</span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-copy-phone" data-phone="+79918826408" style="font-size:11px;">📋 Копировать</button>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="font-monospace">+7 933 111-83-35</span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-copy-phone" data-phone="+79331118335" style="font-size:11px;">📋 Копировать</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="mb-3">
               <label class="form-label" for="attachment">Новый скриншот / видео</label>
               {% if report.attachment %}
@@ -32,12 +80,70 @@
               <input type="file" class="form-control" id="attachment" name="attachment" accept="image/*,video/*">
               <div class="form-text text-muted">Загрузите новый файл или оставьте пустым чтобы сохранить старый.</div>
             </div>
+
             <div class="mb-3">
               <label class="form-label" for="comment">Комментарий</label>
               <textarea class="form-control" id="comment" name="comment" rows="2">{{ report.comment }}</textarea>
             </div>
-            <button type="submit" class="btn btn-warning w-100">Отправить доработку</button>
+
+            <button type="submit" class="btn btn-warning w-100">Сохранить</button>
           </form>
+
+          <script>
+          (function() {
+            var rtBot = document.getElementById('rt-bot');
+            var rtPhone = document.getElementById('rt-phone');
+            var fieldsBot = document.getElementById('fields-bot');
+            var fieldsPhone = document.getElementById('fields-phone');
+            var rawContact = document.getElementById('raw_contact');
+            var clientPhone = document.getElementById('client_phone');
+
+            function updateUI() {
+              if (rtPhone.checked) {
+                fieldsBot.style.display = 'none';
+                fieldsPhone.style.display = 'block';
+                rawContact.required = false;
+                clientPhone.required = true;
+              } else {
+                fieldsBot.style.display = 'block';
+                fieldsPhone.style.display = 'none';
+                rawContact.required = true;
+                clientPhone.required = false;
+              }
+            }
+            rtBot.addEventListener('change', updateUI);
+            rtPhone.addEventListener('change', updateUI);
+            updateUI();
+
+            // Копирование номеров для звонка
+            document.querySelectorAll('.js-copy-phone').forEach(function(btn) {
+              btn.addEventListener('click', function() {
+                var phone = btn.getAttribute('data-phone') || '';
+                if (!phone) return;
+                var done = function() {
+                  var orig = btn.textContent;
+                  btn.textContent = '✓ Скопировано';
+                  btn.classList.replace('btn-outline-secondary', 'btn-success');
+                  setTimeout(function() {
+                    btn.textContent = orig;
+                    btn.classList.replace('btn-success', 'btn-outline-secondary');
+                  }, 1200);
+                };
+                if (navigator.clipboard && window.isSecureContext) {
+                  navigator.clipboard.writeText(phone).then(done);
+                } else {
+                  var ta = document.createElement('textarea');
+                  ta.value = phone;
+                  ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+                  document.body.appendChild(ta);
+                  ta.select();
+                  try { document.execCommand('copy'); done(); } catch (e) {}
+                  document.body.removeChild(ta);
+                }
+              });
+            });
+          })();
+          </script>
         </div>
       </div>
     </div>

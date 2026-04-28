@@ -346,7 +346,11 @@ def search_report_attachment(request: HttpRequest, code: str) -> HttpResponse:
 
 @login_required
 def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
-    """Доработка отчёта по SearchLink."""
+    """Редактирование отчёта по SearchLink (доработка + переключение bot↔phone).
+
+    Доступно для статусов pending, rework, pending_callback (всё «в процессе»).
+    Approved/rejected отчёты не редактируем — менеджер просит админа.
+    """
     if not _require_approved_user(request):
         return HttpResponseForbidden("Доступ запрещён.")
     if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
@@ -359,28 +363,90 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     except SearchReport.DoesNotExist:
         return redirect("search_links_my")
 
-    if report.status != SearchReport.Status.REWORK:
-        messages.info(request, "Отчёт не на доработке.")
+    EDITABLE = {
+        SearchReport.Status.PENDING,
+        SearchReport.Status.REWORK,
+        SearchReport.Status.PENDING_CALLBACK,
+    }
+    if report.status not in EDITABLE:
+        messages.info(request, "Этот отчёт уже завершён — обратитесь в поддержку для изменений.")
         return redirect("search_links_my")
 
     if request.method == "POST":
         raw_contact = (request.POST.get("raw_contact") or "").strip()
         attachment = request.FILES.get("attachment")
         comment = (request.POST.get("comment") or "").strip()
+        report_type_raw = (request.POST.get("report_type") or report.report_type).strip()
+        switch_to_phone = report_type_raw == SearchReport.ReportType.PHONE_CALLBACK
+        client_phone_raw = (request.POST.get("client_phone") or "").strip()
+
+        # Если меняется тип — валидируем нужные поля.
+        new_client_phone = report.client_phone
+        if switch_to_phone:
+            from .robocall import normalize_phone as _norm_phone
+            new_client_phone = _norm_phone(client_phone_raw or report.client_phone) or ""
+            if not new_client_phone:
+                messages.error(request, f"Номер «{client_phone_raw}» невалидный. Формат: +7XXXXXXXXXX.")
+                return render(request, "search/report_redo.html", {"link": link, "report": report})
+        else:
+            # bot_start — нужен контакт/ссылка
+            if not (raw_contact or report.raw_contact):
+                messages.error(request, "Укажите контакт или ссылку на клиента.")
+                return render(request, "search/report_redo.html", {"link": link, "report": report})
+
+        update_fields = []
 
         if raw_contact:
             report.raw_contact = raw_contact
+            update_fields.append("raw_contact")
         if attachment:
             report.attachment = attachment
+            update_fields.append("attachment")
         if comment:
             report.comment = comment
-        report.status = SearchReport.Status.PENDING
+            update_fields.append("comment")
+
+        # Переключение типа
+        type_changed = report.report_type != report_type_raw
+        if switch_to_phone:
+            if type_changed:
+                report.report_type = SearchReport.ReportType.PHONE_CALLBACK
+                update_fields.append("report_type")
+                # Сбрасываем подтверждение звонка — отчёт ждёт нового звонка
+                report.callback_confirmed_at = None
+                report.zvonok_last_polled_at = None
+                report.zvonok_call_id = ""
+                update_fields.extend(["callback_confirmed_at", "zvonok_last_polled_at", "zvonok_call_id"])
+            if new_client_phone != report.client_phone:
+                report.client_phone = new_client_phone
+                update_fields.append("client_phone")
+            # При phone_callback статус = PENDING_CALLBACK (если ещё не было подтверждения)
+            if not report.callback_confirmed_at:
+                report.status = SearchReport.Status.PENDING_CALLBACK
+            else:
+                report.status = SearchReport.Status.PENDING
+            update_fields.append("status")
+        else:
+            if type_changed:
+                report.report_type = SearchReport.ReportType.BOT_START
+                report.client_phone = ""
+                update_fields.extend(["report_type", "client_phone"])
+            report.status = SearchReport.Status.PENDING
+            update_fields.append("status")
+
         report.rework_comment = ""
-        report.save(update_fields=["raw_contact", "attachment", "comment", "status", "rework_comment", "updated_at"])
+        update_fields.append("rework_comment")
+        update_fields.append("updated_at")
+
+        report.save(update_fields=list(set(update_fields)))
         if attachment:
             from .lead_utils import compress_lead_attachment
             compress_lead_attachment(report)
-        messages.success(request, "Отчёт доработан и отправлен повторно.")
+
+        if switch_to_phone:
+            messages.success(request, f"Отчёт обновлён. Ждём звонок с {report.client_phone} на любой из наших номеров.")
+        else:
+            messages.success(request, "Отчёт обновлён.")
         return redirect("search_links_my")
 
     return render(request, "search/report_redo.html", {"link": link, "report": report})
