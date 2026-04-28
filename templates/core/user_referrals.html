@@ -44,9 +44,9 @@
         {% csrf_token %}
         <div class="row g-3 align-items-end">
           <div class="col-6 col-md-3">
-            <label class="form-label small mb-1" for="ref_reward">Ставка рефу (руб.)</label>
-            <input type="number" class="form-control form-control-sm" id="ref_reward" name="ref_reward" min="1" max="39" value="20" required>
-            <div class="form-text text-muted" style="font-size: 11px;">от 1 до 39. Вы получите {{ total_reward }} - ставка</div>
+            <label class="form-label small mb-1" for="ref_searchlink_cut">Ваша доля (руб.)</label>
+            <input type="number" class="form-control form-control-sm" id="ref_searchlink_cut" name="ref_searchlink_cut" min="1" max="{{ search_total_reward|add:'-1' }}" value="50" required>
+            <div class="form-text text-muted" style="font-size: 11px;">с одобренного SearchLink-отчёта реферала. Реф получит {{ search_total_reward }} − ваша доля.</div>
           </div>
           <div class="col-6 col-md-5">
             <label class="form-label small mb-1" for="note">Заметка</label>
@@ -93,8 +93,8 @@
                     </div>
                     {% if link.note %}<div class="text-muted mt-1" style="font-size: 11px;">{{ link.note }}</div>{% endif %}
                   </td>
-                  <td class="text-center text-nowrap">{{ link.ref_reward }} ₽</td>
-                  <td class="text-center text-nowrap text-success fw-semibold">{{ link.partner_cut }} ₽</td>
+                  <td class="text-center text-nowrap">{{ link.ref_searchlink_share }} ₽</td>
+                  <td class="text-center text-nowrap text-success fw-semibold">{{ link.ref_searchlink_cut }} ₽</td>
                   <td class="text-center">{{ link.ref_count }}</td>
                   <td class="text-center">
                     {% if link.is_active %}<span class="badge bg-success">Активна</span>

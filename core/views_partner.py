@@ -454,6 +454,9 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         .order_by("-created_at")[:100]
     )
 
+    from django.conf import settings as _settings
+    SEARCH_TOTAL = getattr(_settings, "SEARCH_REPORT_REWARD", 150)
+
     links_qs = (
         PartnerLink.objects.filter(partner=user)
         .annotate(ref_count=Count("registered_users"))
@@ -461,7 +464,8 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     )
     links = list(links_qs)
     for link in links:
-        link.partner_cut = LEAD_APPROVE_REWARD - link.ref_reward
+        # Доля рефа с одного одобренного SearchLink-отчёта.
+        link.ref_searchlink_share = max(0, SEARCH_TOTAL - link.ref_searchlink_cut)
 
     return render(request, "core/user_referrals.html", {
         "user": user,
@@ -469,28 +473,38 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         "users_count": users_count,
         "earnings": earnings,
         "links": links,
-        "total_reward": LEAD_APPROVE_REWARD,
+        "search_total_reward": SEARCH_TOTAL,
     })
 
 
 @login_required
 def user_referral_create_link(request: HttpRequest) -> HttpResponse:
-    """Создать реферальную ссылку с настраиваемой ставкой."""
+    """Создать реферальную ссылку с настраиваемой долей рефовода с SearchLink-отчётов рефералов."""
     if not _require_user_approved(request):
         return HttpResponseForbidden()
     if request.method != "POST":
         return redirect("user_referrals")
 
+    from django.conf import settings as _settings
+    SEARCH_TOTAL = getattr(_settings, "SEARCH_REPORT_REWARD", 150)
+
     note = (request.POST.get("note") or "").strip()[:100]
     try:
-        ref_reward = int(request.POST.get("ref_reward", 20))
+        ref_searchlink_cut = int(request.POST.get("ref_searchlink_cut", 50))
     except (TypeError, ValueError):
-        ref_reward = 20
-    ref_reward = max(1, min(39, ref_reward))
+        ref_searchlink_cut = 50
+    ref_searchlink_cut = max(1, min(SEARCH_TOTAL - 1, ref_searchlink_cut))
 
     code = uuid4().hex[:24]
-    PartnerLink.objects.create(partner=request.user, code=code, note=note, ref_reward=ref_reward)
-    messages.success(request, f"Ссылка создана. Реф получает {ref_reward} руб., вы — {LEAD_APPROVE_REWARD - ref_reward} руб.")
+    PartnerLink.objects.create(
+        partner=request.user, code=code, note=note,
+        ref_searchlink_cut=ref_searchlink_cut,
+    )
+    ref_share = SEARCH_TOTAL - ref_searchlink_cut
+    messages.success(
+        request,
+        f"Ссылка создана. С каждого одобренного SearchLink-отчёта реф получит {ref_share} руб., вы — {ref_searchlink_cut} руб.",
+    )
     return redirect("user_referrals")
 
 
@@ -619,6 +633,9 @@ def referral_ref_register(request: HttpRequest, code: str) -> HttpResponse:
                 user.status = User.Status.APPROVED
                 user.partner_owner = ref_link.partner
                 user.partner_link = ref_link
+                # Применяем долю рефовода из ссылки к новому рефералу.
+                user.ref_searchlink_enabled = True
+                user.ref_searchlink_manager_cut = ref_link.ref_searchlink_cut
                 user.save()
                 messages.success(request, "Регистрация прошла успешно. Войдите в личный кабинет.")
                 return redirect("login")

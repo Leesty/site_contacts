@@ -927,7 +927,11 @@ class PartnerLink(TimeStampedModel):
     note = models.CharField(max_length=100, blank=True, help_text="Заметка для идентификации ссылки.")
     ref_reward = models.PositiveIntegerField(
         default=20,
-        help_text="Ставка рефу за одобренный лид (руб.). Партнёр получает 40 - ref_reward.",
+        help_text="(Legacy) Ставка рефу за одобренный лид старой Lead-системы (руб.). Партнёр получает 40 - ref_reward.",
+    )
+    ref_searchlink_cut = models.PositiveIntegerField(
+        default=50,
+        help_text="Доля рефовода (руб.) с одобренного SearchLink-отчёта реферала. Реф получает SEARCH_REPORT_REWARD - ref_searchlink_cut. По умолчанию 50 (реф 100, рефовод 50 при награде 150).",
     )
 
     class Meta:
