@@ -57,7 +57,7 @@ def _require_support_or_partner(request: HttpRequest) -> bool:
 
 
 # Лимит выдач баз в день для аккредитованного рефовода.
-ACCREDITED_REF_OWNER_DAILY_GRANT_LIMIT = 20
+ACCREDITED_REF_OWNER_DAILY_GRANT_LIMIT = 30
 
 
 def _is_accredited_ref_owner(user) -> bool:
