@@ -1,7 +1,13 @@
 {% if receiptless_withdrawals %}
-  <div class="alert alert-danger mb-3">
+  <div class="alert {% if receipt_block_active %}alert-danger{% else %}alert-warning{% endif %} mb-3">
     <strong>Чеки по выплатам:</strong>
-    <div class="small text-muted mb-2">Вывод заблокирован до одобрения чеков администратором. Загружайте сколько нужно — и можете докидывать новые в любой момент, пока админ не одобрил.</div>
+    <div class="small text-muted mb-2">
+      {% if receipt_block_active %}
+        Вывод заблокирован до одобрения чеков администратором. Загружайте сколько нужно — и можете докидывать новые в любой момент, пока админ не одобрил.
+      {% else %}
+        После получения выплаты загрузите чек самозанятого по ней — это нужно для отчётности. Следующий вывод можно сделать без чека, дальше — только после загрузки.
+      {% endif %}
+    </div>
     {% for wr in receiptless_withdrawals %}
       <div class="border-top pt-2 mt-2">
         <div class="d-flex align-items-center gap-2 flex-wrap">
