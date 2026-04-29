@@ -334,10 +334,6 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         .exclude(receipt_status__in=["approved", "waived"])
         .order_by("-created_at")[:5]
     )
-    # Блок выводов чеками работает только если у юзера 2+ approved выплат —
-    # на 1-ю «пробную» выплату чек заранее не требуется.
-    total_approved_wr = WithdrawalRequest.objects.filter(user=user, status="approved").count()
-    receipt_block_active = total_approved_wr >= 2 and bool(receiptless_withdrawals)
     # Плашка «Заявка отклонена» только если последняя заявка юзера — reject.
     # Если после неё была создана новая (pending/approved), плашку не показываем.
     _last_wr = (
@@ -359,7 +355,6 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "support_has_unread": support_has_unread,
             "rework_leads_count": rework_leads_count,
             "receiptless_withdrawals": receiptless_withdrawals,
-            "receipt_block_active": receipt_block_active,
             "last_rejected_withdrawal": last_rejected_wr,
             "search_reward": (getattr(settings, "SEARCH_REPORT_REWARD", 100) - user.ref_searchlink_manager_cut) if (user.partner_owner_id and user.ref_searchlink_enabled) else getattr(settings, "SEARCH_REPORT_REWARD", 100),
         },
@@ -776,18 +771,14 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             else:
                 messages.warning(request, "Для вывода средств необходимо заполнить данные самозанятости (СМЗ).")
             return redirect("smz_registration")
-        # Блокировка чеками: пропускаем первую выплату — она «пробная», чек по ней
-        # не требуется заранее. Блок срабатывает только когда у юзера 2+ approved
-        # в истории и хотя бы одна без чека (т.е. он уже один раз вывел и должен
-        # был принести чек, чтобы продолжать).
-        total_approved = WithdrawalRequest.objects.filter(user=user, status="approved").count()
-        if total_approved >= 2:
-            has_unchecked = WithdrawalRequest.objects.filter(
-                user=user, status="approved",
-            ).exclude(receipt_status__in=["approved", "waived"]).exists()
-            if has_unchecked:
-                messages.warning(request, "Загрузите и дождитесь одобрения чека по предыдущей выплате.")
-                return redirect("dashboard")
+        # Чек-гейт: первый вывод (когда нет ни одной approved-заявки) — без чека.
+        # Со второй и далее — требуем чек по каждой предыдущей выплате.
+        has_unchecked = WithdrawalRequest.objects.filter(
+            user=user, status="approved",
+        ).exclude(receipt_status__in=["approved", "waived"]).exists()
+        if has_unchecked:
+            messages.warning(request, "Загрузите и дождитесь одобрения чека по предыдущей выплате.")
+            return redirect("dashboard")
 
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     dept = request.GET.get("dept") or request.POST.get("dept") or "search"
