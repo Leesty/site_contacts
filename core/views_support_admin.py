@@ -56,6 +56,41 @@ def _require_support_or_partner(request: HttpRequest) -> bool:
     return getattr(request.user, "role", None) == "partner"
 
 
+# Лимит выдач баз в день для аккредитованного рефовода.
+ACCREDITED_REF_OWNER_DAILY_GRANT_LIMIT = 20
+
+
+def _is_accredited_ref_owner(user) -> bool:
+    """Аккредитованный пользователь, у которого есть хоть один реферал (User.partner_owner = self)."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if not getattr(user, "is_accredited", False):
+        return False
+    return User.objects.filter(partner_owner=user).exists()
+
+
+def _can_resolve_contact_requests(request: HttpRequest) -> bool:
+    """Кто может выдавать базы по заявкам:
+    - админы/саппорт/партнёры (как раньше);
+    - аккредитованный рефовод — но только заявки своих рефералов и в пределах суточного лимита.
+    """
+    if _require_support_or_partner(request):
+        return True
+    return _is_accredited_ref_owner(request.user)
+
+
+def _ref_owner_grants_used_today(user) -> int:
+    """Сколько заявок этот рефовод уже одобрил за сегодня (МСК)."""
+    today_start = timezone.localtime(timezone.now()).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return ContactRequest.objects.filter(
+        resolved_by=user,
+        resolved_at__gte=today_start,
+        status="resolved",
+    ).count()
+
+
 def _require_standalone_admin(request: HttpRequest) -> bool:
     """Только роль «Самостоятельный админ». Выдаётся только суперадмином."""
     user = request.user
@@ -1198,9 +1233,17 @@ def _allocate_contacts_to_user(target_user, base_type, count: int) -> int:
 
 @login_required
 def admin_contact_requests(request: HttpRequest) -> HttpResponse:
-    """Список заявок на контакты. «Выдать контакты» — сбрасывает лимит (добавляет доп. лимит), пользователь сам нажимает «Получить контакты»."""
-    if not _require_support_or_partner(request):
+    """Список заявок на контакты. «Выдать контакты» — сбрасывает лимит (добавляет доп. лимит), пользователь сам нажимает «Получить контакты».
+
+    Доступно админам/саппорту/партнёрам, а также аккредитованным рефоводам:
+    рефовод видит только заявки своих рефералов и имеет суточный лимит 20 одобрений.
+    """
+    if not _can_resolve_contact_requests(request):
         return HttpResponseForbidden("Недостаточно прав.")
+
+    is_admin_like = _require_support_or_partner(request)
+    is_ref_owner_only = (not is_admin_like) and _is_accredited_ref_owner(request.user)
+
     if request.method == "POST" and request.POST.get("action") == "refresh":
         return redirect("admin_contact_requests")
     if request.method == "POST":
@@ -1208,6 +1251,18 @@ def admin_contact_requests(request: HttpRequest) -> HttpResponse:
         if req_id:
             req = get_object_or_404(ContactRequest, pk=req_id, status="pending")
             target_user = req.user
+            # Рефовод (без админ-роли) — может выдавать только своим рефералам и в пределах лимита.
+            if is_ref_owner_only:
+                if target_user.partner_owner_id != request.user.id:
+                    messages.error(request, "Можно выдавать базы только своим рефералам.")
+                    return redirect("admin_contact_requests")
+                used_today = _ref_owner_grants_used_today(request.user)
+                if used_today >= ACCREDITED_REF_OWNER_DAILY_GRANT_LIMIT:
+                    messages.warning(
+                        request,
+                        f"Лимит {ACCREDITED_REF_OWNER_DAILY_GRANT_LIMIT} выдач в день исчерпан. Сброс в полночь по Москве.",
+                    )
+                    return redirect("admin_contact_requests")
             bases_to_give = [req.base_type] if req.base_type else list(BaseType.objects.all().order_by("order"))
             for base in bases_to_give:
                 obj, _ = UserBaseLimit.objects.get_or_create(
@@ -1224,12 +1279,23 @@ def admin_contact_requests(request: HttpRequest) -> HttpResponse:
                 f"@{target_user.username}: добавлен доп. лимит. Пользователь может нажать «Получить контакты» на странице контактов.",
             )
             return redirect("admin_contact_requests")
-    pending = ContactRequest.objects.filter(status="pending").select_related("user", "base_type").order_by("-created_at")
-    return render(
-        request,
-        "core/admin_contact_requests.html",
-        {"pending_requests": pending},
-    )
+
+    pending_qs = ContactRequest.objects.filter(status="pending").select_related("user", "base_type")
+    if is_ref_owner_only:
+        # Рефовод видит только своих рефералов.
+        pending_qs = pending_qs.filter(user__partner_owner=request.user)
+    pending = pending_qs.order_by("-created_at")
+
+    ctx = {"pending_requests": pending}
+    if is_ref_owner_only:
+        used = _ref_owner_grants_used_today(request.user)
+        ctx.update({
+            "is_ref_owner_only": True,
+            "ref_owner_grants_used": used,
+            "ref_owner_grants_left": max(0, ACCREDITED_REF_OWNER_DAILY_GRANT_LIMIT - used),
+            "ref_owner_grants_limit": ACCREDITED_REF_OWNER_DAILY_GRANT_LIMIT,
+        })
+    return render(request, "core/admin_contact_requests.html", ctx)
 
 
 @login_required

@@ -189,6 +189,26 @@
     </div>
     {% endif %}{% endif %}
 
+    {% if is_accredited_ref_owner %}
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="card-icon mb-2" aria-hidden="true">📥</div>
+          <h2 class="h5 mb-2">
+            Заявки рефералов на базы
+            {% if ref_owner_pending_requests_count %}
+              <span class="badge bg-danger ms-1">{{ ref_owner_pending_requests_count }}</span>
+            {% endif %}
+          </h2>
+          <p class="text-muted small mb-3">
+            Ваши рефералы попросили доп. контакты. Можно одобрять до 20 заявок в день. Сброс счётчика — каждую полночь.
+          </p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_contact_requests' %}">Открыть</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">

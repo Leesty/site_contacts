@@ -334,6 +334,17 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         .exclude(receipt_status__in=["approved", "waived"])
         .order_by("-created_at")[:5]
     )
+    # Аккредитованный рефовод? — показываем карточку «Заявки рефералов на базы».
+    is_accredited_ref_owner = bool(
+        getattr(user, "is_accredited", False)
+        and User.objects.filter(partner_owner=user).exists()
+    )
+    ref_owner_pending_requests_count = 0
+    if is_accredited_ref_owner:
+        from .models import ContactRequest
+        ref_owner_pending_requests_count = ContactRequest.objects.filter(
+            status="pending", user__partner_owner=user,
+        ).count()
     # Плашка «Заявка отклонена» только если последняя заявка юзера — reject.
     # Если после неё была создана новая (pending/approved), плашку не показываем.
     _last_wr = (
@@ -357,6 +368,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "receiptless_withdrawals": receiptless_withdrawals,
             "last_rejected_withdrawal": last_rejected_wr,
             "search_reward": (getattr(settings, "SEARCH_REPORT_REWARD", 100) - user.ref_searchlink_manager_cut) if (user.partner_owner_id and user.ref_searchlink_enabled) else getattr(settings, "SEARCH_REPORT_REWARD", 100),
+            "is_accredited_ref_owner": is_accredited_ref_owner,
+            "ref_owner_pending_requests_count": ref_owner_pending_requests_count,
         },
     )
 
