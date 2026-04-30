@@ -341,7 +341,6 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     )
     ref_owner_pending_requests_count = 0
     if is_accredited_ref_owner:
-        from .models import ContactRequest
         ref_owner_pending_requests_count = ContactRequest.objects.filter(
             status="pending", user__partner_owner=user,
         ).count()
