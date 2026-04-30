@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import F, Max, Q
+from django.db.models import Count, F, Max, Q
 from django.db import transaction
 from django.db.utils import OperationalError, ProgrammingError
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
