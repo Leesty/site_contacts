@@ -19,6 +19,7 @@ urlpatterns = [
     path("partner/", views_partner.partner_dashboard, name="partner_dashboard"),
     path("partner/referrals/", views_partner.partner_referrals, name="partner_referrals"),
     path("partner/withdrawal/", views_partner.partner_withdrawal, name="partner_withdrawal"),
+    path("partner/rates/", views_partner.partner_update_rates, name="partner_update_rates"),
     path("partner/links/create/", views_partner.partner_create_link, name="partner_create_link"),
     path("partner/links/<int:link_id>/toggle/", views_partner.partner_toggle_link, name="partner_toggle_link"),
     path("p/<str:code>/", views_partner.partner_ref_register, name="partner_ref_register"),

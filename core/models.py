@@ -96,7 +96,15 @@ class User(AbstractUser):
     )
     partner_rate = models.PositiveIntegerField(
         default=10,
-        help_text="Ставка партнёра (руб.) за каждый одобренный лид реферала.",
+        help_text="(Legacy) Ставка партнёра (руб.) за каждый одобренный лид реферала. Используется только для старой Lead-системы.",
+    )
+    partner_searchlink_cut = models.PositiveIntegerField(
+        default=30,
+        help_text="Доля партнёра (руб.) с одобренного SearchLink-отчёта реферала. Default 30 (реф получает SEARCH_REPORT_REWARD - 30 = 120). Применяется ко всем рефералам сразу.",
+    )
+    partner_dozhim_cut = models.PositiveIntegerField(
+        default=10,
+        help_text="Доля партнёра (руб.) с одобренного дожим-лида реферала. Default 10 (реф получает DOZHIM_APPROVE_REWARD - 10 = 30). Применяется ко всем рефералам сразу.",
     )
     partner_link = models.ForeignKey(
         "PartnerLink",

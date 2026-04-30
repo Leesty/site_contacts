@@ -73,6 +73,9 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         .order_by("-created_at")[:5]
     )
 
+    SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
+    DOZHIM_TOTAL = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+
     return render(request, "partner/dashboard.html", {
         "user": user,
         "balance": balance,
@@ -88,7 +91,58 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         "dozhim_pending_count": dozhim_pending_count,
         "partner_rate": user.partner_rate or PARTNER_EARN_PER_LEAD_DEFAULT,
         "receiptless_withdrawals": receiptless_withdrawals,
+        # Партнёрские ставки (применяются ко всем рефералам сразу)
+        "search_total_reward": SEARCH_TOTAL,
+        "dozhim_total_reward": DOZHIM_TOTAL,
+        "partner_searchlink_cut": user.partner_searchlink_cut,
+        "partner_searchlink_ref_share": max(0, SEARCH_TOTAL - user.partner_searchlink_cut),
+        "partner_dozhim_cut": user.partner_dozhim_cut,
+        "partner_dozhim_ref_share": max(0, DOZHIM_TOTAL - user.partner_dozhim_cut),
     })
+
+
+@login_required
+@require_http_methods(["POST"])
+def partner_update_rates(request: HttpRequest) -> HttpResponse:
+    """Партнёр меняет свои ставки (партнёрский cut с SearchLink и с дожим-лида).
+
+    Применяется ко всем рефералам сразу — отдельной per-ref настройки нет.
+    """
+    if not _require_partner(request):
+        return HttpResponseForbidden()
+
+    SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
+    DOZHIM_TOTAL = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+    update_fields = []
+
+    raw_sl = request.POST.get("partner_searchlink_cut")
+    if raw_sl is not None:
+        try:
+            sl = max(1, min(SEARCH_TOTAL - 1, int(raw_sl)))
+        except (TypeError, ValueError):
+            messages.error(request, f"SearchLink ставка должна быть числом от 1 до {SEARCH_TOTAL - 1}.")
+            return redirect("partner_dashboard")
+        request.user.partner_searchlink_cut = sl
+        update_fields.append("partner_searchlink_cut")
+
+    raw_dz = request.POST.get("partner_dozhim_cut")
+    if raw_dz is not None:
+        try:
+            dz = max(1, min(DOZHIM_TOTAL - 1, int(raw_dz)))
+        except (TypeError, ValueError):
+            messages.error(request, f"Дожим-ставка должна быть числом от 1 до {DOZHIM_TOTAL - 1}.")
+            return redirect("partner_dashboard")
+        request.user.partner_dozhim_cut = dz
+        update_fields.append("partner_dozhim_cut")
+
+    if update_fields:
+        request.user.save(update_fields=update_fields)
+        messages.success(
+            request,
+            f"Ставки обновлены. SearchLink: вы {request.user.partner_searchlink_cut} ₽ / реф {SEARCH_TOTAL - request.user.partner_searchlink_cut} ₽. "
+            f"Дожим: вы {request.user.partner_dozhim_cut} ₽ / реф {DOZHIM_TOTAL - request.user.partner_dozhim_cut} ₽.",
+        )
+    return redirect("partner_dashboard")
 
 
 # ─── Реферальные ссылки ────────────────────────────────────────────────────────
@@ -324,23 +378,38 @@ def partner_dozhim_lead_approve(request: HttpRequest, lead_id: int) -> HttpRespo
             messages.info(request, "Лид уже одобрен.")
             return redirect("partner_dozhim_leads")
 
-        reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+        total_reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
         lead.status = Lead.Status.APPROVED
         lead.reviewed_at = timezone.now()
         lead.reviewed_by = request.user
         lead.save(update_fields=["status", "reviewed_at", "reviewed_by"])
 
+        # Делим награду: партнёр забирает свой partner_dozhim_cut, реф — остаток.
+        partner_locked = User.objects.select_for_update().get(pk=request.user.id)
+        partner_cut = max(0, min(total_reward - 1, partner_locked.partner_dozhim_cut or 0))
+        ref_reward = total_reward - partner_cut
+
         lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
         _old = lead_owner.dozhim_balance or 0
-        lead_owner.dozhim_balance = _old + reward
+        lead_owner.dozhim_balance = _old + ref_reward
         lead_owner.save(update_fields=["dozhim_balance"])
-        log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_approve#{lead_id} +{reward}", request.user)
+        log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_approve#{lead_id} +{ref_reward}", request.user)
         # Авто-аккредитация: баланс дожима был в минусе и перешёл в плюс
         if not lead_owner.is_accredited and _old < 0 and lead_owner.dozhim_balance >= 0:
             lead_owner.is_accredited = True
             lead_owner.save(update_fields=["is_accredited"])
 
-    messages.success(request, f"Лид #{lead_id} одобрен. +{reward} руб. пользователю @{lead.user.username}.")
+        # Начисление партнёру за дожим-лид реферала.
+        if partner_cut > 0:
+            _old_pb = partner_locked.balance or 0
+            partner_locked.balance = _old_pb + partner_cut
+            partner_locked.save(update_fields=["balance"])
+            log_balance_change(partner_locked, "balance", _old_pb, partner_locked.balance, f"partner_dozhim_earn#{lead_id} +{partner_cut}", request.user)
+
+    msg = f"Лид #{lead_id} одобрен. +{ref_reward} ₽ @{lead.user.username}"
+    if partner_cut > 0:
+        msg += f", вам +{partner_cut} ₽"
+    messages.success(request, msg + ".")
     return redirect("partner_dozhim_leads")
 
 
@@ -370,12 +439,23 @@ def partner_dozhim_lead_reject(request: HttpRequest, lead_id: int) -> HttpRespon
         lead.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
 
         if was_approved:
-            reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+            total_reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+            partner_locked = User.objects.select_for_update().get(pk=request.user.id)
+            partner_cut = max(0, min(total_reward - 1, partner_locked.partner_dozhim_cut or 0))
+            ref_reward = total_reward - partner_cut
+
             lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
             _old = lead_owner.dozhim_balance or 0
-            lead_owner.dozhim_balance = _old - reward
+            lead_owner.dozhim_balance = _old - ref_reward
             lead_owner.save(update_fields=["dozhim_balance"])
-            log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_reject#{lead_id} -{reward}", request.user)
+            log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_reject#{lead_id} -{ref_reward}", request.user)
+
+            # Откат партнёрского заработка
+            if partner_cut > 0:
+                _old_pb = partner_locked.balance or 0
+                partner_locked.balance = _old_pb - partner_cut
+                partner_locked.save(update_fields=["balance"])
+                log_balance_change(partner_locked, "balance", _old_pb, partner_locked.balance, f"partner_dozhim_earn_rollback#{lead_id} -{partner_cut}", request.user)
 
     messages.success(request, f"Лид #{lead_id} отклонён.")
     return redirect("partner_dozhim_leads")
@@ -407,12 +487,23 @@ def partner_dozhim_lead_rework(request: HttpRequest, lead_id: int) -> HttpRespon
         lead.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by"])
 
         if was_approved:
-            reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+            total_reward = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+            partner_locked = User.objects.select_for_update().get(pk=request.user.id)
+            partner_cut = max(0, min(total_reward - 1, partner_locked.partner_dozhim_cut or 0))
+            ref_reward = total_reward - partner_cut
+
             lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
             _old = lead_owner.dozhim_balance or 0
-            lead_owner.dozhim_balance = _old - reward
+            lead_owner.dozhim_balance = _old - ref_reward
             lead_owner.save(update_fields=["dozhim_balance"])
-            log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_rework#{lead_id} -{reward}", request.user)
+            log_balance_change(lead_owner, "dozhim_balance", _old, lead_owner.dozhim_balance, f"partner_dozhim_rework#{lead_id} -{ref_reward}", request.user)
+
+            # Откат партнёрского заработка
+            if partner_cut > 0:
+                _old_pb = partner_locked.balance or 0
+                partner_locked.balance = _old_pb - partner_cut
+                partner_locked.save(update_fields=["balance"])
+                log_balance_change(partner_locked, "balance", _old_pb, partner_locked.balance, f"partner_dozhim_earn_rollback#{lead_id} -{partner_cut}", request.user)
 
     messages.success(request, f"Лид #{lead_id} отправлен на доработку.")
     return redirect("partner_dozhim_leads")

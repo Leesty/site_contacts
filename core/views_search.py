@@ -951,8 +951,15 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
 
         # Разделение награды для рефералов. Пропорция партнёрского cut'а сохраняется
         # относительно SEARCH_REPORT_REWARD (обычного): phone_cut = cut * (total/150).
+        # Для рефов role=partner используется глобальная партнёрская ставка
+        # (partner_searchlink_cut), чтобы партнёр мог менять её сразу для всех рефералов.
+        # Для рефов обычного user-рефовода — per-ref ставка ref_searchlink_manager_cut.
         if lead_owner.partner_owner_id and lead_owner.ref_searchlink_enabled:
-            base_cut = lead_owner.ref_searchlink_manager_cut
+            partner_owner = User.objects.filter(pk=lead_owner.partner_owner_id).first()
+            if partner_owner and partner_owner.role == User.Role.PARTNER:
+                base_cut = partner_owner.partner_searchlink_cut
+            else:
+                base_cut = lead_owner.ref_searchlink_manager_cut
             if is_phone_report:
                 scaled_cut = round(base_cut * total_reward / SEARCH_REPORT_REWARD)
                 manager_cut = max(1, min(total_reward - 1, scaled_cut))

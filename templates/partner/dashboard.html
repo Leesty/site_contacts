@@ -122,6 +122,40 @@
 
     {# Правая колонка: ссылки и заявки на вывод #}
     <div class="col-md-5 d-flex flex-column gap-3">
+      {# Партнёрские ставки #}
+      <div class="card shadow-sm">
+        <div class="card-header bg-transparent border-secondary py-2">
+          <strong>Ваши ставки</strong>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-3">Применяются ко всем рефералам сразу.</p>
+          <form method="post" action="{% url 'partner_update_rates' %}">
+            {% csrf_token %}
+            <div class="row g-2 align-items-end">
+              <div class="col-12">
+                <label class="form-label small mb-1" for="partner_searchlink_cut">SearchLink-отчёт ({{ search_total_reward }} ₽)</label>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">Вам</span>
+                  <input type="number" class="form-control" id="partner_searchlink_cut" name="partner_searchlink_cut" min="1" max="{{ search_total_reward|add:'-1' }}" value="{{ partner_searchlink_cut }}" required>
+                  <span class="input-group-text">₽ · рефу {{ partner_searchlink_ref_share }} ₽</span>
+                </div>
+              </div>
+              <div class="col-12 mt-2">
+                <label class="form-label small mb-1" for="partner_dozhim_cut">Дожим-лид ({{ dozhim_total_reward }} ₽)</label>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">Вам</span>
+                  <input type="number" class="form-control" id="partner_dozhim_cut" name="partner_dozhim_cut" min="1" max="{{ dozhim_total_reward|add:'-1' }}" value="{{ partner_dozhim_cut }}" required>
+                  <span class="input-group-text">₽ · рефу {{ partner_dozhim_ref_share }} ₽</span>
+                </div>
+              </div>
+              <div class="col-12 mt-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить ставки</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
       {# Реферальная ссылка #}
       <div class="card shadow-sm">
         <div class="card-header bg-transparent border-secondary py-2">
