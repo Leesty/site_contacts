@@ -1239,6 +1239,15 @@ class SearchLink(TimeStampedModel):
         db_index=True,
         help_text="IP менеджера совпал с IP посетителя — подозрение на накрутку.",
     )
+    duplicate_of = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="duplicate_links",
+        db_index=True,
+        help_text="Если этот клиент уже привлекался по другой SearchLink — здесь FK на оригинал. Дубликаты автоодобрению не подлежат.",
+    )
 
     class Meta:
         verbose_name = "SearchLink"

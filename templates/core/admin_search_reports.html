@@ -72,7 +72,8 @@
                   {% else %}
                     {{ report.search_link.lead_name|truncatechars:20 }}
                   {% endif %}
-                  {% if report.search_link.self_click %}<span class="badge bg-danger ms-1">НК</span>{% endif %}
+                  {% if report.search_link.self_click %}<span class="badge bg-danger ms-1" title="Накрутка — IP менеджера = IP посетителя">НК</span>{% endif %}
+                  {% if report.search_link.duplicate_of_id %}<span class="badge bg-danger ms-1" title="Дубликат — клиент уже был привлечён">DUP</span>{% endif %}
                 </td>
                 <td class="small text-muted">{{ report.lead_date|date:"d.m" }}</td>
                 {% if tab != 'rejected' %}

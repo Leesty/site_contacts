@@ -148,7 +148,9 @@
                   </td>
                   <td class="text-muted small text-nowrap d-none d-lg-table-cell">{{ link.created_at|date:"d.m H:i" }}</td>
                   <td>
-                    {% if link.report_obj.report_type == 'phone_callback' %}
+                    {% if link.duplicate_of_id %}
+                      <span class="badge bg-danger" title="Этот клиент уже был привлечён по другой ссылке">Дубликат</span>
+                    {% elif link.report_obj.report_type == 'phone_callback' %}
                       {% if link.report_obj.callback_confirmed_at %}
                         <span class="badge bg-success">Звонок получен</span>
                       {% else %}

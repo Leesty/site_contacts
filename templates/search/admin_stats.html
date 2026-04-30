@@ -152,7 +152,11 @@
                     {% endif %}
                   {% endif %}
                 </td>
-                <td>{% if link.self_click %}<span class="badge bg-danger">IP</span>{% else %}—{% endif %}</td>
+                <td>
+                  {% if link.self_click %}<span class="badge bg-danger">IP</span>{% endif %}
+                  {% if link.duplicate_of_id %}<span class="badge bg-danger ms-1" title="Дубликат — клиент уже был привлечён">DUP</span>{% endif %}
+                  {% if not link.self_click and not link.duplicate_of_id %}—{% endif %}
+                </td>
                 <td>
                   {% if link.report_obj %}
                     {% if link.report_obj.status == 'approved' %}<span class="badge bg-success">Одобрен</span>

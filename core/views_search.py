@@ -452,6 +452,65 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     return render(request, "search/report_redo.html", {"link": link, "report": report})
 
 
+# ─── Проверка дубликатов ──────────────────────────────────────────────────────
+
+def _find_duplicate_link(*, exclude_link_id, telegram_id=None, telegram_username="",
+                         vk_user_id=None, vk_screen_name="", client_phone=""):
+    """Ищет другую SearchLink с тем же клиентом (любой платформы).
+
+    Возвращает первую найденную (самую раннюю по created_at) — её мы будем считать
+    оригиналом. Если ничего не нашлось — None.
+
+    Сравнение по любому из идентификаторов. Username/screen_name приводятся к
+    lower-case для устойчивости.
+    """
+    from django.db.models import Q
+    q = Q()
+    has_filter = False
+    if telegram_id:
+        q |= Q(telegram_id=telegram_id)
+        has_filter = True
+    if telegram_username:
+        q |= Q(telegram_username__iexact=telegram_username)
+        has_filter = True
+    if vk_user_id:
+        q |= Q(vk_user_id=vk_user_id)
+        has_filter = True
+    if vk_screen_name:
+        q |= Q(vk_screen_name__iexact=vk_screen_name)
+        has_filter = True
+    if client_phone:
+        # Дубль по client_phone: ищем сейчас по SearchReport.client_phone
+        # — но поле есть только на report, не на link. См. поверку ниже на _find_duplicate_phone_report.
+        pass
+    if not has_filter:
+        return None
+    return (
+        SearchLink.objects.filter(q)
+        .exclude(pk=exclude_link_id)
+        .order_by("created_at")
+        .first()
+    )
+
+
+def _find_duplicate_phone_report(*, exclude_report_id, client_phone):
+    """Ищет другой SearchReport (типа phone_callback) с тем же нормализованным client_phone.
+
+    Возвращает SearchReport (оригинал) или None.
+    """
+    if not client_phone:
+        return None
+    return (
+        SearchReport.objects.filter(
+            report_type=SearchReport.ReportType.PHONE_CALLBACK,
+            client_phone=client_phone,
+        )
+        .exclude(pk=exclude_report_id)
+        .order_by("created_at")
+        .first()
+    )
+
+
 # ─── Авто-матчинг с базой бота (когда webhook не сработал) ────────────────────
 
 def auto_match_searchlinks_with_bot_convs() -> dict:
@@ -578,6 +637,15 @@ def auto_match_searchlinks_with_bot_convs() -> dict:
                         if tg_first and not sl.telegram_first_name:
                             sl.telegram_first_name = tg_first[:128]
                             update_fields.append("telegram_first_name")
+                        # Дубликат?
+                        dup_orig = _find_duplicate_link(
+                            exclude_link_id=sl.pk,
+                            telegram_id=tg_id,
+                            telegram_username=(tg_username or "")[:64],
+                        )
+                        if dup_orig:
+                            sl.duplicate_of = dup_orig
+                            update_fields.append("duplicate_of")
                         sl.save(update_fields=update_fields)
                         links_remaining.remove(link)
                         matched += 1
@@ -718,9 +786,31 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
             link.save(update_fields=updates)
         return JsonResponse({"ok": True, "already_started": True})
 
+    # Проверяем дубликат: тот же клиент (telegram_id/username/vk_user_id/screen_name)
+    # уже привлекался по другой SearchLink — помечаем как duplicate_of.
+    dup_kwargs = {}
+    if platform == "telegram":
+        if telegram_id:
+            dup_kwargs["telegram_id"] = telegram_id
+        if telegram_username:
+            dup_kwargs["telegram_username"] = telegram_username
+    else:
+        if vk_user_id:
+            dup_kwargs["vk_user_id"] = vk_user_id
+        if vk_screen_name:
+            dup_kwargs["vk_screen_name"] = vk_screen_name
+    duplicate_original = _find_duplicate_link(exclude_link_id=link.pk, **dup_kwargs)
+
     link.bot_started = True
     link.bot_started_at = timezone.now()
     update_fields = ["bot_started", "bot_started_at", "updated_at"]
+    if duplicate_original:
+        link.duplicate_of = duplicate_original
+        update_fields.append("duplicate_of")
+        logger.info(
+            "SearchLink duplicate detected: code=%s is dup of code=%s (lead %s)",
+            link.code, duplicate_original.code, link.lead_name,
+        )
 
     if platform == "telegram":
         if telegram_id:
@@ -937,6 +1027,28 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
             )
             report.status = SearchReport.Status.REJECTED
             report.rejection_reason = "Автоотклонение: менеджер сам нажал кнопку перехода в бота."
+            report.reviewed_at = timezone.now()
+            report.reviewed_by = request.user
+            report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
+            return redirect("admin_search_reports_list")
+
+        # Проверка дубликатов:
+        # - bot_start: link.duplicate_of (поставлено webhook'ом/auto_match)
+        # - phone_callback: ищем другой phone_callback report с тем же client_phone
+        dup_link = _sl.duplicate_of
+        dup_phone_report = None
+        if is_phone_report and report.client_phone:
+            dup_phone_report = _find_duplicate_phone_report(
+                exclude_report_id=report.pk, client_phone=report.client_phone,
+            )
+        if dup_link or dup_phone_report:
+            if dup_link:
+                reason_short = f"Дубликат: этот клиент уже привлекался по ссылке #{dup_link.display_id or dup_link.id} (@{dup_link.user.username})."
+            else:
+                reason_short = f"Дубликат номера: телефон уже использовался в отчёте #{dup_phone_report.id} (@{dup_phone_report.user.username})."
+            messages.error(request, f"Отчёт #{report_id} аннулирован. {reason_short}")
+            report.status = SearchReport.Status.REJECTED
+            report.rejection_reason = "Автоотклонение: " + reason_short
             report.reviewed_at = timezone.now()
             report.reviewed_by = request.user
             report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
