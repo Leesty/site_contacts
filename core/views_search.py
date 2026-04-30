@@ -646,6 +646,20 @@ def auto_match_searchlinks_with_bot_convs() -> dict:
                         if dup_orig:
                             sl.duplicate_of = dup_orig
                             update_fields.append("duplicate_of")
+                            # Авто-отклоняем уже поданный отчёт, если он в работе
+                            _existing_report = SearchReport.objects.filter(search_link=sl).first()
+                            if _existing_report and _existing_report.status in (
+                                SearchReport.Status.PENDING,
+                                SearchReport.Status.REWORK,
+                                SearchReport.Status.PENDING_CALLBACK,
+                            ):
+                                _existing_report.status = SearchReport.Status.REJECTED
+                                _existing_report.rejection_reason = (
+                                    f"Автоотклонение: дубликат — клиент уже привлекался по ссылке "
+                                    f"#{dup_orig.display_id or dup_orig.id} (@{dup_orig.user.username})."
+                                )
+                                _existing_report.reviewed_at = timezone.now()
+                                _existing_report.save(update_fields=["status", "rejection_reason", "reviewed_at", "updated_at"])
                         sl.save(update_fields=update_fields)
                         links_remaining.remove(link)
                         matched += 1
@@ -811,6 +825,20 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
             "SearchLink duplicate detected: code=%s is dup of code=%s (lead %s)",
             link.code, duplicate_original.code, link.lead_name,
         )
+        # Если отчёт уже подан и ещё не обработан — авто-отклоняем сразу.
+        _existing_report = SearchReport.objects.filter(search_link=link).first()
+        if _existing_report and _existing_report.status in (
+            SearchReport.Status.PENDING,
+            SearchReport.Status.REWORK,
+            SearchReport.Status.PENDING_CALLBACK,
+        ):
+            _existing_report.status = SearchReport.Status.REJECTED
+            _existing_report.rejection_reason = (
+                f"Автоотклонение: дубликат — клиент уже привлекался по ссылке "
+                f"#{duplicate_original.display_id or duplicate_original.id} (@{duplicate_original.user.username})."
+            )
+            _existing_report.reviewed_at = timezone.now()
+            _existing_report.save(update_fields=["status", "rejection_reason", "reviewed_at", "updated_at"])
 
     if platform == "telegram":
         if telegram_id:
@@ -968,26 +996,40 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     # Только отчёты где бот реально стартовал (вебхук подтвердил)
     reports_qs = SearchReport.objects.filter(search_link__bot_started=True).select_related("user", "search_link", "reviewed_by")
 
-    if tab == "approved":
-        reports_qs = reports_qs.filter(status=SearchReport.Status.APPROVED)
-    elif tab == "rejected":
-        reports_qs = reports_qs.filter(status=SearchReport.Status.REJECTED)
-    elif tab == "rework":
-        reports_qs = reports_qs.filter(status=SearchReport.Status.REWORK)
+    if tab == "duplicate":
+        # Отдельная вкладка «Дубликаты» — показываем только дубликаты
+        reports_qs = reports_qs.filter(search_link__duplicate_of__isnull=False)
     else:
-        reports_qs = reports_qs.filter(status=SearchReport.Status.PENDING)
+        # Все остальные вкладки исключают дубликаты
+        reports_qs = reports_qs.filter(search_link__duplicate_of__isnull=True)
+        if tab == "approved":
+            reports_qs = reports_qs.filter(status=SearchReport.Status.APPROVED)
+        elif tab == "rejected":
+            reports_qs = reports_qs.filter(status=SearchReport.Status.REJECTED)
+        elif tab == "rework":
+            reports_qs = reports_qs.filter(status=SearchReport.Status.REWORK)
+        else:
+            reports_qs = reports_qs.filter(status=SearchReport.Status.PENDING)
 
     paginator = Paginator(reports_qs.order_by("-created_at"), 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
+    # Счётчики (без дублей в основных, и отдельный по дублям)
     pending_count = SearchReport.objects.filter(
-        search_link__bot_started=True, status=SearchReport.Status.PENDING
+        search_link__bot_started=True,
+        search_link__duplicate_of__isnull=True,
+        status=SearchReport.Status.PENDING,
+    ).count()
+    duplicate_count = SearchReport.objects.filter(
+        search_link__bot_started=True,
+        search_link__duplicate_of__isnull=False,
     ).count()
 
     return render(request, "core/admin_search_reports.html", {
         "page_obj": page_obj,
         "tab": tab,
         "pending_count": pending_count,
+        "duplicate_count": duplicate_count,
     })
 
 
