@@ -15,23 +15,32 @@
 
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">Новые {% if pending_count %}<span class="badge bg-danger ms-1">{{ pending_count }}</span>{% endif %}</a>
+      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending{% if q %}&q={{ q|urlencode }}{% endif %}">Новые {% if pending_count %}<span class="badge bg-danger ms-1">{{ pending_count }}</span>{% endif %}</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">На доработке</a>
+      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework{% if q %}&q={{ q|urlencode }}{% endif %}">На доработке</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a>
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved{% if q %}&q={{ q|urlencode }}{% endif %}">Одобренные</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые</a>
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected{% if q %}&q={{ q|urlencode }}{% endif %}">Отклонённые</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'duplicate' %}active{% endif %}" href="?tab=duplicate">
+      <a class="nav-link {% if tab == 'duplicate' %}active{% endif %}" href="?tab=duplicate{% if q %}&q={{ q|urlencode }}{% endif %}">
         Дубликаты {% if duplicate_count %}<span class="badge bg-secondary ms-1">{{ duplicate_count }}</span>{% endif %}
       </a>
     </li>
   </ul>
+
+  <form method="get" class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="text" name="q" value="{{ q|default:'' }}" class="form-control form-control-sm"
+           style="max-width: 360px;" placeholder="Поиск: ID, @менеджер, имя лида, контакт, @tg, vk, телефон…"
+           autocomplete="off">
+    <button type="submit" class="btn btn-outline-primary btn-sm">Найти</button>
+    {% if q %}<a class="btn btn-outline-secondary btn-sm" href="?tab={{ tab }}">Сбросить</a>{% endif %}
+  </form>
 
   <div class="card shadow-sm">
     <div class="card-body p-0">
@@ -140,9 +149,9 @@
       <div class="card-footer bg-transparent border-secondary d-flex justify-content-center py-2">
         <nav>
           <ul class="pagination pagination-sm mb-0">
-            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
             <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
           </ul>
         </nav>
       </div>

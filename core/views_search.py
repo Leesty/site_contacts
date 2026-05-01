@@ -993,6 +993,7 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
         return HttpResponseForbidden("Недостаточно прав.")
 
     tab = request.GET.get("tab", "pending")
+    q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
     # Только отчёты где бот реально стартовал (вебхук подтвердил)
     reports_qs = SearchReport.objects.filter(search_link__bot_started=True).select_related("user", "search_link", "reviewed_by")
 
@@ -1011,6 +1012,32 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
         else:
             reports_qs = reports_qs.filter(status=SearchReport.Status.PENDING)
 
+    # Поиск по любому из релевантных полей (ID, лид, менеджер, контакт, тг/вк)
+    if q:
+        from django.db.models import Q as _Q
+        from django.db.models.functions import Cast
+        from django.db.models import CharField as _CharField
+        terms = [w for w in q.split() if w]
+        for word in terms:
+            base_q = (
+                _Q(user__username__icontains=word)
+                | _Q(search_link__lead_name__icontains=word)
+                | _Q(search_link__code__icontains=word)
+                | _Q(search_link__telegram_username__icontains=word)
+                | _Q(search_link__telegram_first_name__icontains=word)
+                | _Q(search_link__vk_screen_name__icontains=word)
+                | _Q(search_link__vk_first_name__icontains=word)
+                | _Q(raw_contact__icontains=word)
+                | _Q(client_phone__icontains=word)
+                | _Q(comment__icontains=word)
+                | _Q(rejection_reason__icontains=word)
+                | _Q(rework_comment__icontains=word)
+                | _Q(reviewed_by__username__icontains=word)
+            )
+            if word.isdigit():
+                base_q = base_q | _Q(search_link__display_id=int(word)) | _Q(id=int(word)) | _Q(search_link__telegram_id=int(word)) | _Q(search_link__vk_user_id=int(word))
+            reports_qs = reports_qs.filter(base_q)
+
     paginator = Paginator(reports_qs.order_by("-created_at"), 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
@@ -1028,6 +1055,7 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     return render(request, "core/admin_search_reports.html", {
         "page_obj": page_obj,
         "tab": tab,
+        "q": q,
         "pending_count": pending_count,
         "duplicate_count": duplicate_count,
     })
