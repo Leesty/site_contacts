@@ -473,9 +473,6 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
     selected_base: BaseType | None = None
     reason: str | None = None
 
-    # Телефонные базы: при выдаче исключаем номера, уже выданные в другой телефонной базе
-    PHONE_BASE_SLUGS = ("whatsapp", "max", "viber")
-
     if request.method == "POST" and form.is_valid():
         selected_base = form.cleaned_data["base_type"]
 
@@ -508,17 +505,16 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
                     .filter(base_type=selected_base, assigned_to__isnull=True, is_active=True)
                     .order_by("id")
                 )
-                # Для телефонных баз — исключаем номера, уже выданные пользователю в других телефонных базах
-                if selected_base.slug in PHONE_BASE_SLUGS:
-                    other_phone_bases = BaseType.objects.filter(slug__in=PHONE_BASE_SLUGS).exclude(pk=selected_base.pk)
-                    already_issued_values = set(
-                        Contact.objects.filter(
-                            base_type__in=other_phone_bases,
-                            assigned_to=user,
-                        ).values_list("value", flat=True)
-                    )
-                    if already_issued_values:
-                        free_qs = free_qs.exclude(value__in=already_issued_values)
+                # Глобальный дедуп: исключаем любые value, уже выданные юзеру
+                # в ЛЮБОЙ другой базе. Один и тот же контакт второй раз не выпадает,
+                # даже если выбрана другая платформа.
+                already_issued_values = set(
+                    Contact.objects.filter(assigned_to=user)
+                    .exclude(base_type=selected_base)
+                    .values_list("value", flat=True)
+                )
+                if already_issued_values:
+                    free_qs = free_qs.exclude(value__in=already_issued_values)
                 free_count = free_qs.count()
                 if free_count == 0 or (not partial_ok and free_count < can_give):
                     reason = "not_enough"
@@ -1027,7 +1023,6 @@ def request_contact_create(request: HttpRequest) -> HttpResponse:
 
 def _issue_base_for_accredited(user, base_type) -> int:
     """Выдать аккредитованному юзеру пачку контактов из base_type. Возвращает сколько выдано."""
-    PHONE_BASE_SLUGS = ("whatsapp", "max", "viber")
     can_give = base_type.default_daily_limit
     if can_give <= 0:
         return 0
@@ -1037,16 +1032,15 @@ def _issue_base_for_accredited(user, base_type) -> int:
             .filter(base_type=base_type, assigned_to__isnull=True, is_active=True)
             .order_by("id")
         )
-        if base_type.slug in PHONE_BASE_SLUGS:
-            other_phone_bases = BaseType.objects.filter(slug__in=PHONE_BASE_SLUGS).exclude(pk=base_type.pk)
-            already_issued_values = set(
-                Contact.objects.filter(
-                    base_type__in=other_phone_bases,
-                    assigned_to=user,
-                ).values_list("value", flat=True)
-            )
-            if already_issued_values:
-                free_qs = free_qs.exclude(value__in=already_issued_values)
+        # Глобальный дедуп: один контакт — одной секции, не выдаём value, который
+        # уже у юзера в любой другой базе.
+        already_issued_values = set(
+            Contact.objects.filter(assigned_to=user)
+            .exclude(base_type=base_type)
+            .values_list("value", flat=True)
+        )
+        if already_issued_values:
+            free_qs = free_qs.exclude(value__in=already_issued_values)
         contacts_to_give = list(free_qs[:can_give])
         if not contacts_to_give:
             return 0
