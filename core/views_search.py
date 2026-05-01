@@ -295,11 +295,19 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
                 messages.error(request, f"Номер «{client_phone_raw}» невалидный. Формат: +7XXXXXXXXXX.")
                 return render(request, "search/report_form.html", {"link": link})
 
+        # Нормализуем контакт для дедупликации (телефон / @username / vk-id и т.д.)
+        from .lead_utils import normalize_lead_contact, compress_lead_attachment
+        if is_phone:
+            normalized = client_phone  # уже в формате +7XXXXXXXXXX
+        else:
+            normalized = normalize_lead_contact(raw_contact)
+
         report = SearchReport.objects.create(
             user=request.user,
             search_link=link,
             lead_date=lead_date or timezone.now().date(),
             raw_contact=raw_contact or client_phone,
+            normalized_contact=normalized,
             attachment=attachment,
             comment=comment,
             report_type=(
@@ -312,8 +320,31 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
                 else SearchReport.Status.PENDING
             ),
         )
-        from .lead_utils import compress_lead_attachment
         compress_lead_attachment(report)
+
+        # Дубликат по нормализованному контакту? (по всем менеджерам, любой тип)
+        if normalized:
+            dup_report = _find_duplicate_report_by_contact(
+                exclude_report_id=report.pk, normalized_contact=normalized,
+            )
+            if dup_report:
+                # Помечаем link как duplicate_of первой ссылки + report → rejected
+                report.status = SearchReport.Status.REJECTED
+                report.rejection_reason = (
+                    f"Автоотклонение: дубликат — этот контакт уже использовался в отчёте "
+                    f"#{dup_report.search_link.display_id or dup_report.search_link.id} "
+                    f"(@{dup_report.user.username})."
+                )
+                report.reviewed_at = timezone.now()
+                report.save(update_fields=["status", "rejection_reason", "reviewed_at", "updated_at"])
+                if not link.duplicate_of_id:
+                    link.duplicate_of = dup_report.search_link
+                    link.save(update_fields=["duplicate_of", "updated_at"])
+                messages.warning(
+                    request,
+                    f"Этот контакт уже был привлечён ранее (отчёт #{dup_report.search_link.display_id or dup_report.search_link.id} от @{dup_report.user.username}). Отчёт отклонён как дубликат.",
+                )
+                return redirect("search_links_my")
 
         if is_phone:
             messages.success(
@@ -505,6 +536,21 @@ def _find_duplicate_phone_report(*, exclude_report_id, client_phone):
             report_type=SearchReport.ReportType.PHONE_CALLBACK,
             client_phone=client_phone,
         )
+        .exclude(pk=exclude_report_id)
+        .order_by("created_at")
+        .first()
+    )
+
+
+def _find_duplicate_report_by_contact(*, exclude_report_id, normalized_contact):
+    """Ищет другой SearchReport с тем же normalized_contact (любой тип, любой менеджер).
+
+    Возвращает оригинал или None. Используется для дедупа по raw_contact.
+    """
+    if not normalized_contact:
+        return None
+    return (
+        SearchReport.objects.filter(normalized_contact=normalized_contact)
         .exclude(pk=exclude_report_id)
         .order_by("created_at")
         .first()

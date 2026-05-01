@@ -1362,6 +1362,13 @@ class SearchReport(TimeStampedModel):
         blank=True,
         help_text="Контакт / ссылка на клиента.",
     )
+    normalized_contact = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Нормализованный raw_contact для поиска дубликатов (telegram:user, vk:id, +7XXXXXXXXXX, ig:user, ok:id и т.д.).",
+    )
     comment = models.TextField(
         blank=True,
         help_text="Комментарий менеджера.",
