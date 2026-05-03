@@ -25,6 +25,69 @@ def contact_link(value):
     return escape(text)
 
 
+import re as _re
+_PHONE_RE = _re.compile(r"^\s*[\+]?[\d\-\s\(\)]{10,20}\s*$")
+
+
+@register.filter
+def phone_pretty(value):
+    """Если value похоже на телефон — возвращает слитный +XXXXXXXXXXX. Иначе исходник.
+
+    «8 (999) 123-45-67» → «+79991234567»
+    «9 321 321 52 52» (10 цифр, старт 9) → «+79213215252»
+    «9-321-321-52-52» (11 цифр, аномалия) → «+93213215252» (хотя бы слитно)
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if not _PHONE_RE.match(text):
+        return text
+    digits = _re.sub(r"\D", "", text)
+    if not digits or len(digits) < 10:
+        return text
+    if digits.startswith("8") and len(digits) == 11:
+        digits = "7" + digits[1:]
+    elif len(digits) == 10 and digits[0] == "9":
+        digits = "7" + digits
+    return "+" + digits
+
+
+@register.filter
+def contact_with_tg_check(value):
+    """Возвращает HTML: контакт + кнопка «🔍 TG» если контакт — телефон.
+
+    Кнопка ведёт на https://t.me/+7XXXXXXXXXX — Telegram сам подскажет, есть ли
+    пользователь с таким номером.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    pretty = phone_pretty(text)
+    is_phone = pretty.startswith("+7") and pretty[1:].isdigit()
+    from core.lead_utils import raw_contact_to_url
+    if is_phone:
+        return mark_safe(
+            f'<span class="d-inline-flex align-items-center gap-1">'
+            f'<span class="font-monospace">{escape(pretty)}</span>'
+            f'<a href="https://t.me/{escape(pretty)}" target="_blank" rel="noopener noreferrer" '
+            f'class="badge bg-secondary text-decoration-none" '
+            f'title="Открыть в Telegram (если пользователь есть с таким номером)" '
+            f'style="font-size:10px;">🔍 TG</a>'
+            f'</span>'
+        )
+    url = raw_contact_to_url(text)
+    if url:
+        return mark_safe(
+            '<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>'
+            % (escape(url), escape(text))
+        )
+    return escape(text)
+
+
 @register.filter
 def support_attachment_is_image(attachment) -> bool:
     """True, если вложение — изображение (по расширению)."""
