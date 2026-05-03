@@ -28,6 +28,17 @@
     </li>
   </ul>
 
+  <script>
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.js-fill-reason')) return;
+    var btn = e.target.closest('.js-fill-reason');
+    var form = btn.closest('form.js-reject-form');
+    if (!form) return;
+    var ta = form.querySelector('.js-reject-reason');
+    if (ta) ta.value = btn.getAttribute('data-reason') || '';
+  });
+  </script>
+
   <div class="card shadow-sm">
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -51,19 +62,31 @@
                 <td class="text-muted small">{{ u.smz_submitted_at|date:"d.m.Y H:i" }}</td>
                 {% if tab == 'pending' %}
                 <td>
-                  <div class="d-flex gap-1">
+                  <div class="d-flex flex-column gap-1">
                     <form method="post" class="d-inline">
                       {% csrf_token %}
                       <input type="hidden" name="user_id" value="{{ u.pk }}">
                       <input type="hidden" name="action" value="approve">
                       <button type="submit" class="btn btn-success btn-sm py-0">Одобрить</button>
                     </form>
-                    <form method="post" class="d-inline">
+                    <form method="post" class="d-flex flex-column gap-1 js-reject-form">
                       {% csrf_token %}
                       <input type="hidden" name="user_id" value="{{ u.pk }}">
                       <input type="hidden" name="action" value="reject">
-                      <input type="text" name="reason" placeholder="Причина" class="form-control form-control-sm d-inline-block" style="width: 150px;">
-                      <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
+                      <textarea name="reason" placeholder="Причина" class="form-control form-control-sm js-reject-reason" rows="2" style="width: 220px; font-size: 11px;"></textarea>
+                      <div class="d-flex flex-wrap gap-1">
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-fill-reason"
+                                style="font-size: 10px;"
+                                data-reason="Не заполнена анкета. В системе вас не вижу. Если есть вопрос как заполнить анкету — пишите в чатик">
+                          🗒 Анкета
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 js-fill-reason"
+                                style="font-size: 10px;"
+                                data-reason="Подтверждение через «Мой налог» партнёра в виде Т-Банк сделать">
+                          🗒 Т-Банк
+                        </button>
+                      </div>
+                      <button type="submit" class="btn btn-outline-danger btn-sm py-0">Отклонить</button>
                     </form>
                   </div>
                 </td>
