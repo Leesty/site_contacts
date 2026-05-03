@@ -58,8 +58,10 @@ def phone_pretty(value):
 def contact_with_tg_check(value):
     """Возвращает HTML: контакт + кнопка «🔍 TG» если контакт — телефон.
 
-    Кнопка ведёт на https://t.me/+7XXXXXXXXXX — Telegram сам подскажет, есть ли
-    пользователь с таким номером.
+    Кнопка ведёт на tg://resolve?phone=DIGITS — нативная URL-схема Telegram,
+    которая открывает Telegram Desktop/iOS/Android и пытается найти пользователя
+    по номеру. (https://t.me/+номер НЕ работает — это формат invite-ссылок групп,
+    не поиска по номеру.)
     """
     if value is None:
         return ""
@@ -70,12 +72,13 @@ def contact_with_tg_check(value):
     is_phone = pretty.startswith("+7") and pretty[1:].isdigit()
     from core.lead_utils import raw_contact_to_url
     if is_phone:
+        digits = pretty[1:]  # 79051977490 без +
         return mark_safe(
             f'<span class="d-inline-flex align-items-center gap-1">'
             f'<span class="font-monospace">{escape(pretty)}</span>'
-            f'<a href="https://t.me/{escape(pretty)}" target="_blank" rel="noopener noreferrer" '
+            f'<a href="tg://resolve?phone={escape(digits)}" '
             f'class="badge bg-secondary text-decoration-none" '
-            f'title="Открыть в Telegram (если пользователь есть с таким номером)" '
+            f'title="Открыть в Telegram-клиенте и проверить номер" '
             f'style="font-size:10px;">🔍 TG</a>'
             f'</span>'
         )
