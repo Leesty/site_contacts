@@ -45,7 +45,11 @@
       <div class="card h-100 shadow-sm">
         <div class="card-body">
           <h2 class="h6 text-muted">Всего начислено</h2>
-          <p class="fs-4 mb-0">{{ earned_total }} <span class="fs-6 text-muted">руб.</span></p>
+          <p class="fs-4 mb-1">{{ earned_total }} <span class="fs-6 text-muted">руб.</span></p>
+          <div class="small text-muted">
+            Лиды: {{ lead_actions_count }} × {{ current_rate }} ₽ = <strong>{{ lead_earned }} ₽</strong><br>
+            SearchLink: {{ sr_approved_count }} × {{ current_sl_rate }} ₽ = <strong>{{ sl_earned }} ₽</strong>
+          </div>
         </div>
       </div>
     </div>

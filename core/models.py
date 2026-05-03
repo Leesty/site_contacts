@@ -68,6 +68,10 @@ class User(AbstractUser):
         default=0,
         help_text="Баланс пользователя за Отдел дожима (руб.).",
     )
+    balance_admin_searchlink_rate = models.DecimalField(
+        max_digits=6, decimal_places=2, default=15,
+        help_text="Ставка баланс-админа за каждый одобренный SearchLink-отчёт от не-реферала.",
+    )
     balance_admin_rate = models.DecimalField(
         max_digits=6, decimal_places=2, default=5,
         help_text="Ставка баланс-админа за одобренный лид (руб.).",

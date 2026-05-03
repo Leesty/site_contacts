@@ -147,18 +147,23 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         return redirect("partner_dashboard")
     if _is_balance_admin(user):
         from django.db.models import Sum, Q as _Q
-        from .models import LeadReviewLog
+        from .models import LeadReviewLog, SearchReport
 
-        # Всего одобрений лидов (все админы, все времена), кроме лидов партнёрских пользователей
+        # Lead-action и SearchReport-approve от не-партнёрских пользователей
         base_log_qs = LeadReviewLog.objects.filter(
             action=LeadReviewLog.Action.APPROVED,
             lead__user__partner_owner__isnull=True,
         )
         total_approved = base_log_qs.count()
+        sr_approved = SearchReport.objects.filter(
+            status=SearchReport.Status.APPROVED,
+            user__partner_owner__isnull=True,
+        ).count()
         from decimal import Decimal
         rate = getattr(user, "balance_admin_rate", None) or Decimal("5")
+        sl_rate = getattr(user, "balance_admin_searchlink_rate", None) or Decimal("15")
         offset = getattr(user, "balance_admin_earnings_offset", None) or Decimal("0")
-        earned = int(total_approved * rate + offset)
+        earned = int(total_approved * rate + sr_approved * sl_rate + offset)
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -184,6 +189,11 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 "withdrawals": withdrawals,
                 "withdrawal_min_balance": getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500),
                 "current_rate": rate,
+                "current_sl_rate": sl_rate,
+                "lead_actions_count": total_approved,
+                "sr_approved_count": sr_approved,
+                "lead_earned": int(total_approved * rate),
+                "sl_earned": int(sr_approved * sl_rate),
                 "receiptless_withdrawals": list(
                     WithdrawalRequest.objects.filter(user=user, status="approved")
                     .exclude(receipt_status__in=["approved", "waived"])
@@ -297,12 +307,15 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                     p_referrals = User.objects.filter(partner_owner=a).count()
                     admin_stats_list.append({"user": a, "role_label": f"Партнёр ({a.partner_rate}₽)", "actions": p_referrals, "earned": p_earned, "available": max(0, (a.balance or 0))})
                 elif a.role == "balance_admin":
+                    from .models import SearchReport as _SR
                     ba_total = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, lead__user__partner_owner__isnull=True).count()
+                    ba_sr = _SR.objects.filter(status=_SR.Status.APPROVED, user__partner_owner__isnull=True).count()
                     ba_rate = a.balance_admin_rate or Decimal("5")
+                    ba_sl_rate = a.balance_admin_searchlink_rate or Decimal("15")
                     ba_offset = a.balance_admin_earnings_offset or Decimal("0")
-                    ba_earned = int(ba_total * ba_rate + ba_offset)
+                    ba_earned = int(ba_total * ba_rate + ba_sr * ba_sl_rate + ba_offset)
                     ba_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
-                    admin_stats_list.append({"user": a, "role_label": f"Баланс-админ ({ba_rate}₽)", "actions": "—", "earned": ba_earned, "available": max(0, ba_earned - ba_withdrawn)})
+                    admin_stats_list.append({"user": a, "role_label": f"Баланс-админ ({ba_rate}₽ + SL {ba_sl_rate}₽)", "actions": "—", "earned": ba_earned, "available": max(0, ba_earned - ba_withdrawn)})
             ctx["admin_stats_list"] = admin_stats_list
             return render(request, "core/dashboard_main_admin.html", ctx)
 
@@ -791,19 +804,25 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     dept = request.GET.get("dept") or request.POST.get("dept") or "search"
 
-    # Специальная логика для баланс‑админа: баланс считается по логу одобренных лидов.
+    # Специальная логика для баланс‑админа: баланс считается по логу одобренных лидов
+    # + по одобренным SearchReport-отчётам от не-рефералов.
     if getattr(user, "role", None) == "balance_admin":
         from django.db.models import Sum
-        from .models import LeadReviewLog
+        from .models import LeadReviewLog, SearchReport
 
         total_approved = LeadReviewLog.objects.filter(
             action=LeadReviewLog.Action.APPROVED,
             lead__user__partner_owner__isnull=True,
         ).count()
+        sr_approved = SearchReport.objects.filter(
+            status=SearchReport.Status.APPROVED,
+            user__partner_owner__isnull=True,
+        ).count()
         from decimal import Decimal
         rate = getattr(user, "balance_admin_rate", None) or Decimal("5")
+        sl_rate = getattr(user, "balance_admin_searchlink_rate", None) or Decimal("15")
         offset = getattr(user, "balance_admin_earnings_offset", None) or Decimal("0")
-        earned = int(total_approved * rate + offset)
+        earned = int(total_approved * rate + sr_approved * sl_rate + offset)
         withdrawn = (
             WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
             .aggregate(s=Sum("amount"))
@@ -855,16 +874,21 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             _role = getattr(user_refresh, "role", None)
             if _role == "balance_admin":
                 from django.db.models import Sum
-                from .models import LeadReviewLog
+                from .models import LeadReviewLog, SearchReport
 
                 total_approved = LeadReviewLog.objects.filter(
                     action=LeadReviewLog.Action.APPROVED,
                     lead__user__partner_owner__isnull=True,
                 ).count()
+                sr_approved = SearchReport.objects.filter(
+                    status=SearchReport.Status.APPROVED,
+                    user__partner_owner__isnull=True,
+                ).count()
                 from decimal import Decimal
                 rate = getattr(user_refresh, "balance_admin_rate", None) or Decimal("5")
+                sl_rate = getattr(user_refresh, "balance_admin_searchlink_rate", None) or Decimal("15")
                 offset = getattr(user_refresh, "balance_admin_earnings_offset", None) or Decimal("0")
-                earned = int(total_approved * rate + offset)
+                earned = int(total_approved * rate + sr_approved * sl_rate + offset)
                 withdrawn = (
                     WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
                     .aggregate(s=Sum("amount"))
