@@ -124,7 +124,10 @@
                       <span class="badge" style="background:#0088cc;color:#fff;font-size:10px;">TG</span>
                     {% endif %}
                     {% if link.lead_contact_display %}
-                      {% if link.lead_contact_url %}<a href="{{ link.lead_contact_url }}" target="_blank" rel="noopener">{% if link.started_platform == 'vk' %}{{ link.lead_contact_display|truncatechars:30 }}{% else %}@{{ link.lead_contact_display|truncatechars:30 }}{% endif %}</a>{% else %}{{ link.lead_contact_display|truncatechars:30 }}{% endif %}
+                      {% with disp=link.lead_contact_display %}
+                      {% if link.lead_contact_url %}<a href="{{ link.lead_contact_url }}" target="_blank" rel="noopener"
+                         {% if disp|slice:":3" == "tg:" %}title="Telegram ID (username скрыт). Клик откроет TG-клиент."{% endif %}>{% if link.started_platform == 'vk' or disp|slice:":3" == "tg:" %}{{ disp|truncatechars:30 }}{% else %}@{{ disp|truncatechars:30 }}{% endif %}</a>{% else %}{{ disp|truncatechars:30 }}{% endif %}
+                      {% endwith %}
                       <span class="text-muted small">· {{ link.lead_name|truncatechars:20 }}</span>
                     {% else %}
                       {{ link.lead_name|truncatechars:30 }}

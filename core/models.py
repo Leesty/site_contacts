@@ -1296,6 +1296,10 @@ class SearchLink(TimeStampedModel):
         if sp == "telegram":
             if self.telegram_username:
                 return f"https://t.me/{self.telegram_username}"
+            if self.telegram_id:
+                # Username скрыт — даём ссылку через tg://user?id=...
+                # (откроет TG-клиент админа; работает если есть общий чат с юзером).
+                return f"tg://user?id={self.telegram_id}"
             return ""
         # бот ещё не стартован
         return ""

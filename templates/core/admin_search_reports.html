@@ -78,7 +78,10 @@
                   {% endif %}
                   {% if report.search_link.lead_contact_display %}
                     {% if report.search_link.lead_contact_url %}
-                      <a href="{{ report.search_link.lead_contact_url }}" target="_blank" rel="noopener" class="text-decoration-none">{% if report.search_link.started_platform == 'vk' %}{{ report.search_link.lead_contact_display|truncatechars:20 }}{% else %}@{{ report.search_link.lead_contact_display|truncatechars:20 }}{% endif %}</a>
+                      {% with disp=report.search_link.lead_contact_display %}
+                      <a href="{{ report.search_link.lead_contact_url }}" target="_blank" rel="noopener" class="text-decoration-none"
+                         {% if disp|slice:":3" == "tg:" %}title="Telegram ID (username скрыт). Клик откроет TG-клиент."{% endif %}>{% if report.search_link.started_platform == 'vk' or disp|slice:":3" == "tg:" %}{{ disp|truncatechars:20 }}{% else %}@{{ disp|truncatechars:20 }}{% endif %}</a>
+                      {% endwith %}
                     {% else %}
                       {{ report.search_link.lead_contact_display|truncatechars:20 }}
                     {% endif %}
