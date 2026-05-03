@@ -1440,6 +1440,41 @@ class SearchReport(TimeStampedModel):
         return f"SearchReport #{self.pk} (link={self.search_link.code})"
 
 
+class SearchReportReviewLog(TimeStampedModel):
+    """История модерации SearchLink-отчёта: одобрен / отклонён / на доработку.
+
+    Аналогично LeadReviewLog для обычных Lead. Нужна чтобы корректно начислять
+    админу 10 ₽ за каждое действие (если статус потом изменился другим админом —
+    первый всё равно сохраняет свой кредит).
+    """
+
+    class Action(models.TextChoices):
+        APPROVED = "approved", "Одобрено"
+        REJECTED = "rejected", "Отклонено"
+        REWORK = "rework", "На доработку"
+
+    report = models.ForeignKey(
+        SearchReport,
+        on_delete=models.CASCADE,
+        related_name="review_logs",
+    )
+    admin = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="search_report_review_logs",
+    )
+    action = models.CharField(max_length=20, choices=Action.choices)
+
+    class Meta:
+        verbose_name = "Событие модерации SearchLink-отчёта"
+        verbose_name_plural = "События модерации SearchLink-отчётов"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"SR#{self.report_id}: {self.get_action_display()} ({self.created_at})"
+
+
 class RobocallAttempt(TimeStampedModel):
     """Одна попытка роботизированного звонка в рамках phone_callback отчёта.
 

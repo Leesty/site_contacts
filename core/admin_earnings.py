@@ -25,11 +25,13 @@ def count_lead_actions(admin) -> int:
 
 
 def count_searchreport_actions(admin) -> int:
-    from .models import SearchReport
-    return SearchReport.objects.filter(
-        reviewed_by=admin,
-        status__in=_REVIEWED_STATUSES,
-    ).count()
+    """Сколько действий над SR-отчётами совершил админ.
+
+    Считается по SearchReportReviewLog (одна запись на каждое action). Если
+    статус позже сменили другим админом — первый сохраняет свой кредит.
+    """
+    from .models import SearchReportReviewLog
+    return SearchReportReviewLog.objects.filter(admin=admin).count()
 
 
 def total_actions(admin) -> int:

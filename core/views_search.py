@@ -1225,6 +1225,10 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
                 partner.is_accredited = True
                 partner.save(update_fields=["is_accredited"])
 
+        # Лог модерации (для earnings админа, +10 ₽)
+        from .models import SearchReportReviewLog
+        SearchReportReviewLog.objects.create(report=report, admin=request.user, action=SearchReportReviewLog.Action.APPROVED)
+
     msg = f"Отчёт #{report_id} одобрен. +{ref_reward} руб. пользователю @{report.user.username}."
     if manager_cut > 0:
         msg += f" +{manager_cut} руб. менеджеру."
@@ -1271,6 +1275,10 @@ def admin_search_report_reject(request: HttpRequest, report_id: int) -> HttpResp
             lead_owner.save(update_fields=["balance"])
             log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"search_reject#{report_id} -{_ref_reward}", request.user)
 
+        # Лог модерации (+10 ₽ админу)
+        from .models import SearchReportReviewLog
+        SearchReportReviewLog.objects.create(report=report, admin=request.user, action=SearchReportReviewLog.Action.REJECTED)
+
     messages.success(request, f"Отчёт #{report_id} отклонён.")
     return redirect("admin_search_reports_list")
 
@@ -1311,6 +1319,10 @@ def admin_search_report_rework(request: HttpRequest, report_id: int) -> HttpResp
             lead_owner.balance = _old - _ref_reward
             lead_owner.save(update_fields=["balance"])
             log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"search_rework#{report_id} -{_ref_reward}", request.user)
+
+        # Лог модерации (+10 ₽ админу)
+        from .models import SearchReportReviewLog
+        SearchReportReviewLog.objects.create(report=report, admin=request.user, action=SearchReportReviewLog.Action.REWORK)
 
     messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
     return redirect("admin_search_reports_list")
