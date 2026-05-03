@@ -24,6 +24,13 @@
     </form>
   </div>
 
+  <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
+    <span class="text-muted small">Скопировать одним списком:</span>
+    <button type="button" id="js-copy-page" class="btn btn-success btn-sm">📋 Эту страницу</button>
+    <button type="button" id="js-copy-all" class="btn btn-success btn-sm" data-base="{% if base_type %}{{ base_type.pk }}{% endif %}">📋 Всю базу{% if base_type %}: {{ base_type.name }}{% else %}: все базы{% endif %}</button>
+    <span id="js-copy-status" class="small text-muted ms-2"></span>
+  </div>
+
   <div class="card shadow-sm">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 border-secondary">
       <span>Контакты для копирования</span>
@@ -103,10 +110,12 @@
   </style>
   <script>
     (function() {
+      // localStorage — галочки сохраняются между сессиями (раньше был sessionStorage,
+      // он стирался при закрытии вкладки и пользователи теряли отметки).
       var STORAGE_KEY = 'contacts_copied';
       function getCopied() {
         try {
-          var s = sessionStorage.getItem(STORAGE_KEY);
+          var s = localStorage.getItem(STORAGE_KEY);
           return s ? JSON.parse(s) : {};
         } catch (e) { return {}; }
       }
@@ -114,7 +123,14 @@
         try {
           var o = getCopied();
           o[value] = true;
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(o));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(o));
+        } catch (e) {}
+      }
+      function setManyCopied(values) {
+        try {
+          var o = getCopied();
+          values.forEach(function(v) { if (v) o[v] = true; });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(o));
         } catch (e) {}
       }
       function copyToClipboard(text) {
@@ -172,6 +188,77 @@
           });
         });
       });
+
+      // === «Скопировать страницу» — все контакты на текущей странице ===
+      var statusEl = document.getElementById('js-copy-status');
+      function flashStatus(msg) {
+        if (!statusEl) return;
+        statusEl.textContent = msg;
+        statusEl.className = 'small text-success ms-2';
+        setTimeout(function() {
+          statusEl.textContent = '';
+          statusEl.className = 'small text-muted ms-2';
+        }, 2200);
+      }
+
+      var copyPageBtn = document.getElementById('js-copy-page');
+      if (copyPageBtn) {
+        copyPageBtn.addEventListener('click', function() {
+          var values = [];
+          document.querySelectorAll('.contact-row').forEach(function(row) {
+            var v = row.getAttribute('data-contact-value');
+            if (v) values.push(v);
+          });
+          if (!values.length) { flashStatus('Контактов нет'); return; }
+          var text = values.join('\n');
+          copyToClipboard(text).then(function() {
+            // Помечаем все строки как скопированные
+            setManyCopied(values);
+            document.querySelectorAll('.contact-row').forEach(function(row) {
+              var m = row.querySelector('.js-copied-mark');
+              if (m) m.style.display = '';
+            });
+            flashStatus('Скопировано ' + values.length + ' контактов с этой страницы');
+          }, function() { flashStatus('Не удалось скопировать'); });
+        });
+      }
+
+      // === «Скопировать всю базу» — fetch на download_my_contacts_txt ===
+      var copyAllBtn = document.getElementById('js-copy-all');
+      if (copyAllBtn) {
+        copyAllBtn.addEventListener('click', function() {
+          var base = copyAllBtn.getAttribute('data-base') || '';
+          var url = '{% url "download_my_contacts_txt" %}' + (base ? '?base_type=' + encodeURIComponent(base) : '');
+          copyAllBtn.disabled = true;
+          var origText = copyAllBtn.textContent;
+          copyAllBtn.textContent = '⏳ Загружаю…';
+          fetch(url, { credentials: 'same-origin' })
+            .then(function(r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return r.text();
+            })
+            .then(function(txt) {
+              var values = txt.split(/\r?\n/).filter(function(s) { return s.trim(); });
+              if (!values.length) { flashStatus('Контактов нет'); return; }
+              return copyToClipboard(values.join('\n')).then(function() {
+                setManyCopied(values);
+                document.querySelectorAll('.contact-row').forEach(function(row) {
+                  var v = row.getAttribute('data-contact-value');
+                  if (v && values.indexOf(v) !== -1) {
+                    var m = row.querySelector('.js-copied-mark');
+                    if (m) m.style.display = '';
+                  }
+                });
+                flashStatus('Скопировано ' + values.length + ' контактов');
+              });
+            })
+            .catch(function(e) { flashStatus('Ошибка: ' + e.message); })
+            .finally(function() {
+              copyAllBtn.disabled = false;
+              copyAllBtn.textContent = origText;
+            });
+        });
+      }
     })();
   </script>
 {% endblock %}

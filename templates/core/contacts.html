@@ -72,9 +72,10 @@
     <style>.user-select-none { -webkit-user-select: none; user-select: none; }</style>
     <script>
     (function() {
+      // localStorage — галочки сохраняются после перезагрузки/закрытия вкладки
       var STORAGE_KEY = 'contacts_copied';
-      function getCopied() { try { var s = sessionStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : {}; } catch (e) { return {}; } }
-      function setCopied(value) { try { var o = getCopied(); o[value] = true; sessionStorage.setItem(STORAGE_KEY, JSON.stringify(o)); } catch (e) {} }
+      function getCopied() { try { var s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : {}; } catch (e) { return {}; } }
+      function setCopied(value) { try { var o = getCopied(); o[value] = true; localStorage.setItem(STORAGE_KEY, JSON.stringify(o)); } catch (e) {} }
       function copyToClipboard(text) {
         if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
         var ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px;top:0';
