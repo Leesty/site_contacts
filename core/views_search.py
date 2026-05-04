@@ -295,12 +295,9 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
                 messages.error(request, f"Номер «{client_phone_raw}» невалидный. Формат: +7XXXXXXXXXX.")
                 return render(request, "search/report_form.html", {"link": link})
 
-        # Нормализуем контакт для дедупликации (телефон / @username / vk-id и т.д.)
+        # Нормализуем контакт для дедупликации (единый формат для phone/bot_start).
         from .lead_utils import normalize_lead_contact, compress_lead_attachment
-        if is_phone:
-            normalized = client_phone  # уже в формате +7XXXXXXXXXX
-        else:
-            normalized = normalize_lead_contact(raw_contact)
+        normalized = normalize_lead_contact(client_phone if is_phone else raw_contact)
 
         report = SearchReport.objects.create(
             user=request.user,
@@ -1148,27 +1145,13 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
             report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
             return redirect("admin_search_reports_list")
 
-        # Проверка дубликатов:
-        # - bot_start: link.duplicate_of (поставлено webhook'ом/auto_match)
-        # - phone_callback: ищем другой phone_callback report с тем же client_phone
-        dup_link = _sl.duplicate_of
-        dup_phone_report = None
-        if is_phone_report and report.client_phone:
-            dup_phone_report = _find_duplicate_phone_report(
-                exclude_report_id=report.pk, client_phone=report.client_phone,
-            )
-        if dup_link or dup_phone_report:
-            if dup_link:
-                reason_short = f"Дубликат: этот клиент уже привлекался по ссылке #{dup_link.display_id or dup_link.id} (@{dup_link.user.username})."
-            else:
-                reason_short = f"Дубликат номера: телефон уже использовался в отчёте #{dup_phone_report.id} (@{dup_phone_report.user.username})."
-            messages.error(request, f"Отчёт #{report_id} аннулирован. {reason_short}")
-            report.status = SearchReport.Status.REJECTED
-            report.rejection_reason = "Автоотклонение: " + reason_short
-            report.reviewed_at = timezone.now()
-            report.reviewed_by = request.user
-            report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
-            return redirect("admin_search_reports_list")
+        # Дубликат? Если админ ВРУЧНУЮ жмёт «Одобрить» по дублю — значит он
+        # явно решил что это не дубликат. Снимаем флаг duplicate_of и
+        # продолжаем approve (а не зацикливаем reject).
+        if _sl.duplicate_of_id:
+            _sl.duplicate_of = None
+            _sl.save(update_fields=["duplicate_of", "updated_at"])
+            messages.info(request, f"Отчёт #{report_id}: пометка «дубликат» снята вручную при одобрении.")
 
         lead_owner = User.objects.select_for_update().get(pk=report.user_id)
         from .models import PartnerEarning, log_balance_change
