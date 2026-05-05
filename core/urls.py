@@ -376,5 +376,7 @@ urlpatterns = [
     path("staff/payment/<int:user_id>/multiply/", views_support_admin.balance_admin_payment_multiply, name="balance_admin_payment_multiply"),
     path("staff/payment/<int:user_id>/subtract/", views_support_admin.balance_admin_payment_subtract, name="balance_admin_payment_subtract"),
     path("staff/payment/<int:user_id>/revert/", views_support_admin.balance_admin_payment_revert, name="balance_admin_payment_revert"),
+    # Calendar (main_admin only): зеркало календаря созвонов из бот-сервера, read-only
+    path("staff/calendar/", views_support_admin.admin_calendar, name="admin_calendar"),
 ]
 

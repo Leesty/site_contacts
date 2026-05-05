@@ -3114,3 +3114,127 @@ def admin_phone_reports(request: HttpRequest) -> HttpResponse:
         "totals": totals,
     })
 
+
+@login_required
+def admin_calendar(request: HttpRequest) -> HttpResponse:
+    """Календарь созвонов (read-only). Тянет данные из БД бота (windowgram).
+
+    Только для главного админа. Источник — таблица calendar_events на
+    bot-сервере; статусные напоминалки ([Жду бабки], [Ответ] и т.п.)
+    скрыты по умолчанию.
+    """
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Недостаточно прав.")
+
+    from django.db import connections
+
+    today = timezone.localtime(timezone.now()).date()
+
+    ym = (request.GET.get("ym") or "").strip()
+    cur_first: date
+    if ym:
+        try:
+            y_str, m_str = ym.split("-")
+            cur_first = date(int(y_str), int(m_str), 1)
+        except (ValueError, TypeError):
+            cur_first = date(today.year, today.month, 1)
+    else:
+        cur_first = date(today.year, today.month, 1)
+
+    if cur_first.month == 12:
+        next_first = date(cur_first.year + 1, 1, 1)
+    else:
+        next_first = date(cur_first.year, cur_first.month + 1, 1)
+    last_day = next_first - timedelta(days=1)
+
+    grid_start = cur_first - timedelta(days=cur_first.weekday())  # Пн недели 1-го числа
+    grid_end = last_day + timedelta(days=6 - last_day.weekday())  # Вс недели последнего
+
+    show_status_events = request.GET.get("all") == "1"
+
+    sql = """
+        SELECT
+            ce.id, ce.event_date, ce.event_time, ce.user_name, ce.user_username,
+            ce.created_at, ce.conversation_id,
+            c.client_display_name, c.group_title, c.group_invite_link,
+            c.group_chat_id, c.vk_peer_id, c.status, c.status_amount,
+            tu.telegram_id, tu.username AS tu_username, tu.vk_id,
+            b.telegram_username AS bot_username
+        FROM calendar_events ce
+        LEFT JOIN conversations c ON c.id = ce.conversation_id
+        LEFT JOIN telegram_users tu ON tu.id = c.telegram_user_id
+        LEFT JOIN bots b ON b.id = c.bot_id
+        WHERE ce.event_date BETWEEN %s AND %s
+        ORDER BY ce.event_date, ce.event_time NULLS LAST, ce.created_at
+    """
+
+    NON_BOOKING_PREFIXES = ("[Жду бабки]", "[Ответ]", "[Жду без даты]", "[Просрочка")
+
+    events_by_date: dict[date, list[dict]] = {}
+    db_error: str | None = None
+    try:
+        with connections["windowgram"].cursor() as cur:
+            cur.execute(sql, [grid_start, grid_end])
+            cols = [c[0] for c in cur.description]
+            for row in cur.fetchall():
+                ev = dict(zip(cols, row))
+                name = (ev.get("user_name") or "").strip()
+                if not show_status_events and any(name.startswith(p) for p in NON_BOOKING_PREFIXES):
+                    continue
+                ev["platform"] = "vk" if ev.get("vk_peer_id") else "telegram"
+                ev["display_name"] = ev.get("client_display_name") or name or "Клиент"
+                ev["username_clean"] = ev.get("user_username") or ev.get("tu_username")
+                ev["id_str"] = str(ev["id"])
+                events_by_date.setdefault(ev["event_date"], []).append(ev)
+    except Exception as exc:
+        db_error = str(exc)
+
+    weeks: list[list[dict]] = []
+    week: list[dict] = []
+    d = grid_start
+    while d <= grid_end:
+        week.append({
+            "date": d,
+            "in_month": d.month == cur_first.month,
+            "is_today": d == today,
+            "events": events_by_date.get(d, []),
+        })
+        if len(week) == 7:
+            weeks.append(week)
+            week = []
+        d += timedelta(days=1)
+
+    if cur_first.month == 1:
+        prev_ym = f"{cur_first.year - 1}-12"
+    else:
+        prev_ym = f"{cur_first.year}-{cur_first.month - 1:02d}"
+    if cur_first.month == 12:
+        next_ym = f"{cur_first.year + 1}-01"
+    else:
+        next_ym = f"{cur_first.year}-{cur_first.month + 1:02d}"
+
+    MONTHS_RU = [
+        "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+    ]
+
+    upcoming_count = sum(
+        1
+        for d2, evs in events_by_date.items()
+        if cur_first <= d2 < next_first
+        for _ in evs
+    )
+
+    return render(request, "core/admin_calendar.html", {
+        "weeks": weeks,
+        "month_name": MONTHS_RU[cur_first.month - 1],
+        "month_year": cur_first,
+        "today": today,
+        "prev_ym": prev_ym,
+        "next_ym": next_ym,
+        "current_ym": f"{cur_first.year}-{cur_first.month:02d}",
+        "show_status_events": show_status_events,
+        "upcoming_count": upcoming_count,
+        "db_error": db_error,
+    })
+

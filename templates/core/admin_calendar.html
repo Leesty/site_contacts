@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Календарь созвонов — Партнёрка{% endblock %}
+
+{% block content %}
+<style>
+  .cal-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .cal-grid th { background: rgba(255,255,255,0.04); color: #94a3b8; font-weight: 500;
+    padding: 8px 4px; text-align: center; font-size: 12px;
+    border: 1px solid rgba(255,255,255,0.06); }
+  .cal-grid td { vertical-align: top; height: 110px; padding: 4px 5px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.015); overflow: hidden; }
+  .cal-grid td.out-of-month { background: rgba(255,255,255,0.005); }
+  .cal-grid td.out-of-month .cal-day-num { color: #475569; }
+  .cal-grid td.today { background: rgba(99,102,241,0.08);
+    border: 1px solid rgba(99,102,241,0.4); }
+  .cal-grid td.today .cal-day-num { color: #818cf8; }
+  .cal-grid td.weekend { background: rgba(251,191,36,0.025); }
+  .cal-day-num { font-size: 13px; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;
+    display: flex; justify-content: space-between; align-items: center; }
+  .cal-day-count { font-size: 10px; color: #64748b; font-weight: 400; }
+  .cal-event { display: block; font-size: 11px; line-height: 1.3;
+    padding: 2px 6px; margin-bottom: 2px; border-radius: 4px;
+    background: rgba(99,102,241,0.18); color: #e0e7ff;
+    cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border: none; text-align: left; width: 100%; }
+  .cal-event:hover { background: rgba(99,102,241,0.32); color: #fff; }
+  .cal-event.platform-vk { background: rgba(6,182,212,0.18); color: #cffafe; }
+  .cal-event.platform-vk:hover { background: rgba(6,182,212,0.32); color: #fff; }
+  .cal-event.is-status { background: rgba(245,158,11,0.16); color: #fef3c7; }
+  .cal-event.is-status:hover { background: rgba(245,158,11,0.28); }
+  .cal-event-time { font-weight: 700; margin-right: 4px; color: #fef3c7; }
+  .cal-event.platform-vk .cal-event-time { color: #cffafe; }
+  .cal-modal-content { background: #1e293b; color: #e2e8f0;
+    border: 1px solid rgba(255,255,255,0.1); }
+  .cal-modal-content .modal-header { border-color: rgba(255,255,255,0.08); }
+  @media (max-width: 768px) {
+    .cal-grid td { height: 80px; padding: 2px 3px; }
+    .cal-event { font-size: 10px; padding: 1px 4px; }
+    .cal-day-num { font-size: 11px; }
+  }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h1 class="h4 mb-0">📅 Календарь созвонов</h1>
+  <div class="d-flex gap-2 align-items-center">
+    <a class="btn btn-sm btn-outline-secondary" href="?ym={{ prev_ym }}{% if show_status_events %}&amp;all=1{% endif %}" aria-label="Предыдущий месяц">◀</a>
+    <span class="fw-semibold" style="min-width: 150px; text-align: center;">{{ month_name }} {{ month_year|date:"Y" }}</span>
+    <a class="btn btn-sm btn-outline-secondary" href="?ym={{ next_ym }}{% if show_status_events %}&amp;all=1{% endif %}" aria-label="Следующий месяц">▶</a>
+    <a class="btn btn-sm btn-outline-primary ms-2" href="?{% if show_status_events %}all=1{% endif %}">Сегодня</a>
+  </div>
+</div>
+
+{% if db_error %}
+  <div class="alert alert-warning small mb-3">
+    Не удалось подтянуть данные с бот-сервера: <code>{{ db_error }}</code>.
+    Проверьте переменные <code>WG_DB_*</code> и доступ к PostgreSQL.
+  </div>
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body p-2">
+    <table class="cal-grid">
+      <thead>
+        <tr>
+          <th>Пн</th><th>Вт</th><th>Ср</th><th>Чт</th><th>Пт</th>
+          <th style="color:#fbbf24">Сб</th><th style="color:#fbbf24">Вс</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for week in weeks %}
+          <tr>
+            {% for cell in week %}
+              <td class="{% if not cell.in_month %}out-of-month{% endif %}{% if cell.is_today %} today{% endif %}{% if cell.date.weekday == 5 or cell.date.weekday == 6 %} weekend{% endif %}">
+                <div class="cal-day-num">
+                  <span>{{ cell.date|date:"j" }}{% if cell.date.day == 1 or forloop.parentloop.first and forloop.first %} <small class="text-muted" style="font-size:9px">{{ cell.date|date:"M" }}</small>{% endif %}</span>
+                  {% if cell.events %}<span class="cal-day-count">{{ cell.events|length }}</span>{% endif %}
+                </div>
+                {% for ev in cell.events %}
+                  <button type="button"
+                          class="cal-event platform-{{ ev.platform }}{% if ev.user_name|slice:':4' == '[Жду' or ev.user_name|slice:':5' == '[Ответ' or ev.user_name|slice:':9' == '[Просрочк' %} is-status{% endif %}"
+                          data-bs-toggle="modal" data-bs-target="#evt-{{ ev.id_str }}"
+                          title="{{ ev.event_time|default:'--:--' }} · {{ ev.display_name }}">
+                    <span class="cal-event-time">{{ ev.event_time|default:"--:--" }}</span>{{ ev.display_name }}
+                  </button>
+                {% endfor %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="d-flex flex-wrap gap-3 small text-muted mb-4 align-items-center">
+  <span><span class="d-inline-block" style="width:10px;height:10px;background:rgba(99,102,241,0.5);border-radius:2px;vertical-align:middle"></span> Telegram</span>
+  <span><span class="d-inline-block" style="width:10px;height:10px;background:rgba(6,182,212,0.5);border-radius:2px;vertical-align:middle"></span> VK</span>
+  {% if show_status_events %}
+    <span><span class="d-inline-block" style="width:10px;height:10px;background:rgba(245,158,11,0.5);border-radius:2px;vertical-align:middle"></span> Статусная напоминалка</span>
+  {% endif %}
+  <span class="ms-auto">Событий в месяце: <strong>{{ upcoming_count }}</strong></span>
+  <span>·</span>
+  <a href="?ym={{ current_ym }}{% if not show_status_events %}&amp;all=1{% endif %}" class="text-muted">
+    {% if show_status_events %}скрыть статусные напоминалки{% else %}показать статусные напоминалки{% endif %}
+  </a>
+</div>
+
+{# Модалки с деталями каждого события — рендерятся вне таблицы, чтобы Bootstrap modal корректно работал #}
+{% for week in weeks %}{% for cell in week %}{% for ev in cell.events %}
+<div class="modal fade" id="evt-{{ ev.id_str }}" tabindex="-1" aria-hidden="true" aria-labelledby="evtTitle-{{ ev.id_str }}">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content cal-modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="evtTitle-{{ ev.id_str }}">{{ ev.display_name }}</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          📅 <strong>{{ ev.event_date|date:"l, j E Y" }}</strong>
+          {% if ev.event_time %}в <strong>{{ ev.event_time }}</strong> МСК{% endif %}
+        </p>
+        <p class="mb-2">
+          {% if ev.platform == 'vk' %}
+            <span class="badge" style="background: rgba(6,182,212,0.25); color: #cffafe;">VK</span>
+            {% if ev.vk_id %}<code class="ms-2">id{{ ev.vk_id }}</code>{% endif %}
+          {% else %}
+            <span class="badge" style="background: rgba(99,102,241,0.25); color: #e0e7ff;">Telegram</span>
+            {% if ev.username_clean %}
+              <a href="https://t.me/{{ ev.username_clean }}" target="_blank" rel="noopener" class="text-info ms-2">@{{ ev.username_clean }}</a>
+            {% elif ev.telegram_id %}
+              <code class="ms-2">id {{ ev.telegram_id }}</code>
+            {% endif %}
+          {% endif %}
+        </p>
+        {% if ev.group_title %}
+          <p class="mb-2 small">
+            👥 Группа:
+            {% if ev.group_invite_link %}
+              <a href="{{ ev.group_invite_link }}" target="_blank" rel="noopener" class="text-info">{{ ev.group_title }}</a>
+            {% else %}
+              {{ ev.group_title }}
+            {% endif %}
+          </p>
+        {% endif %}
+        {% if ev.status %}
+          <p class="mb-2 small">
+            Статус диалога:
+            <span class="badge bg-secondary">{{ ev.status }}{% if ev.status_amount %} · {{ ev.status_amount }}{% endif %}</span>
+          </p>
+        {% endif %}
+        {% if ev.bot_username %}
+          <p class="mb-2 small text-muted">Бот: <code>@{{ ev.bot_username }}</code></p>
+        {% endif %}
+        <hr class="border-secondary">
+        <p class="mb-0 small text-muted">Запись создана: {{ ev.created_at|date:"d.m.Y H:i" }}</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}{% endfor %}{% endfor %}
+
+{% endblock %}

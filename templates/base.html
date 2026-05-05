@@ -42,7 +42,9 @@
               {% endif %}
 
               {# — Навигационные ссылки по ролям — #}
-              {% if user.role == 'worker' %}
+              {% if user.role == 'main_admin' %}
+              <li class="nav-item"><a class="nav-link px-2" href="{% url 'admin_calendar' %}">📅 Календарь</a></li>
+              {% elif user.role == 'worker' %}
               <li class="nav-item"><a class="nav-link px-2" href="{% url 'worker_tasks' %}">Задания</a></li>
               <li class="nav-item"><a class="nav-link px-2" href="{% url 'worker_available_leads' %}">Найти лиды</a></li>
               {% elif user.role == 'partner' %}
