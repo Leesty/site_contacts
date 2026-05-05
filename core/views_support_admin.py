@@ -3150,6 +3150,11 @@ def admin_calendar(request: HttpRequest) -> HttpResponse:
     grid_start = cur_first - timedelta(days=cur_first.weekday())  # Пн недели 1-го числа
     grid_end = last_day + timedelta(days=6 - last_day.weekday())  # Вс недели последнего
 
+    # Чтобы блок «Ближайшие 7 дней» работал даже когда смотрим прошлый/будущий месяц —
+    # подгружаем чуть больше окна.
+    range_start = min(grid_start, today)
+    range_end = max(grid_end, today + timedelta(days=7))
+
     show_status_events = request.GET.get("all") == "1"
 
     sql = """
@@ -3169,22 +3174,40 @@ def admin_calendar(request: HttpRequest) -> HttpResponse:
     """
 
     NON_BOOKING_PREFIXES = ("[Жду бабки]", "[Ответ]", "[Жду без даты]", "[Просрочка")
+    EVENTS_VISIBLE_PER_DAY = 4  # сверх — собираем в «+N ещё»
+
+    def _time_bucket(t: str | None) -> str:
+        """morning (<12) / afternoon (12–17) / evening (>=18) / notime."""
+        if not t:
+            return "notime"
+        try:
+            h = int(t.replace(".", ":").split(":")[0])
+        except (ValueError, IndexError):
+            return "notime"
+        if h < 12:
+            return "morning"
+        if h < 18:
+            return "afternoon"
+        return "evening"
 
     events_by_date: dict[date, list[dict]] = {}
     db_error: str | None = None
     try:
         with connections["windowgram"].cursor() as cur:
-            cur.execute(sql, [grid_start, grid_end])
+            cur.execute(sql, [range_start, range_end])
             cols = [c[0] for c in cur.description]
             for row in cur.fetchall():
                 ev = dict(zip(cols, row))
                 name = (ev.get("user_name") or "").strip()
-                if not show_status_events and any(name.startswith(p) for p in NON_BOOKING_PREFIXES):
+                is_status = any(name.startswith(p) for p in NON_BOOKING_PREFIXES)
+                if not show_status_events and is_status:
                     continue
                 ev["platform"] = "vk" if ev.get("vk_peer_id") else "telegram"
                 ev["display_name"] = ev.get("client_display_name") or name or "Клиент"
                 ev["username_clean"] = ev.get("user_username") or ev.get("tu_username")
                 ev["id_str"] = str(ev["id"])
+                ev["is_status"] = is_status
+                ev["time_bucket"] = "status" if is_status else _time_bucket(ev.get("event_time"))
                 events_by_date.setdefault(ev["event_date"], []).append(ev)
     except Exception as exc:
         db_error = str(exc)
@@ -3193,11 +3216,18 @@ def admin_calendar(request: HttpRequest) -> HttpResponse:
     week: list[dict] = []
     d = grid_start
     while d <= grid_end:
+        events = events_by_date.get(d, [])
         week.append({
             "date": d,
             "in_month": d.month == cur_first.month,
             "is_today": d == today,
-            "events": events_by_date.get(d, []),
+            "is_past": d < today,
+            "is_weekend": d.weekday() >= 5,
+            "iso": d.isoformat(),
+            "events": events,
+            "events_visible": events[:EVENTS_VISIBLE_PER_DAY],
+            "events_hidden": max(0, len(events) - EVENTS_VISIBLE_PER_DAY),
+            "events_count": len(events),
         })
         if len(week) == 7:
             weeks.append(week)
@@ -3217,13 +3247,51 @@ def admin_calendar(request: HttpRequest) -> HttpResponse:
         "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
         "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
     ]
+    WEEKDAYS_RU_FULL = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
+    MONTHS_RU_GEN = [
+        "января", "февраля", "марта", "апреля", "мая", "июня",
+        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+    ]
 
-    upcoming_count = sum(
-        1
+    month_event_count = sum(
+        len(evs)
         for d2, evs in events_by_date.items()
         if cur_first <= d2 < next_first
-        for _ in evs
     )
+
+    # Ближайшие 7 дней: группировка по дате. Сегодня всегда первая, даже если пусто.
+    upcoming_groups: list[dict] = []
+    for i in range(7):
+        gd = today + timedelta(days=i)
+        evs = events_by_date.get(gd, [])
+        if i == 0:
+            label = "Сегодня"
+        elif i == 1:
+            label = "Завтра"
+        else:
+            label = f"{gd.day} {MONTHS_RU_GEN[gd.month - 1]}, {WEEKDAYS_RU_FULL[gd.weekday()]}"
+        upcoming_groups.append({
+            "date": gd,
+            "iso": gd.isoformat(),
+            "label": label,
+            "events": evs,
+            "count": len(evs),
+            "is_today": i == 0,
+        })
+
+    # Map для модалок дня — показываем только дни с событиями
+    day_modals: list[dict] = []
+    for d2 in sorted(events_by_date.keys()):
+        if not (grid_start <= d2 <= grid_end):
+            continue
+        evs = events_by_date[d2]
+        day_modals.append({
+            "iso": d2.isoformat(),
+            "date": d2,
+            "label": f"{d2.day} {MONTHS_RU_GEN[d2.month - 1]} {d2.year}, {WEEKDAYS_RU_FULL[d2.weekday()]}",
+            "events": evs,
+            "count": len(evs),
+        })
 
     return render(request, "core/admin_calendar.html", {
         "weeks": weeks,
@@ -3234,7 +3302,9 @@ def admin_calendar(request: HttpRequest) -> HttpResponse:
         "next_ym": next_ym,
         "current_ym": f"{cur_first.year}-{cur_first.month:02d}",
         "show_status_events": show_status_events,
-        "upcoming_count": upcoming_count,
+        "month_event_count": month_event_count,
+        "upcoming_groups": upcoming_groups,
+        "day_modals": day_modals,
         "db_error": db_error,
     })
 

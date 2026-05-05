@@ -5,51 +5,156 @@
 
 {% block content %}
 <style>
-  .cal-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .cal-grid th { background: rgba(255,255,255,0.04); color: #94a3b8; font-weight: 500;
-    padding: 8px 4px; text-align: center; font-size: 12px;
-    border: 1px solid rgba(255,255,255,0.06); }
-  .cal-grid td { vertical-align: top; height: 110px; padding: 4px 5px;
-    border: 1px solid rgba(255,255,255,0.06);
-    background: rgba(255,255,255,0.015); overflow: hidden; }
-  .cal-grid td.out-of-month { background: rgba(255,255,255,0.005); }
-  .cal-grid td.out-of-month .cal-day-num { color: #475569; }
-  .cal-grid td.today { background: rgba(99,102,241,0.08);
-    border: 1px solid rgba(99,102,241,0.4); }
-  .cal-grid td.today .cal-day-num { color: #818cf8; }
-  .cal-grid td.weekend { background: rgba(251,191,36,0.025); }
-  .cal-day-num { font-size: 13px; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;
-    display: flex; justify-content: space-between; align-items: center; }
-  .cal-day-count { font-size: 10px; color: #64748b; font-weight: 400; }
-  .cal-event { display: block; font-size: 11px; line-height: 1.3;
-    padding: 2px 6px; margin-bottom: 2px; border-radius: 4px;
-    background: rgba(99,102,241,0.18); color: #e0e7ff;
-    cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    border: none; text-align: left; width: 100%; }
-  .cal-event:hover { background: rgba(99,102,241,0.32); color: #fff; }
-  .cal-event.platform-vk { background: rgba(6,182,212,0.18); color: #cffafe; }
-  .cal-event.platform-vk:hover { background: rgba(6,182,212,0.32); color: #fff; }
-  .cal-event.is-status { background: rgba(245,158,11,0.16); color: #fef3c7; }
-  .cal-event.is-status:hover { background: rgba(245,158,11,0.28); }
-  .cal-event-time { font-weight: 700; margin-right: 4px; color: #fef3c7; }
-  .cal-event.platform-vk .cal-event-time { color: #cffafe; }
+  /* ====== Шапка ====== */
+  .cal-header { display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .cal-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .cal-title h1 { margin: 0; font-size: 22px; font-weight: 600; color: #e2e8f0; }
+  .cal-title .sub { font-size: 13px; color: #94a3b8; }
+  .cal-nav { display: flex; align-items: center; gap: 8px; }
+  .cal-nav-btn { width: 32px; height: 32px; display: inline-flex; align-items: center;
+    justify-content: center; background: rgba(255,255,255,0.04); color: #cbd5e1;
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; text-decoration: none;
+    font-size: 14px; transition: all 0.15s; }
+  .cal-nav-btn:hover { background: rgba(99,102,241,0.15); color: #fff;
+    border-color: rgba(99,102,241,0.4); }
+  .cal-month-label { font-size: 16px; font-weight: 600; color: #e2e8f0;
+    min-width: 160px; text-align: center; }
+  .cal-today-btn { font-size: 13px; padding: 5px 14px; border-radius: 8px;
+    background: rgba(99,102,241,0.18); color: #c7d2fe;
+    border: 1px solid rgba(99,102,241,0.4); text-decoration: none; transition: all 0.15s; }
+  .cal-today-btn:hover { background: rgba(99,102,241,0.3); color: #fff; }
+
+  /* ====== Сетка ====== */
+  .cal-grid { width: 100%; border-collapse: separate; border-spacing: 0;
+    table-layout: fixed; }
+  .cal-grid th { background: transparent; color: #64748b; font-weight: 600;
+    padding: 8px 4px; text-align: left; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .cal-grid th.weekend { color: #f59e0b; }
+  .cal-grid td { vertical-align: top; height: 130px; padding: 6px 6px 4px 6px;
+    border-right: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    background: rgba(255,255,255,0.012);
+    transition: background 0.15s; cursor: default; }
+  .cal-grid td:first-child { border-left: 1px solid rgba(255,255,255,0.04); }
+  .cal-grid tbody tr:first-child td { border-top: 1px solid rgba(255,255,255,0.04); }
+  .cal-grid td.has-events { cursor: pointer; }
+  .cal-grid td.has-events:hover { background: rgba(99,102,241,0.05); }
+  .cal-grid td.out-of-month { background: rgba(255,255,255,0.002); }
+  .cal-grid td.out-of-month .day-num { color: #475569; }
+  .cal-grid td.is-past:not(.is-today) .day-num { color: #64748b; }
+  .cal-grid td.is-today { background: rgba(99,102,241,0.08); }
+  .cal-grid td.is-weekend { background: rgba(251,191,36,0.018); }
+
+  .day-head { display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px; min-height: 26px; }
+  .day-num { font-size: 13px; font-weight: 600; color: #cbd5e1; padding: 0 4px; }
+  .is-today .day-num { display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; padding: 0; border-radius: 50%;
+    background: #6366f1; color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,0.5); }
+  .day-count { font-size: 10px; color: #64748b; padding: 1px 6px;
+    background: rgba(255,255,255,0.05); border-radius: 10px; font-weight: 500; }
+  .is-today .day-count { background: rgba(99,102,241,0.25); color: #c7d2fe; }
+
+  /* ====== События ====== */
+  .ev { display: block; font-size: 11px; line-height: 1.3; padding: 2px 6px 2px 7px;
+    margin-bottom: 2px; border-radius: 4px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border: none; text-align: left; width: 100%;
+    border-left: 2px solid transparent; transition: all 0.1s; }
+  .ev:hover { filter: brightness(1.25); }
+  .ev-time { font-weight: 700; margin-right: 4px; opacity: 0.95; }
+
+  /* Утро (до 12) — голубой */
+  .ev.b-morning { background: rgba(56,189,248,0.16); color: #bae6fd;
+    border-left-color: #38bdf8; }
+  /* День (12–17) — фиолетовый */
+  .ev.b-afternoon { background: rgba(99,102,241,0.18); color: #e0e7ff;
+    border-left-color: #818cf8; }
+  /* Вечер (18+) — золотой */
+  .ev.b-evening { background: rgba(245,158,11,0.16); color: #fef3c7;
+    border-left-color: #f59e0b; }
+  /* Без времени — серый */
+  .ev.b-notime { background: rgba(148,163,184,0.12); color: #cbd5e1;
+    border-left-color: #64748b; }
+  /* Статусные напоминалки — оранжевый */
+  .ev.b-status { background: rgba(244,114,182,0.14); color: #fbcfe8;
+    border-left-color: #ec4899; font-style: italic; }
+  /* VK — голубоватый оттенок (накладывается на bucket) */
+  .ev.platform-vk { background: rgba(6,182,212,0.18); color: #cffafe; }
+
+  .ev-more { display: block; font-size: 11px; padding: 3px 6px;
+    margin-top: 2px; color: #c7d2fe; cursor: pointer;
+    border-radius: 4px; background: rgba(99,102,241,0.1);
+    border: none; text-align: center; width: 100%; font-weight: 600; }
+  .ev-more:hover { background: rgba(99,102,241,0.2); color: #fff; }
+
+  /* ====== Модалка ====== */
   .cal-modal-content { background: #1e293b; color: #e2e8f0;
     border: 1px solid rgba(255,255,255,0.1); }
-  .cal-modal-content .modal-header { border-color: rgba(255,255,255,0.08); }
+  .cal-modal-content .modal-header,
+  .cal-modal-content .modal-footer { border-color: rgba(255,255,255,0.08); }
+  .cal-evt-row { padding: 10px 12px; border-radius: 8px; margin-bottom: 6px;
+    background: rgba(255,255,255,0.02); border-left: 3px solid #6366f1;
+    display: flex; flex-direction: column; gap: 4px; }
+  .cal-evt-row.b-morning { border-left-color: #38bdf8; }
+  .cal-evt-row.b-afternoon { border-left-color: #818cf8; }
+  .cal-evt-row.b-evening { border-left-color: #f59e0b; }
+  .cal-evt-row.b-notime { border-left-color: #64748b; }
+  .cal-evt-row.b-status { border-left-color: #ec4899; opacity: 0.85; }
+  .cal-evt-row .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cal-evt-time { font-size: 16px; font-weight: 700; color: #fef3c7; min-width: 50px; }
+  .cal-evt-name { font-weight: 600; color: #e2e8f0; flex: 1; }
+  .cal-evt-meta { font-size: 11px; color: #94a3b8; }
+  .cal-evt-meta a { color: #60a5fa; text-decoration: none; }
+  .cal-evt-meta a:hover { text-decoration: underline; }
+  .platform-pill { font-size: 10px; padding: 1px 8px; border-radius: 10px;
+    text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .platform-pill.tg { background: rgba(99,102,241,0.25); color: #c7d2fe; }
+  .platform-pill.vk { background: rgba(6,182,212,0.25); color: #cffafe; }
+
+  /* ====== Список «Ближайшие 7 дней» ====== */
+  .upcoming-block { margin-top: 24px; }
+  .upcoming-day { padding: 10px 14px; background: rgba(255,255,255,0.02);
+    border-radius: 8px; margin-bottom: 8px;
+    border: 1px solid rgba(255,255,255,0.04); }
+  .upcoming-day.is-today { border-color: rgba(99,102,241,0.4);
+    background: rgba(99,102,241,0.05); }
+  .upcoming-day-head { display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 6px; }
+  .upcoming-label { font-weight: 600; color: #e2e8f0; }
+  .upcoming-day.is-today .upcoming-label { color: #c7d2fe; }
+  .upcoming-count { font-size: 11px; color: #94a3b8; }
+  .upcoming-empty { font-size: 12px; color: #64748b; font-style: italic; }
+  .upcoming-evlist { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+
+  /* ====== Легенда ====== */
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+    font-size: 12px; color: #94a3b8; padding: 10px 0; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+
+  /* ====== Mobile ====== */
   @media (max-width: 768px) {
-    .cal-grid td { height: 80px; padding: 2px 3px; }
-    .cal-event { font-size: 10px; padding: 1px 4px; }
-    .cal-day-num { font-size: 11px; }
+    .cal-grid td { height: 80px; padding: 3px 3px; }
+    .ev { font-size: 10px; padding: 1px 4px; }
+    .day-num { font-size: 11px; }
+    .is-today .day-num { width: 22px; height: 22px; font-size: 11px; }
+    .cal-grid th { font-size: 10px; padding: 6px 2px; }
   }
 </style>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h1 class="h4 mb-0">📅 Календарь созвонов</h1>
-  <div class="d-flex gap-2 align-items-center">
-    <a class="btn btn-sm btn-outline-secondary" href="?ym={{ prev_ym }}{% if show_status_events %}&amp;all=1{% endif %}" aria-label="Предыдущий месяц">◀</a>
-    <span class="fw-semibold" style="min-width: 150px; text-align: center;">{{ month_name }} {{ month_year|date:"Y" }}</span>
-    <a class="btn btn-sm btn-outline-secondary" href="?ym={{ next_ym }}{% if show_status_events %}&amp;all=1{% endif %}" aria-label="Следующий месяц">▶</a>
-    <a class="btn btn-sm btn-outline-primary ms-2" href="?{% if show_status_events %}all=1{% endif %}">Сегодня</a>
+<div class="cal-header">
+  <div class="cal-title">
+    <h1>Календарь созвонов</h1>
+    <span class="sub">{{ month_name }} {{ month_year|date:"Y" }} · {{ month_event_count }} событ{{ month_event_count|pluralize:"ие,ия,ий" }}</span>
+  </div>
+  <div class="cal-nav">
+    <a class="cal-nav-btn" href="?ym={{ prev_ym }}{% if show_status_events %}&amp;all=1{% endif %}" aria-label="Предыдущий месяц">‹</a>
+    <span class="cal-month-label">{{ month_name }} {{ month_year|date:"Y" }}</span>
+    <a class="cal-nav-btn" href="?ym={{ next_ym }}{% if show_status_events %}&amp;all=1{% endif %}" aria-label="Следующий месяц">›</a>
+    <a class="cal-today-btn ms-2" href="?{% if show_status_events %}all=1{% endif %}">Сегодня</a>
   </div>
 </div>
 
@@ -66,26 +171,30 @@
       <thead>
         <tr>
           <th>Пн</th><th>Вт</th><th>Ср</th><th>Чт</th><th>Пт</th>
-          <th style="color:#fbbf24">Сб</th><th style="color:#fbbf24">Вс</th>
+          <th class="weekend">Сб</th><th class="weekend">Вс</th>
         </tr>
       </thead>
       <tbody>
         {% for week in weeks %}
           <tr>
             {% for cell in week %}
-              <td class="{% if not cell.in_month %}out-of-month{% endif %}{% if cell.is_today %} today{% endif %}{% if cell.date.weekday == 5 or cell.date.weekday == 6 %} weekend{% endif %}">
-                <div class="cal-day-num">
-                  <span>{{ cell.date|date:"j" }}{% if cell.date.day == 1 or forloop.parentloop.first and forloop.first %} <small class="text-muted" style="font-size:9px">{{ cell.date|date:"M" }}</small>{% endif %}</span>
-                  {% if cell.events %}<span class="cal-day-count">{{ cell.events|length }}</span>{% endif %}
+              <td class="{% if not cell.in_month %}out-of-month {% endif %}{% if cell.is_today %}is-today {% endif %}{% if cell.is_past %}is-past {% endif %}{% if cell.is_weekend %}is-weekend {% endif %}{% if cell.events_count %}has-events{% endif %}"
+                  {% if cell.events_count %}data-bs-toggle="modal" data-bs-target="#day-{{ cell.iso }}"{% endif %}>
+                <div class="day-head">
+                  <span class="day-num">{{ cell.date|date:"j" }}</span>
+                  {% if cell.events_count %}<span class="day-count">{{ cell.events_count }}</span>{% endif %}
                 </div>
-                {% for ev in cell.events %}
-                  <button type="button"
-                          class="cal-event platform-{{ ev.platform }}{% if ev.user_name|slice:':4' == '[Жду' or ev.user_name|slice:':5' == '[Ответ' or ev.user_name|slice:':9' == '[Просрочк' %} is-status{% endif %}"
-                          data-bs-toggle="modal" data-bs-target="#evt-{{ ev.id_str }}"
-                          title="{{ ev.event_time|default:'--:--' }} · {{ ev.display_name }}">
-                    <span class="cal-event-time">{{ ev.event_time|default:"--:--" }}</span>{{ ev.display_name }}
-                  </button>
+                {% for ev in cell.events_visible %}
+                  <span class="ev b-{{ ev.time_bucket }}{% if ev.platform == 'vk' and not ev.is_status %} platform-vk{% endif %}"
+                        title="{{ ev.event_time|default:'без времени' }} · {{ ev.display_name }}">
+                    <span class="ev-time">{{ ev.event_time|default:"--:--" }}</span>{{ ev.display_name }}
+                  </span>
                 {% endfor %}
+                {% if cell.events_hidden %}
+                  <span class="ev-more" data-bs-toggle="modal" data-bs-target="#day-{{ cell.iso }}">
+                    + ещё {{ cell.events_hidden }}
+                  </span>
+                {% endif %}
               </td>
             {% endfor %}
           </tr>
@@ -95,71 +204,110 @@
   </div>
 </div>
 
-<div class="d-flex flex-wrap gap-3 small text-muted mb-4 align-items-center">
-  <span><span class="d-inline-block" style="width:10px;height:10px;background:rgba(99,102,241,0.5);border-radius:2px;vertical-align:middle"></span> Telegram</span>
-  <span><span class="d-inline-block" style="width:10px;height:10px;background:rgba(6,182,212,0.5);border-radius:2px;vertical-align:middle"></span> VK</span>
+<div class="legend">
+  <span><span class="legend-dot" style="background:#38bdf8"></span>Утро (до 12)</span>
+  <span><span class="legend-dot" style="background:#818cf8"></span>День (12–18)</span>
+  <span><span class="legend-dot" style="background:#f59e0b"></span>Вечер (18+)</span>
   {% if show_status_events %}
-    <span><span class="d-inline-block" style="width:10px;height:10px;background:rgba(245,158,11,0.5);border-radius:2px;vertical-align:middle"></span> Статусная напоминалка</span>
+    <span><span class="legend-dot" style="background:#ec4899"></span>Статусная напоминалка</span>
   {% endif %}
-  <span class="ms-auto">Событий в месяце: <strong>{{ upcoming_count }}</strong></span>
-  <span>·</span>
-  <a href="?ym={{ current_ym }}{% if not show_status_events %}&amp;all=1{% endif %}" class="text-muted">
-    {% if show_status_events %}скрыть статусные напоминалки{% else %}показать статусные напоминалки{% endif %}
-  </a>
+  <span class="ms-auto">
+    <a href="?ym={{ current_ym }}{% if not show_status_events %}&amp;all=1{% endif %}" class="text-muted small">
+      {% if show_status_events %}скрыть напоминалки{% else %}показать напоминалки <code>[Жду бабки]/[Ответ]</code>{% endif %}
+    </a>
+  </span>
 </div>
 
-{# Модалки с деталями каждого события — рендерятся вне таблицы, чтобы Bootstrap modal корректно работал #}
-{% for week in weeks %}{% for cell in week %}{% for ev in cell.events %}
-<div class="modal fade" id="evt-{{ ev.id_str }}" tabindex="-1" aria-hidden="true" aria-labelledby="evtTitle-{{ ev.id_str }}">
-  <div class="modal-dialog modal-dialog-centered">
+{# ====== Список «Ближайшие 7 дней» ====== #}
+<div class="upcoming-block">
+  <h6 class="text-uppercase mb-3" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">
+    Ближайшие 7 дней
+  </h6>
+  {% for g in upcoming_groups %}
+    <div class="upcoming-day{% if g.is_today %} is-today{% endif %}">
+      <div class="upcoming-day-head">
+        <span class="upcoming-label">{{ g.label }}</span>
+        <span class="upcoming-count">
+          {% if g.count %}
+            {{ g.count }} событ{{ g.count|pluralize:"ие,ия,ий" }}
+            {% if g.count > 0 %}
+              · <a href="#" data-bs-toggle="modal" data-bs-target="#day-{{ g.iso }}" class="text-info">подробнее</a>
+            {% endif %}
+          {% else %}
+            <span class="upcoming-empty">пусто</span>
+          {% endif %}
+        </span>
+      </div>
+      {% if g.count %}
+        <div class="upcoming-evlist">
+          {% for ev in g.events|slice:":8" %}
+            <span class="ev b-{{ ev.time_bucket }}{% if ev.platform == 'vk' and not ev.is_status %} platform-vk{% endif %}"
+                  style="display:inline-block; width:auto; max-width:240px;"
+                  data-bs-toggle="modal" data-bs-target="#day-{{ g.iso }}"
+                  title="{{ ev.display_name }}">
+              <span class="ev-time">{{ ev.event_time|default:"--:--" }}</span>{{ ev.display_name }}
+            </span>
+          {% endfor %}
+          {% if g.count > 8 %}
+            <a href="#" data-bs-toggle="modal" data-bs-target="#day-{{ g.iso }}" class="text-muted small align-self-center">
+              + ещё {{ g.count|add:"-8" }}
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+{# ====== Модалки на каждый день с событиями ====== #}
+{% for dm in day_modals %}
+<div class="modal fade" id="day-{{ dm.iso }}" tabindex="-1" aria-hidden="true" aria-labelledby="dayTitle-{{ dm.iso }}">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
     <div class="modal-content cal-modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="evtTitle-{{ ev.id_str }}">{{ ev.display_name }}</h5>
+        <h5 class="modal-title" id="dayTitle-{{ dm.iso }}">
+          {{ dm.label }} <span class="text-muted small ms-2">· {{ dm.count }} событ{{ dm.count|pluralize:"ие,ия,ий" }}</span>
+        </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
       <div class="modal-body">
-        <p class="mb-2">
-          📅 <strong>{{ ev.event_date|date:"l, j E Y" }}</strong>
-          {% if ev.event_time %}в <strong>{{ ev.event_time }}</strong> МСК{% endif %}
-        </p>
-        <p class="mb-2">
-          {% if ev.platform == 'vk' %}
-            <span class="badge" style="background: rgba(6,182,212,0.25); color: #cffafe;">VK</span>
-            {% if ev.vk_id %}<code class="ms-2">id{{ ev.vk_id }}</code>{% endif %}
-          {% else %}
-            <span class="badge" style="background: rgba(99,102,241,0.25); color: #e0e7ff;">Telegram</span>
-            {% if ev.username_clean %}
-              <a href="https://t.me/{{ ev.username_clean }}" target="_blank" rel="noopener" class="text-info ms-2">@{{ ev.username_clean }}</a>
-            {% elif ev.telegram_id %}
-              <code class="ms-2">id {{ ev.telegram_id }}</code>
-            {% endif %}
-          {% endif %}
-        </p>
-        {% if ev.group_title %}
-          <p class="mb-2 small">
-            👥 Группа:
-            {% if ev.group_invite_link %}
-              <a href="{{ ev.group_invite_link }}" target="_blank" rel="noopener" class="text-info">{{ ev.group_title }}</a>
-            {% else %}
-              {{ ev.group_title }}
-            {% endif %}
-          </p>
-        {% endif %}
-        {% if ev.status %}
-          <p class="mb-2 small">
-            Статус диалога:
-            <span class="badge bg-secondary">{{ ev.status }}{% if ev.status_amount %} · {{ ev.status_amount }}{% endif %}</span>
-          </p>
-        {% endif %}
-        {% if ev.bot_username %}
-          <p class="mb-2 small text-muted">Бот: <code>@{{ ev.bot_username }}</code></p>
-        {% endif %}
-        <hr class="border-secondary">
-        <p class="mb-0 small text-muted">Запись создана: {{ ev.created_at|date:"d.m.Y H:i" }}</p>
+        {% for ev in dm.events %}
+          <div class="cal-evt-row b-{{ ev.time_bucket }}">
+            <div class="top">
+              <span class="cal-evt-time">{{ ev.event_time|default:"--:--" }}</span>
+              <span class="cal-evt-name">{{ ev.display_name }}</span>
+              {% if ev.platform == 'vk' %}
+                <span class="platform-pill vk">VK</span>
+              {% else %}
+                <span class="platform-pill tg">TG</span>
+              {% endif %}
+              {% if ev.is_status %}<span class="platform-pill" style="background:rgba(244,114,182,0.25); color:#fbcfe8;">напоминалка</span>{% endif %}
+            </div>
+            <div class="cal-evt-meta">
+              {% if ev.platform == 'vk' %}
+                {% if ev.vk_id %}<span>id{{ ev.vk_id }}</span>{% endif %}
+              {% else %}
+                {% if ev.username_clean %}
+                  <a href="https://t.me/{{ ev.username_clean }}" target="_blank" rel="noopener">@{{ ev.username_clean }}</a>
+                {% elif ev.telegram_id %}
+                  <span>id {{ ev.telegram_id }}</span>
+                {% endif %}
+              {% endif %}
+              {% if ev.group_title %}
+                · {% if ev.group_invite_link %}<a href="{{ ev.group_invite_link }}" target="_blank" rel="noopener">{{ ev.group_title }}</a>{% else %}{{ ev.group_title }}{% endif %}
+              {% endif %}
+              {% if ev.bot_username %}· бот <code>@{{ ev.bot_username }}</code>{% endif %}
+              {% if ev.status %}· статус: <span class="badge bg-secondary">{{ ev.status }}{% if ev.status_amount %} · {{ ev.status_amount }}{% endif %}</span>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="modal-footer">
+        <small class="text-muted">Данные из бот-сервера, real-time. Изменения в календаре — только на стороне мурзвона.</small>
       </div>
     </div>
   </div>
 </div>
-{% endfor %}{% endfor %}{% endfor %}
+{% endfor %}
 
 {% endblock %}

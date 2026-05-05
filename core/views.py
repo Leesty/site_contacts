@@ -317,6 +317,25 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                     ba_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
                     admin_stats_list.append({"user": a, "role_label": f"Баланс-админ ({ba_rate}₽ + SL {ba_sl_rate}₽)", "actions": "—", "earned": ba_earned, "available": max(0, ba_earned - ba_withdrawn)})
             ctx["admin_stats_list"] = admin_stats_list
+            # Счётчик созвонов на сегодня (для карточки «Календарь»). Soft-fail если БД бота недоступна.
+            try:
+                from django.db import connections as _conns
+                with _conns["windowgram"].cursor() as _cur:
+                    _cur.execute(
+                        """
+                        SELECT count(*) FROM calendar_events
+                        WHERE event_date = CURRENT_DATE
+                          AND (user_name IS NULL OR (
+                            user_name NOT LIKE '[Жду бабки]%%'
+                            AND user_name NOT LIKE '[Ответ]%%'
+                            AND user_name NOT LIKE '[Жду без даты]%%'
+                            AND user_name NOT LIKE '[Просрочка%%'
+                          ))
+                        """
+                    )
+                    ctx["calendar_today_count"] = _cur.fetchone()[0]
+            except Exception:
+                ctx["calendar_today_count"] = 0
             return render(request, "core/dashboard_main_admin.html", ctx)
 
         return render(request, "core/dashboard_admin.html", ctx)
