@@ -1134,11 +1134,24 @@ def _lead_exists_globally(raw_contact: str, exclude_lead_id: int | None = None) 
 
 @login_required
 def leads_report_placeholder(request: HttpRequest) -> HttpResponse:
-    """Страница отправки отчёта по лидам. После отправки остаёмся на странице — можно добавить ещё лид."""
+    """Страница отправки отчёта по лидам. После отправки остаёмся на странице — можно добавить ещё лид.
 
+    ВАЖНО: для role=user (обычные менеджеры/рефы) старая Lead-система отключена —
+    работают только через SearchLink. Доступ остаётся для admin/main_admin/support
+    чтобы они могли просматривать форму при отладке.
+    """
     user = request.user
     if not _ensure_user_approved(request):
         return redirect("dashboard")
+    # Блок для role=user (включая рефералов) в department=search.
+    if getattr(user, "role", None) == "user":
+        dept = request.session.get("department", "search")
+        if dept != "dozhim":
+            messages.warning(
+                request,
+                "Старая система отчётов отключена. Работайте через SearchLink — создавайте ссылку под клиента и подавайте отчёт там.",
+            )
+            return redirect("search_links_my")
     if request.method == "POST":
         form = LeadReportForm(request.POST, request.FILES)
         if form.is_valid():
