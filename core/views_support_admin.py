@@ -2590,10 +2590,10 @@ def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
-    """Страница статистики начислений админов: 2.5₽ за Lead-action, 10₽ за SearchLink-action."""
+    """Страница статистики начислений админов: 10₽ за Lead-action, 10₽ за SearchLink-action."""
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
-    from .admin_earnings import total_actions, total_earned
+    from .admin_earnings import total_actions, total_earned, LEAD_REVIEW_RATE, SEARCH_REVIEW_RATE
 
     admins = User.objects.filter(role="admin").order_by("username")
     admin_stats = []
@@ -2626,6 +2626,8 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
         "admin_stats": admin_stats,
         "selected_admin": selected_admin,
         "logs": logs,
+        "lead_review_rate": int(LEAD_REVIEW_RATE),
+        "search_review_rate": int(SEARCH_REVIEW_RATE),
     })
 
 

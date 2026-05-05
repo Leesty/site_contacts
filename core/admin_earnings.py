@@ -1,6 +1,6 @@
 """Начисления админу за модерацию.
 
-- Обычные Lead-отчёты (через LeadReviewLog): 2.5 ₽ за каждое action
+- Обычные Lead-отчёты (через LeadReviewLog): 10 ₽ за каждое action
   (approve / reject / rework). Покрывает «Поиск» и «Дожим» — оба идут
   через одну Lead-таблицу.
 - SearchLink-отчёты (SearchReport.reviewed_by): 10 ₽ за action. Считаются
@@ -13,7 +13,7 @@
 """
 from decimal import Decimal
 
-LEAD_REVIEW_RATE = Decimal("2.5")
+LEAD_REVIEW_RATE = Decimal("10")
 SEARCH_REVIEW_RATE = Decimal("10")
 
 _REVIEWED_STATUSES = ("approved", "rejected", "rework")
