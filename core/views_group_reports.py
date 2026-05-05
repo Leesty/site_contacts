@@ -271,8 +271,7 @@ def manager_group_report_create(request: HttpRequest) -> HttpResponse:
             else:
                 messages.warning(
                     request,
-                    f"Отчёт сохранён, но без авто-подтверждения: {note} "
-                    f"Только главный админ увидит его до ручной модерации.",
+                    f"Отчёт сохранён, но без авто-подтверждения: {note}",
                 )
             return redirect("manager_group_reports_list")
     else:
