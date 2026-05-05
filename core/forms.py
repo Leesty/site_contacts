@@ -3,7 +3,7 @@ from __future__ import annotations
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 
-from .models import BaseType, Lead, LeadType, User, WorkerSelfLead
+from .models import BaseType, GroupReport, Lead, LeadType, User, WorkerSelfLead
 
 
 class UserRegistrationForm(UserCreationForm):
@@ -528,4 +528,87 @@ class LeadReworkUserForm(forms.Form):
                 "Размер файла не должен превышать 30 МБ. Сожмите видео или приложите скриншот."
             )
         return data
+
+
+# ====== GroupReport (бета) ======
+
+GROUP_REPORT_VIDEO_MAX_SIZE = 50 * 1024 * 1024  # 50 МБ — скринкасты длиннее
+
+GROUP_REPORT_ALLOWED_EXT = frozenset((
+    "mp4", "mov", "webm", "m4v", "3gp", "mkv", "avi", "hevc",
+    "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic",
+))
+
+
+class GroupReportCreateForm(forms.ModelForm):
+    """Форма создания отчёта по группе менеджером.
+
+    Поля client_link и manager_link — UI-поля. Парсятся в client_platform_id
+    (если число) либо client_username (если @ник или vk-ссылка) на стороне view.
+    """
+
+    client_link = forms.CharField(
+        label="ID клиента или ссылка",
+        max_length=200,
+        help_text="ID telegram-юзера, ссылка vk.com/id… или @username.",
+        widget=forms.TextInput(attrs={"class": "form-control",
+                                       "placeholder": "vk.com/id12345, @ivanov или 123456789"}),
+    )
+    manager_link = forms.CharField(
+        label="Ваш ID/ссылка в боте",
+        max_length=200,
+        help_text="Ваш telegram_id или vk_id — тот же, что отображается в admin-панели бота.",
+        widget=forms.TextInput(attrs={"class": "form-control",
+                                       "placeholder": "987654321 или @manager_login"}),
+    )
+
+    class Meta:
+        model = GroupReport
+        fields = ("platform", "report_date", "screencast")
+        labels = {
+            "platform": "Платформа",
+            "report_date": "Дата отчёта",
+            "screencast": "Скринкаст переписки до создания чата",
+        }
+        widgets = {
+            "platform": forms.Select(attrs={"class": "form-select"}),
+            "report_date": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "screencast": forms.FileInput(attrs={"class": "form-control",
+                                                  "accept": "video/*,image/*"}),
+        }
+
+    def clean_screencast(self):
+        data = self.cleaned_data.get("screencast")
+        if not data:
+            raise forms.ValidationError("Прикрепите скринкаст переписки (видео или скриншот).")
+        name = getattr(data, "name", None) or ""
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in GROUP_REPORT_ALLOWED_EXT:
+            raise forms.ValidationError(
+                "Разрешены только видео (mp4/mov/webm/...) и изображения (jpg/png/...)."
+            )
+        size = getattr(data, "size", None)
+        if size is not None and size > GROUP_REPORT_VIDEO_MAX_SIZE:
+            raise forms.ValidationError(
+                "Скринкаст не должен превышать 50 МБ. Сожмите видео или сократите длину."
+            )
+        return data
+
+
+class GroupReportRejectForm(forms.Form):
+    rejection_reason = forms.CharField(
+        label="Причина отклонения",
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3,
+                                      "placeholder": "Причина для менеджера: что не так с отчётом."}),
+        required=True,
+    )
+
+
+class GroupReportReworkForm(forms.Form):
+    rework_comment = forms.CharField(
+        label="Что нужно доработать",
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3,
+                                      "placeholder": "Опишите, что менеджер должен исправить или добавить."}),
+        required=False,
+    )
 

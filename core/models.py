@@ -144,6 +144,15 @@ class User(AbstractUser):
     smz_submitted_at = models.DateTimeField(null=True, blank=True, help_text="Дата подачи заявки на СМЗ.")
     smz_reject_reason = models.TextField(blank=True, help_text="Причина отклонения СМЗ.")
 
+    # Право создавать GroupReport (бета). Выдаётся главным админом точечно.
+    # При наличии — у пользователя в дашборде появляется «Отчёты по группам»;
+    # при approved-статусе ещё и «Свободные слоты» (урезанный календарь).
+    can_create_group_reports = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Может ли менеджер создавать отчёты по группам (отдельный поток отчётов).",
+    )
+
     def is_approved(self) -> bool:
         return self.status == self.Status.APPROVED
 
@@ -1539,4 +1548,112 @@ class RobocallAttempt(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"RobocallAttempt #{self.pk} report={self.search_report_id} stage={self.stage}"
+
+
+def group_report_upload_to(instance: "GroupReport", filename: str) -> str:
+    ext = filename.split(".")[-1] if "." in filename else "bin"
+    return f"group_reports/user_{instance.user_id}/{uuid4().hex}.{ext}"
+
+
+class GroupReport(TimeStampedModel):
+    """Отчёт менеджера о работе с группой (бета).
+
+    Менеджер прикладывает скринкаст переписки, указывает свой ID и ID клиента
+    в TG/VK. Валидация — против таблицы admin_task_progress на windowgram:
+    если есть запись (admin_platform_user_id, client_platform_user_id) и
+    выполнены все 4 этапа (artem_invited + link_done + offer_done + sozvon_done)
+    — отчёт is_complete=True и виден всем модераторам. Иначе is_complete=False
+    и виден только главному админу.
+
+    Approve начисляет менеджеру 200₽ (см. GROUP_REPORT_APPROVE_REWARD).
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "На проверке"
+        APPROVED = "approved", "Одобрен"
+        REJECTED = "rejected", "Отклонён"
+        REWORK = "rework", "На доработке"
+
+    class Platform(models.TextChoices):
+        TELEGRAM = "telegram", "Telegram"
+        VK = "vk", "VK"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="group_reports",
+        help_text="Менеджер, отправивший отчёт.",
+    )
+    platform = models.CharField(
+        max_length=16,
+        choices=Platform.choices,
+        default=Platform.TELEGRAM,
+        help_text="Платформа группы (TG/VK).",
+    )
+    client_platform_id = models.BigIntegerField(
+        null=True, blank=True, db_index=True,
+        help_text="telegram_id или vk_id клиента (для авто-валидации).",
+    )
+    client_username = models.CharField(
+        max_length=100, blank=True,
+        help_text="@username (TG) или screen_name (VK), либо ссылка vk.com/...",
+    )
+    manager_platform_id = models.BigIntegerField(
+        null=True, blank=True, db_index=True,
+        help_text="telegram_id или vk_id самого менеджера в боте.",
+    )
+    manager_username = models.CharField(
+        max_length=100, blank=True,
+        help_text="@username/screen_name менеджера.",
+    )
+    report_date = models.DateField(
+        default=timezone.now,
+        help_text="Дата отчёта (когда был совершён созвон/работа).",
+    )
+    screencast = models.FileField(
+        upload_to=group_report_upload_to,
+        null=True, blank=True,
+        help_text="Скринкаст переписки до создания чата (видео).",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    is_complete = models.BooleanField(
+        default=False, db_index=True,
+        help_text=("Все 4 этапа в admin_task_progress на бот-сервере выполнены: "
+                   "Артём приглашён, /линк, /оффер, /созвон. Без этого отчёт "
+                   "виден только главному админу."),
+    )
+    validation_note = models.TextField(
+        blank=True,
+        help_text="Что не хватило для is_complete (artem/link/offer/sozvon).",
+    )
+
+    rejection_reason = models.TextField(blank=True)
+    rework_comment = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="reviewed_group_reports",
+    )
+    paid_reward = models.IntegerField(
+        default=0,
+        help_text="Сколько фактически начислено при approve (для аудита).",
+    )
+
+    class Meta:
+        verbose_name = "Отчёт по группе"
+        verbose_name_plural = "Отчёты по группам"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "is_complete"]),
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"GroupReport #{self.pk} user={self.user_id} status={self.status}"
 

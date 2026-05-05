@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Доработка отчёта — Партнёрка{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a class="text-muted small text-decoration-none" href="{% url 'admin_group_reports_list' %}">← Все отчёты</a>
+  <h1 class="h4 mb-1 mt-2">✎ На доработку — отчёт #{{ report.id }}</h1>
+  <p class="text-muted small mb-0">@{{ report.user.username }} · {{ report.report_date|date:"d.m.Y" }} · {{ report.platform|upper }}</p>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">{{ form.rework_comment.label }}</label>
+        {{ form.rework_comment }}
+        {% if form.rework_comment.errors %}<div class="text-danger small">{{ form.rework_comment.errors|join:" " }}</div>{% endif %}
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-warning">Отправить на доработку</button>
+        <a class="btn btn-outline-secondary" href="{% url 'admin_group_reports_list' %}">Отмена</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

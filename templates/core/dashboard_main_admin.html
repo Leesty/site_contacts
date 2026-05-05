@@ -177,6 +177,36 @@
         </div>
       </div>
     </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.02) 100%); border: 1px solid rgba(99,102,241,0.25);">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">📊 Группы — модерация</span>
+            <span style="font-size:9px;">
+              <span class="badge bg-warning text-dark">бета</span>
+              {% if pending_group_reports_count %}<span class="badge bg-danger ms-1" style="font-size:10px;">{{ pending_group_reports_count }}</span>{% endif %}
+            </span>
+          </div>
+          <p class="text-muted small mb-2" style="font-size: 10px;">
+            Отчёты менеджеров.
+            {% if incomplete_group_reports_count %}<span class="text-warning">{{ incomplete_group_reports_count }} «не полных»</span>{% endif %}
+          </p>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_group_reports_list' %}">Открыть</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(34,197,94,0.10) 0%, rgba(34,197,94,0.02) 100%); border: 1px solid rgba(34,197,94,0.25);">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">⚙ Права на отчёты</span>
+            {% if granted_group_report_users_count %}<span class="badge" style="font-size:10px; background: rgba(34,197,94,0.6);">{{ granted_group_report_users_count }}</span>{% endif %}
+          </div>
+          <p class="text-muted small mb-2" style="font-size: 10px;">Кто может создавать отчёты по группам.</p>
+          <a class="btn btn-outline-success btn-sm mt-1 py-0" href="{% url 'admin_group_report_permissions' %}">Управлять</a>
+        </div>
+      </div>
+    </div>
   </div>
 
   {# ═══ Статистика админов ═══ #}

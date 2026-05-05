@@ -239,6 +239,44 @@
         </div>
       </div>
     </div>
+
+    {% if user.can_create_group_reports %}
+      {# ═══ Бета: отчёты по группам ═══ #}
+      <div class="col">
+        <div class="card h-100 shadow-sm" style="border:1px solid rgba(99,102,241,0.3); background: linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(99,102,241,0.02) 100%);">
+          <div class="card-body">
+            <div class="card-icon mb-2" aria-hidden="true">📊</div>
+            <h2 class="h5 mb-2">
+              Отчёты по группам
+              <span class="badge bg-warning text-dark ms-1" style="font-size:9px">бета</span>
+              {% if rework_group_reports_count %}<span class="badge bg-warning text-dark ms-1">{{ rework_group_reports_count }} на доработке</span>{% endif %}
+            </h2>
+            <p class="text-muted small mb-3">
+              Скринкаст переписки + ID клиента и менеджера. За одобренный отчёт — <strong>200 ₽</strong>.
+            </p>
+            <div class="d-flex gap-2 flex-wrap">
+              <a class="btn btn-outline-primary btn-sm" href="{% url 'manager_group_reports_list' %}">Мои отчёты</a>
+              <a class="btn btn-primary btn-sm" href="{% url 'manager_group_report_create' %}">＋ Новый</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if user.status == 'approved' %}
+      <div class="col">
+        <div class="card h-100 shadow-sm" style="border:1px solid rgba(74,222,128,0.3); background: linear-gradient(135deg, rgba(74,222,128,0.08) 0%, rgba(74,222,128,0.02) 100%);">
+          <div class="card-body">
+            <div class="card-icon mb-2" aria-hidden="true">📅</div>
+            <h2 class="h5 mb-2">Свободные слоты</h2>
+            <p class="text-muted small mb-3">
+              Календарь свободных дат и времени для созвонов. Только время — никаких имён клиентов.
+            </p>
+            <a class="btn btn-outline-success btn-sm" href="{% url 'free_slots_calendar' %}">Открыть</a>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    {% endif %}
   </div>
 {% endblock %}
 

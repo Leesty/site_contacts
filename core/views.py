@@ -264,6 +264,13 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         search_total_approved = SearchReport.objects.filter(status=SearchReport.Status.APPROVED).count()
         smz_pending_count = User.objects.filter(smz_status="pending").count()
         unchecked_receipts_count = WithdrawalRequest.objects.filter(receipt_status="pending").count()
+        # GroupReport (бета): счётчики для дашборда модератора
+        from .models import GroupReport
+        pending_group_reports_count = GroupReport.objects.filter(
+            status=GroupReport.Status.PENDING, is_complete=True,
+        ).count()
+        incomplete_group_reports_count = GroupReport.objects.filter(is_complete=False).count()
+        granted_group_report_users_count = User.objects.filter(can_create_group_reports=True).count()
 
         ctx = {
             "user": user,
@@ -288,6 +295,9 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 .exclude(receipt_status__in=["approved", "waived"])
                 .order_by("-created_at")[:5]
             ),
+            "pending_group_reports_count": pending_group_reports_count,
+            "incomplete_group_reports_count": incomplete_group_reports_count,
+            "granted_group_report_users_count": granted_group_report_users_count,
         }
 
         if _is_main_admin(user):
@@ -360,6 +370,13 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             ).exists()
     # Лиды, отправленные админом на доработку — показываем уведомление на главной
     rework_leads_count = Lead.objects.filter(user=user, status=Lead.Status.REWORK).count()
+    # GroupReport (бета) на доработке — для бейджа в дашборде менеджера
+    rework_group_reports_count = 0
+    if getattr(user, "can_create_group_reports", False):
+        from .models import GroupReport
+        rework_group_reports_count = GroupReport.objects.filter(
+            user=user, status=GroupReport.Status.REWORK,
+        ).count()
     from django.db.models import Q as _Q
     receiptless_withdrawals = list(
         WithdrawalRequest.objects.filter(user=user, status="approved")
@@ -401,6 +418,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "search_reward": (getattr(settings, "SEARCH_REPORT_REWARD", 100) - user.ref_searchlink_manager_cut) if (user.partner_owner_id and user.ref_searchlink_enabled) else getattr(settings, "SEARCH_REPORT_REWARD", 100),
             "is_accredited_ref_owner": is_accredited_ref_owner,
             "ref_owner_pending_requests_count": ref_owner_pending_requests_count,
+            "rework_group_reports_count": rework_group_reports_count,
         },
     )
 

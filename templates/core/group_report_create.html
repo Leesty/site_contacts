@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Новый отчёт по группе — Партнёрка{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a class="text-muted small text-decoration-none" href="{% url 'manager_group_reports_list' %}">← Мои отчёты</a>
+  <h1 class="h4 mb-1 mt-2">📊 Новый отчёт по группе</h1>
+  <p class="text-muted small mb-0">
+    За одобренный отчёт начисляется <strong>{{ reward }} ₽</strong>.
+    Авто-проверка идёт по таблице <code>admin_task_progress</code> на бот-сервере:
+    нужно чтобы по связке «ваш ID ↔ ID клиента» были выполнены все 4 этапа
+    (Артём приглашён, /линк, /оффер, /созвон).
+  </p>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+
+      <div class="mb-3">
+        <label class="form-label">{{ form.platform.label }}</label>
+        {{ form.platform }}
+        <div class="form-text small">{{ form.platform.help_text|default:"" }}</div>
+        {% if form.platform.errors %}<div class="text-danger small">{{ form.platform.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">{{ form.client_link.label }}</label>
+          {{ form.client_link }}
+          <div class="form-text small text-muted">{{ form.client_link.help_text }}</div>
+          {% if form.client_link.errors %}<div class="text-danger small">{{ form.client_link.errors|join:" " }}</div>{% endif %}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">{{ form.manager_link.label }}</label>
+          {{ form.manager_link }}
+          <div class="form-text small text-muted">{{ form.manager_link.help_text }}</div>
+          {% if form.manager_link.errors %}<div class="text-danger small">{{ form.manager_link.errors|join:" " }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label">{{ form.report_date.label }}</label>
+        {{ form.report_date }}
+        {% if form.report_date.errors %}<div class="text-danger small">{{ form.report_date.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label">{{ form.screencast.label }}</label>
+        {{ form.screencast }}
+        <div class="form-text small text-muted">
+          Видео переписки до создания группового чата. Размер до 50 МБ.
+          Поддерживаются форматы: mp4, mov, webm, m4v, mkv (и картинки jpg/png/webp).
+        </div>
+        {% if form.screencast.errors %}<div class="text-danger small">{{ form.screencast.errors|join:" " }}</div>{% endif %}
+      </div>
+
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger small mt-3">{{ form.non_field_errors|join:" " }}</div>
+      {% endif %}
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Отправить отчёт</button>
+        <a class="btn btn-outline-secondary" href="{% url 'manager_group_reports_list' %}">Отмена</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="alert alert-info small mt-3">
+  <strong>Как работает авто-валидация:</strong> сразу после отправки мы запросим бот-сервер.
+  Если у вас (в роли подадмина) есть запись по этому клиенту с выполненными
+  4 этапами — отчёт сразу попадёт на проверку обычным админам.
+  Если каких-то этапов нет — отчёт сохранится, но увидит его только главный админ
+  (с пометкой «не полный»).
+</div>
+{% endblock %}

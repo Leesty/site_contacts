@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Отчёты по группам — модерация{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h1 class="h4 mb-0">
+      📊 Отчёты по группам
+      {% if counts.pending %}<span class="badge bg-danger ms-2">{{ counts.pending }}</span>{% endif %}
+    </h1>
+    <p class="text-muted small mb-0">
+      Approve начисляет менеджеру <strong>{{ reward }} ₽</strong>.
+      {% if is_main %}<span class="text-warning">Вам видны и «не полные» отчёты — у админов их нет.</span>{% endif %}
+    </p>
+  </div>
+  {% if is_main %}
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_group_report_permissions' %}">⚙ Управление правами</a>
+  {% endif %}
+</div>
+
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">
+    Новые {% if counts.pending %}<span class="badge bg-danger ms-1">{{ counts.pending }}</span>{% endif %}
+  </a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">
+    На доработке {% if counts.rework %}<span class="badge bg-warning text-dark ms-1">{{ counts.rework }}</span>{% endif %}
+  </a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые</a></li>
+  {% if is_main %}
+    <li class="nav-item"><a class="nav-link {% if tab == 'incomplete' %}active{% endif %}" href="?tab=incomplete">
+      ⚠ Не полные {% if counts.incomplete %}<span class="badge bg-secondary ms-1">{{ counts.incomplete }}</span>{% endif %}
+    </a></li>
+  {% endif %}
+</ul>
+
+<form method="get" class="mb-3 d-flex gap-2">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input type="text" name="q" value="{{ q }}" placeholder="Поиск: @менеджер, клиент, ID…"
+         class="form-control form-control-sm" style="max-width:380px">
+  <button type="submit" class="btn btn-sm btn-outline-primary">Найти</button>
+  {% if q %}<a href="?tab={{ tab }}" class="btn btn-sm btn-outline-secondary">×</a>{% endif %}
+</form>
+
+{% if not page_obj.object_list %}
+  <div class="alert alert-info small">Отчётов в этой вкладке пока нет.</div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-dark-site mb-0 align-middle">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Менеджер</th>
+            <th>Платформа</th>
+            <th>Клиент</th>
+            <th>Дата</th>
+            <th>Скринкаст</th>
+            <th>Авто-валидация</th>
+            {% if tab == 'pending' or tab == 'rework' or tab == 'incomplete' %}<th>Действия</th>{% endif %}
+            {% if tab == 'rework' or tab == 'rejected' %}<th>Причина</th>{% endif %}
+            {% if tab == 'approved' or tab == 'rejected' or tab == 'rework' %}<th>Проверил</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in page_obj %}
+            <tr>
+              <td>#{{ r.id }}</td>
+              <td>@{{ r.user.username }}</td>
+              <td>
+                {% if r.platform == 'vk' %}
+                  <span class="badge" style="background:rgba(6,182,212,0.25);color:#cffafe">VK</span>
+                {% else %}
+                  <span class="badge" style="background:rgba(99,102,241,0.25);color:#c7d2fe">TG</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.client_username %}@{{ r.client_username }}<br>{% endif %}
+                {% if r.client_platform_id %}<code class="small">{{ r.client_platform_id }}</code>{% endif %}
+              </td>
+              <td>{{ r.report_date|date:"d.m.Y" }}</td>
+              <td>
+                {% if r.screencast %}
+                  <a href="{% url 'admin_group_report_attachment' r.id %}" target="_blank" class="text-info small">📎 открыть</a>
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {% if r.is_complete %}
+                  <span class="badge bg-success" title="Все 4 этапа на бот-сервере">✓ полный</span>
+                {% else %}
+                  <span class="badge bg-secondary" title="{{ r.validation_note }}">⚠ {{ r.validation_note|truncatewords:6 }}</span>
+                {% endif %}
+              </td>
+              {% if tab == 'pending' or tab == 'rework' or tab == 'incomplete' %}
+              <td class="text-nowrap">
+                {% if r.is_complete or is_main %}
+                  <form method="post" action="{% url 'admin_group_report_approve' r.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success btn-sm py-0">✓</button>
+                  </form>
+                  <a href="{% url 'admin_group_report_rework' r.id %}" class="btn btn-warning btn-sm py-0">✎</a>
+                  <a href="{% url 'admin_group_report_reject' r.id %}" class="btn btn-danger btn-sm py-0">✗</a>
+                {% else %}
+                  <span class="text-muted small">только главный админ</span>
+                {% endif %}
+              </td>
+              {% endif %}
+              {% if tab == 'rework' %}<td class="small text-muted">{{ r.rework_comment|truncatewords:12 }}</td>{% endif %}
+              {% if tab == 'rejected' %}<td class="small text-muted">{{ r.rejection_reason|truncatewords:12 }}</td>{% endif %}
+              {% if tab == 'approved' or tab == 'rejected' or tab == 'rework' %}
+                <td class="small">{% if r.reviewed_by %}@{{ r.reviewed_by.username }}{% endif %}<br><span class="text-muted">{{ r.reviewed_at|date:"d.m H:i" }}</span></td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="mt-3"><ul class="pagination pagination-sm">
+  {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">‹</a></li>{% endif %}
+  <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+  {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">›</a></li>{% endif %}
+</ul></nav>
+{% endif %}
+{% endif %}
+{% endblock %}

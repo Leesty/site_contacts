@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-05-06 (ночь) — GroupReport (бета): отчёты менеджеров по группам
+
+### Новый поток отчётов
+- Модель `GroupReport` (миграция `0065_group_reports`): user, platform (TG/VK), client_platform_id + client_username, manager_platform_id + manager_username, report_date, screencast (FileField, до 50 МБ), status (pending/approved/rejected/rework), is_complete, validation_note, paid_reward.
+- Право `User.can_create_group_reports` (BooleanField). Без него — никаких новых кнопок у менеджера.
+
+### Авто-валидация против бот-сервера
+- При сабмите отчёта Django запрашивает таблицу `windowgram.admin_task_progress` по связке `(platform, admin_platform_user_id, client_platform_user_id)`.
+- Если запись найдена и все 4 этапа выполнены (`artem_invited + link_done + offer_done + sozvon_done`) — `is_complete=True` и отчёт виден всем модераторам.
+- Иначе `is_complete=False` + `validation_note` («Артём не приглашён», «/линк не выполнен» и т.п.) — отчёт виден **только главному админу** во вкладке «⚠ Не полные».
+
+### Главный админ — отдельная карточка прав
+- Дашборд `dashboard_main_admin.html`: новая зелёная карточка «⚙ Права на отчёты» (`/staff/group-report-permissions/`).
+- На странице — поиск активных юзеров (role=user, не банненые) + grant/revoke со счётчиком текущих обладателей права.
+
+### Модерация (admin + main_admin)
+- `/staff/group-reports/` — список с фильтрами: pending / rework / approved / rejected. Главному админу — ещё «⚠ Не полные».
+- Approve начисляет менеджеру **200 ₽** (`GROUP_REPORT_APPROVE_REWARD`) через `log_balance_change` — как у Lead/SearchReport.
+- Reject/rework с причиной; если был approved — баланс автоматически откатывается.
+- Обычный admin физически не видит и не может оперировать `is_complete=False` (даже по прямой ссылке — 403).
+
+### Кабинет менеджера
+- Дашборд `dashboard.html`: при `can_create_group_reports=True` появляются две новые карточки:
+  - «📊 Отчёты по группам (бета)» — список своих отчётов и кнопка «＋ Новый» (`/reports/groups/`, `/reports/groups/create/`).
+  - «📅 Свободные слоты» (только если `status=approved`) — `/calendar/free-slots/`.
+- Бейдж «N на доработке» если у менеджера есть rework-отчёты.
+
+### Урезанный календарь свободных слотов
+- `free_slots_calendar` — копия логики из `windowgram.api.booking` (SCHEDULE / SCHEDULE_OVERRIDES / SLOT_STEP=15 / MIN_GAP=15 / CAPACITY=2 / HORIZON=14 дней).
+- Менеджер видит только сетку свободных/занятых слотов **без имён клиентов и любых деталей**. Полный календарь у админа остаётся как есть.
+- Если расписание на боте поменяется — обновить константы в `core/views_group_reports.py` (отмечено в комментарии).
+
+### Файлы
+- `core/views_group_reports.py` — новый модуль (~470 строк)
+- `core/migrations/0065_group_reports.py` — миграция
+- 7 новых шаблонов в `templates/core/`
+- 13 новых URL в `core/urls.py`
+- Карточки в `dashboard.html`, `dashboard_main_admin.html`, `dashboard_admin.html`
+
 ## 2026-05-06 (вечер) — календарь UX-улучшения + перенос в дашборд
 
 ### Перенос

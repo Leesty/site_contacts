@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Права на отчёты по группам — Партнёрка{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a class="text-muted small text-decoration-none" href="{% url 'admin_group_reports_list' %}">← Отчёты по группам</a>
+  <h1 class="h4 mb-1 mt-2">⚙ Права на отчёты по группам</h1>
+  <p class="text-muted small mb-0">
+    Менеджер с этим правом видит в дашборде кнопку «📊 Отчёты по группам»
+    (создание+список) и, если профиль одобрен — «📅 Свободные слоты».
+  </p>
+</div>
+
+<div class="row g-3">
+  {# ═══ Выдать ═══ #}
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h6 mb-3">Выдать право</h2>
+        <form method="get" class="mb-3">
+          <div class="input-group input-group-sm">
+            <input type="text" name="q" value="{{ q }}" placeholder="Поиск по @username, имени или фамилии…" class="form-control">
+            <button type="submit" class="btn btn-outline-primary">Найти</button>
+          </div>
+          <div class="form-text small text-muted">Доступны только активные пользователи (role=user, не забаненные).</div>
+        </form>
+
+        {% if q and not candidates %}
+          <div class="alert alert-warning small mb-0">Никого не найдено по «{{ q }}».</div>
+        {% elif q %}
+          <ul class="list-group list-group-flush">
+            {% for u in candidates %}
+              <li class="list-group-item d-flex justify-content-between align-items-center"
+                  style="background:transparent;border-color:rgba(255,255,255,0.06);color:#e2e8f0">
+                <span>
+                  <strong>@{{ u.username }}</strong>
+                  {% if u.first_name or u.last_name %}
+                    <span class="text-muted small ms-1">{{ u.first_name }} {{ u.last_name }}</span>
+                  {% endif %}
+                  {% if u.status != 'approved' %}
+                    <span class="badge bg-warning text-dark ms-1" style="font-size:9px">{{ u.get_status_display }}</span>
+                  {% endif %}
+                </span>
+                <form method="post" action="{% url 'admin_group_report_grant' u.id %}" class="m-0">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-success btn-sm py-0">＋ Выдать</button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="text-muted small">Введите часть имени или username, чтобы найти пользователей.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ═══ Текущие права ═══ #}
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h6 mb-3">У кого уже есть право <span class="badge bg-secondary ms-1">{{ granted.count }}</span></h2>
+        {% if not granted %}
+          <div class="text-muted small">Никому ещё не выдано.</div>
+        {% else %}
+          <ul class="list-group list-group-flush">
+            {% for u in granted %}
+              <li class="list-group-item d-flex justify-content-between align-items-center"
+                  style="background:transparent;border-color:rgba(255,255,255,0.06);color:#e2e8f0">
+                <span>
+                  <strong>@{{ u.username }}</strong>
+                  {% if u.first_name or u.last_name %}
+                    <span class="text-muted small ms-1">{{ u.first_name }} {{ u.last_name }}</span>
+                  {% endif %}
+                  {% if u.status == 'approved' %}
+                    <span class="badge bg-success ms-1" style="font-size:9px">approved</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark ms-1" style="font-size:9px">{{ u.get_status_display }}</span>
+                  {% endif %}
+                </span>
+                <form method="post" action="{% url 'admin_group_report_revoke' u.id %}" class="m-0"
+                      onsubmit="return confirm('Отозвать право у @{{ u.username }}?');">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-outline-danger btn-sm py-0">× Отозвать</button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Свободные слоты — Партнёрка{% endblock %}
+
+{% block content %}
+<style>
+  .fs-day { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .fs-day.is-today { border-color: rgba(99,102,241,0.4);
+    background: rgba(99,102,241,0.06); }
+  .fs-day-head { display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
+  .fs-day-label { font-weight: 600; color: #e2e8f0; }
+  .fs-day.is-today .fs-day-label { color: #c7d2fe; }
+  .fs-day-count { font-size: 12px; color: #94a3b8; }
+  .fs-day-count strong { color: #4ade80; }
+  .fs-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 6px; }
+  .fs-slot { padding: 6px 4px; border-radius: 6px; text-align: center;
+    font-size: 12px; font-weight: 600; }
+  .fs-slot.free { background: rgba(74,222,128,0.18); color: #bbf7d0;
+    border: 1px solid rgba(74,222,128,0.3); }
+  .fs-slot.busy { background: rgba(255,255,255,0.04); color: #475569;
+    border: 1px solid rgba(255,255,255,0.06); text-decoration: line-through; }
+  .fs-empty { color: #64748b; font-size: 13px; font-style: italic; }
+</style>
+
+<div class="mb-4">
+  <h1 class="h4 mb-1">📅 Свободные слоты для созвонов</h1>
+  <p class="text-muted small mb-0">
+    Только свободное / занятое время на ближайшие <strong>{{ horizon_days }} дней</strong>.
+    Имена клиентов и детали не показываются — это ваш быстрый чек, можно ли назначить созвон.
+    Сетка обновляется в реальном времени из календаря бот-сервера.
+  </p>
+</div>
+
+<div class="d-flex gap-3 small text-muted mb-3 align-items-center">
+  <span><span class="d-inline-block" style="width:12px;height:12px;background:rgba(74,222,128,0.5);border-radius:3px;vertical-align:middle"></span> Свободно</span>
+  <span><span class="d-inline-block" style="width:12px;height:12px;background:rgba(255,255,255,0.1);border-radius:3px;vertical-align:middle"></span> Занято</span>
+  <span class="ms-auto small">Все времена в МСК. Ближе чем за час — не показываем.</span>
+</div>
+
+{% if not days %}
+  <div class="alert alert-info small">Нет рабочих слотов в горизонте {{ horizon_days }} дней.</div>
+{% else %}
+  {% for day in days %}
+    <div class="fs-day {% if day.is_today %}is-today{% endif %}">
+      <div class="fs-day-head">
+        <div>
+          <span class="fs-day-label">
+            {% if day.is_today %}Сегодня · {% endif %}{{ day.date|date:"l, j E" }}
+          </span>
+        </div>
+        <div class="fs-day-count">
+          {% if day.free_count %}
+            <strong>{{ day.free_count }}</strong> свободно из {{ day.total_count }}
+          {% else %}
+            <span class="text-warning">всё занято</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="fs-slots">
+        {% for slot in day.slots %}
+          <span class="fs-slot {% if slot.free %}free{% else %}busy{% endif %}">{{ slot.time }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

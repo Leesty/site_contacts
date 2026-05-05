@@ -2,6 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 
 from . import views
+from . import views_group_reports
 from . import views_partner
 from . import views_search
 from . import views_support_admin
@@ -378,5 +379,21 @@ urlpatterns = [
     path("staff/payment/<int:user_id>/revert/", views_support_admin.balance_admin_payment_revert, name="balance_admin_payment_revert"),
     # Calendar (main_admin only): зеркало календаря созвонов из бот-сервера, read-only
     path("staff/calendar/", views_support_admin.admin_calendar, name="admin_calendar"),
+    # ═══ GroupReport (бета) ═══
+    # Менеджер
+    path("reports/groups/", views_group_reports.manager_group_reports_list, name="manager_group_reports_list"),
+    path("reports/groups/create/", views_group_reports.manager_group_report_create, name="manager_group_report_create"),
+    path("reports/groups/<int:report_id>/attachment/", views_group_reports.manager_group_report_attachment, name="manager_group_report_attachment"),
+    path("calendar/free-slots/", views_group_reports.free_slots_calendar, name="free_slots_calendar"),
+    # Главный админ — управление правами
+    path("staff/group-report-permissions/", views_group_reports.admin_group_report_permissions, name="admin_group_report_permissions"),
+    path("staff/group-report-permissions/grant/<int:user_id>/", views_group_reports.admin_group_report_grant, name="admin_group_report_grant"),
+    path("staff/group-report-permissions/revoke/<int:user_id>/", views_group_reports.admin_group_report_revoke, name="admin_group_report_revoke"),
+    # Модерация (admin + main_admin)
+    path("staff/group-reports/", views_group_reports.admin_group_reports_list, name="admin_group_reports_list"),
+    path("staff/group-reports/<int:report_id>/approve/", views_group_reports.admin_group_report_approve, name="admin_group_report_approve"),
+    path("staff/group-reports/<int:report_id>/reject/", views_group_reports.admin_group_report_reject, name="admin_group_report_reject"),
+    path("staff/group-reports/<int:report_id>/rework/", views_group_reports.admin_group_report_rework, name="admin_group_report_rework"),
+    path("staff/group-reports/<int:report_id>/attachment/", views_group_reports.admin_group_report_attachment, name="admin_group_report_attachment"),
 ]
 

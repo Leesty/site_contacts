@@ -1,0 +1,728 @@
+"""Views для GroupReport — отчёты менеджеров о работе с группами (бета).
+
+Модуль закрывает 4 контура:
+
+1. **Менеджер** (роль `user`, флаг `can_create_group_reports=True`):
+   - Список своих отчётов
+   - Форма создания (4 поля: скринкаст / id клиента / id менеджера / дата)
+   - Просмотр своего скринкаста
+   - Урезанный календарь «Свободные слоты» (только если status=approved)
+
+2. **Главный админ** — управление правами (выдать / отозвать).
+
+3. **Модерация** (admin / main_admin):
+   - Список + фильтр по статусу
+   - approve (+200₽), reject, rework
+   - Просмотр скринкаста любого отчёта
+
+4. **Авто-валидация** против `windowgram.admin_task_progress`. Если запись
+   с `(platform, admin_platform_user_id, client_platform_user_id)` есть и
+   все 4 этапа (`artem_invited + link_done + offer_done + sozvon_done`)
+   выполнены — отчёт `is_complete=True`. Иначе виден только главному админу.
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.db import connections, transaction
+from django.db.models import Q
+from django.http import (
+    FileResponse, HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse,
+)
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.http import require_http_methods, require_POST
+
+from .forms import (
+    GroupReportCreateForm,
+    GroupReportRejectForm,
+    GroupReportReworkForm,
+)
+from .models import GroupReport, User, log_balance_change
+
+
+GROUP_REPORT_APPROVE_REWARD = 200  # ₽ за approve менеджеру
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Гарды доступа
+# ════════════════════════════════════════════════════════════════════════════
+
+def _is_main_admin(user) -> bool:
+    return user.is_authenticated and getattr(user, "role", None) == "main_admin"
+
+
+def _is_admin_or_main(user) -> bool:
+    return user.is_authenticated and getattr(user, "role", None) in ("admin", "main_admin")
+
+
+def _is_manager_with_right(user) -> bool:
+    return (
+        user.is_authenticated
+        and getattr(user, "role", None) == "user"
+        and getattr(user, "can_create_group_reports", False)
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Парсинг ID / username
+# ════════════════════════════════════════════════════════════════════════════
+
+_VK_ID_RE = re.compile(r"vk\.com/id(\d+)", re.IGNORECASE)
+_VK_SCREEN_RE = re.compile(r"vk\.com/([a-zA-Z0-9_.]+)", re.IGNORECASE)
+_DIGITS_RE = re.compile(r"^\s*(\d+)\s*$")
+
+
+def _parse_link(text: str) -> tuple[int | None, str | None]:
+    """Извлекает (numeric_id, username) из произвольного ввода.
+
+    Поддерживает:
+      - "123456789"           -> (123456789, None)
+      - "@username"           -> (None, "username")
+      - "vk.com/id12345"      -> (12345, None)
+      - "https://vk.com/foo"  -> (None, "foo")
+      - "https://t.me/ivan"   -> (None, "ivan")
+    """
+    if not text:
+        return None, None
+    s = text.strip()
+
+    # Чистый id
+    m = _DIGITS_RE.match(s)
+    if m:
+        try:
+            return int(m.group(1)), None
+        except ValueError:
+            pass
+
+    # vk.com/id12345
+    m = _VK_ID_RE.search(s)
+    if m:
+        try:
+            return int(m.group(1)), None
+        except ValueError:
+            pass
+
+    # @username
+    if s.startswith("@"):
+        return None, s[1:].lower().strip()
+
+    # t.me/username или t.me/+invite — берём первый сегмент
+    if "t.me/" in s.lower():
+        rest = s.lower().split("t.me/", 1)[1].split("?")[0].split("/")[0]
+        if rest and not rest.startswith("+"):
+            return None, rest
+
+    # vk.com/screen_name (не id)
+    m = _VK_SCREEN_RE.search(s)
+    if m:
+        rest = m.group(1)
+        if not rest.startswith("id"):
+            return None, rest.lower()
+
+    # просто слово — считаем username'ом
+    if re.match(r"^[a-zA-Z0-9_.]+$", s):
+        return None, s.lower()
+
+    return None, None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Валидация против admin_task_progress на windowgram
+# ════════════════════════════════════════════════════════════════════════════
+
+def _validate_against_windowgram(
+    platform: str,
+    manager_id: int | None,
+    manager_username: str | None,
+    client_id: int | None,
+    client_username: str | None,
+) -> tuple[bool, str]:
+    """Проверка по таблице admin_task_progress.
+
+    Возвращает (is_complete, validation_note). is_complete=True только если:
+      1. Найдена запись с указанным админом и клиентом
+      2. artem_invited + link_done + offer_done + sozvon_done = ВСЕ True
+
+    Если что-то одно не сошлось — is_complete=False с пояснением.
+    """
+    if not (manager_id or manager_username):
+        return False, "Не указан ID/username менеджера — авто-валидация невозможна."
+    if not (client_id or client_username):
+        return False, "Не указан ID/username клиента — авто-валидация невозможна."
+
+    where_admin = []
+    params: list = []
+    if manager_id:
+        where_admin.append("admin_platform_user_id = %s")
+        params.append(manager_id)
+    if manager_username:
+        where_admin.append("admin_username = %s")
+        params.append(manager_username)
+    where_client = []
+    if client_id:
+        where_client.append("client_platform_user_id = %s")
+        params.append(client_id)
+    if client_username:
+        where_client.append("client_username = %s")
+        params.append(client_username)
+
+    sql = f"""
+        SELECT artem_invited, link_done, offer_done, sozvon_done, completed_at,
+               admin_platform_user_id, admin_username,
+               client_platform_user_id, client_username
+        FROM admin_task_progress
+        WHERE platform = %s
+          AND ({' OR '.join(where_admin)})
+          AND ({' OR '.join(where_client)})
+        ORDER BY updated_at DESC
+        LIMIT 1
+    """
+
+    try:
+        with connections["windowgram"].cursor() as cur:
+            cur.execute(sql, [platform] + params)
+            row = cur.fetchone()
+    except Exception as exc:
+        return False, f"Бот-сервер недоступен: {exc}"
+
+    if not row:
+        return False, "В admin_task_progress нет записи с такой связкой менеджер↔клиент."
+
+    artem, link_done, offer_done, sozvon_done, *_ = row
+    missing = []
+    if not artem:
+        missing.append("Артём не приглашён")
+    if not link_done:
+        missing.append("/линк не выполнен")
+    if not offer_done:
+        missing.append("/оффер не выполнен")
+    if not sozvon_done:
+        missing.append("/созвон не выполнен")
+
+    if missing:
+        return False, "; ".join(missing) + "."
+    return True, "Все 4 этапа выполнены."
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Менеджер: список, форма, скринкаст
+# ════════════════════════════════════════════════════════════════════════════
+
+@login_required
+def manager_group_reports_list(request: HttpRequest) -> HttpResponse:
+    if not _is_manager_with_right(request.user):
+        return HttpResponseForbidden("У вас нет права на отчёты по группам.")
+
+    qs = GroupReport.objects.filter(user=request.user).order_by("-created_at")
+    page_obj = Paginator(qs, 30).get_page(request.GET.get("page", 1))
+
+    return render(request, "core/group_reports_my.html", {
+        "page_obj": page_obj,
+        "reward": GROUP_REPORT_APPROVE_REWARD,
+    })
+
+
+@login_required
+def manager_group_report_create(request: HttpRequest) -> HttpResponse:
+    if not _is_manager_with_right(request.user):
+        return HttpResponseForbidden("У вас нет права на отчёты по группам.")
+
+    if request.method == "POST":
+        form = GroupReportCreateForm(request.POST, request.FILES)
+        if form.is_valid():
+            report: GroupReport = form.save(commit=False)
+            report.user = request.user
+
+            # Парсим client_link и manager_link
+            client_id, client_username = _parse_link(form.cleaned_data["client_link"])
+            manager_id, manager_username = _parse_link(form.cleaned_data["manager_link"])
+
+            report.client_platform_id = client_id
+            report.client_username = client_username or ""
+            report.manager_platform_id = manager_id
+            report.manager_username = manager_username or ""
+
+            is_complete, note = _validate_against_windowgram(
+                platform=report.platform,
+                manager_id=manager_id,
+                manager_username=manager_username,
+                client_id=client_id,
+                client_username=client_username,
+            )
+            report.is_complete = is_complete
+            report.validation_note = note
+            report.save()
+
+            if is_complete:
+                messages.success(
+                    request,
+                    "Отчёт принят и отправлен на проверку. Все 4 этапа подтверждены ботом.",
+                )
+            else:
+                messages.warning(
+                    request,
+                    f"Отчёт сохранён, но без авто-подтверждения: {note} "
+                    f"Только главный админ увидит его до ручной модерации.",
+                )
+            return redirect("manager_group_reports_list")
+    else:
+        form = GroupReportCreateForm(initial={"report_date": timezone.localtime(timezone.now()).date()})
+
+    return render(request, "core/group_report_create.html", {
+        "form": form,
+        "reward": GROUP_REPORT_APPROVE_REWARD,
+    })
+
+
+@login_required
+def manager_group_report_attachment(request: HttpRequest, report_id: int) -> HttpResponse:
+    """Свой скринкаст. Менеджер может смотреть только свои."""
+    report = get_object_or_404(GroupReport, pk=report_id, user=request.user)
+    if not report.screencast:
+        return HttpResponseForbidden("Файл не приложен.")
+    return FileResponse(report.screencast.open("rb"), as_attachment=False,
+                        filename=report.screencast.name.rsplit("/", 1)[-1])
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Главный админ: управление правами
+# ════════════════════════════════════════════════════════════════════════════
+
+@login_required
+def admin_group_report_permissions(request: HttpRequest) -> HttpResponse:
+    """Карточка управления правом can_create_group_reports.
+
+    Показывает:
+      - Список юзеров с правом (можно отозвать)
+      - Поиск активных юзеров для выдачи
+    """
+    if not _is_main_admin(request.user):
+        return HttpResponseForbidden("Только главный админ.")
+
+    granted = User.objects.filter(can_create_group_reports=True).order_by("username")
+
+    q = (request.GET.get("q") or "").strip()
+    candidates = []
+    if q:
+        candidates = list(
+            User.objects.filter(
+                role=User.Role.USER,
+                can_create_group_reports=False,
+            ).filter(
+                Q(username__icontains=q) | Q(first_name__icontains=q) | Q(last_name__icontains=q)
+            ).exclude(status=User.Status.BANNED)[:20]
+        )
+
+    return render(request, "core/admin_group_report_permissions.html", {
+        "granted": granted,
+        "candidates": candidates,
+        "q": q,
+    })
+
+
+@login_required
+@require_POST
+def admin_group_report_grant(request: HttpRequest, user_id: int) -> HttpResponse:
+    if not _is_main_admin(request.user):
+        return HttpResponseForbidden("Только главный админ.")
+    target = get_object_or_404(User, pk=user_id, role=User.Role.USER)
+    if target.can_create_group_reports:
+        messages.info(request, f"@{target.username} уже имеет право.")
+    else:
+        target.can_create_group_reports = True
+        target.save(update_fields=["can_create_group_reports"])
+        messages.success(request, f"@{target.username} получил право создавать отчёты по группам.")
+    return redirect("admin_group_report_permissions")
+
+
+@login_required
+@require_POST
+def admin_group_report_revoke(request: HttpRequest, user_id: int) -> HttpResponse:
+    if not _is_main_admin(request.user):
+        return HttpResponseForbidden("Только главный админ.")
+    target = get_object_or_404(User, pk=user_id)
+    if not target.can_create_group_reports:
+        messages.info(request, f"У @{target.username} и так нет права.")
+    else:
+        target.can_create_group_reports = False
+        target.save(update_fields=["can_create_group_reports"])
+        messages.success(request, f"У @{target.username} отозвано право на отчёты по группам.")
+    return redirect("admin_group_report_permissions")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Модерация (admin + main_admin)
+# ════════════════════════════════════════════════════════════════════════════
+
+VALID_TABS = ("pending", "rework", "approved", "rejected", "incomplete")
+
+
+@login_required
+def admin_group_reports_list(request: HttpRequest) -> HttpResponse:
+    if not _is_admin_or_main(request.user):
+        return HttpResponseForbidden("Недостаточно прав.")
+
+    is_main = _is_main_admin(request.user)
+
+    tab = request.GET.get("tab", "pending")
+    if tab not in VALID_TABS:
+        tab = "pending"
+    # Вкладка «Не полные» — только для главного админа
+    if tab == "incomplete" and not is_main:
+        tab = "pending"
+
+    qs = GroupReport.objects.select_related("user", "reviewed_by").order_by("-created_at")
+
+    # Обычный админ ВООБЩЕ не видит is_complete=False
+    if not is_main:
+        qs = qs.filter(is_complete=True)
+
+    if tab == "pending":
+        qs = qs.filter(status=GroupReport.Status.PENDING)
+        if is_main:
+            qs = qs.filter(is_complete=True)  # на проверке у админа — только полные
+    elif tab == "rework":
+        qs = qs.filter(status=GroupReport.Status.REWORK)
+    elif tab == "approved":
+        qs = qs.filter(status=GroupReport.Status.APPROVED)
+    elif tab == "rejected":
+        qs = qs.filter(status=GroupReport.Status.REJECTED)
+    elif tab == "incomplete":
+        # «Не полные» — только если is_complete=False, любой статус
+        qs = qs.filter(is_complete=False)
+
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        qs = qs.filter(
+            Q(user__username__icontains=q)
+            | Q(client_username__icontains=q)
+            | Q(manager_username__icontains=q)
+            | Q(client_platform_id__icontains=q if q.isdigit() else None)
+        ) if q.isdigit() else qs.filter(
+            Q(user__username__icontains=q)
+            | Q(client_username__icontains=q)
+            | Q(manager_username__icontains=q)
+        )
+
+    page_obj = Paginator(qs, 30).get_page(request.GET.get("page", 1))
+
+    counts = {
+        "pending": GroupReport.objects.filter(
+            status=GroupReport.Status.PENDING,
+            is_complete=True,
+        ).count(),
+        "rework": GroupReport.objects.filter(status=GroupReport.Status.REWORK).count(),
+    }
+    if is_main:
+        counts["incomplete"] = GroupReport.objects.filter(is_complete=False).count()
+
+    return render(request, "core/admin_group_reports.html", {
+        "page_obj": page_obj,
+        "tab": tab,
+        "q": q,
+        "is_main": is_main,
+        "counts": counts,
+        "reward": GROUP_REPORT_APPROVE_REWARD,
+    })
+
+
+@login_required
+def admin_group_report_attachment(request: HttpRequest, report_id: int) -> HttpResponse:
+    if not _is_admin_or_main(request.user):
+        return HttpResponseForbidden("Недостаточно прав.")
+    report = get_object_or_404(GroupReport, pk=report_id)
+    # Обычный админ не видит вложения incomplete-отчётов
+    if not _is_main_admin(request.user) and not report.is_complete:
+        return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
+    if not report.screencast:
+        return HttpResponseForbidden("Файл не приложен.")
+    return FileResponse(report.screencast.open("rb"), as_attachment=False,
+                        filename=report.screencast.name.rsplit("/", 1)[-1])
+
+
+@login_required
+@require_POST
+def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResponse:
+    if not _is_admin_or_main(request.user):
+        return HttpResponseForbidden("Недостаточно прав.")
+
+    with transaction.atomic():
+        report = (
+            GroupReport.objects.select_for_update()
+            .select_related("user")
+            .filter(pk=report_id)
+            .first()
+        )
+        if not report:
+            messages.error(request, "Отчёт не найден.")
+            return redirect("admin_group_reports_list")
+        if not _is_main_admin(request.user) and not report.is_complete:
+            return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
+        if report.status == GroupReport.Status.APPROVED:
+            messages.info(request, f"Отчёт #{report_id} уже одобрен.")
+            return redirect("admin_group_reports_list")
+
+        report.status = GroupReport.Status.APPROVED
+        report.rejection_reason = ""
+        report.rework_comment = ""
+        report.reviewed_at = timezone.now()
+        report.reviewed_by = request.user
+        report.paid_reward = GROUP_REPORT_APPROVE_REWARD
+        report.save(update_fields=[
+            "status", "rejection_reason", "rework_comment",
+            "reviewed_at", "reviewed_by", "paid_reward", "updated_at",
+        ])
+
+        owner = User.objects.select_for_update().get(pk=report.user_id)
+        _old = owner.balance or 0
+        owner.balance = _old + GROUP_REPORT_APPROVE_REWARD
+        owner.save(update_fields=["balance"])
+        log_balance_change(
+            owner, "balance", _old, owner.balance,
+            f"group_report_approve#{report_id} +{GROUP_REPORT_APPROVE_REWARD}",
+            request.user,
+        )
+
+    messages.success(
+        request,
+        f"Отчёт #{report_id} одобрен. @{report.user.username} начислено "
+        f"{GROUP_REPORT_APPROVE_REWARD} ₽.",
+    )
+    return redirect("admin_group_reports_list")
+
+
+@login_required
+def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpResponse:
+    if not _is_admin_or_main(request.user):
+        return HttpResponseForbidden("Недостаточно прав.")
+    report = get_object_or_404(GroupReport, pk=report_id)
+    if not _is_main_admin(request.user) and not report.is_complete:
+        return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
+
+    if request.method == "POST":
+        form = GroupReportRejectForm(request.POST)
+        if form.is_valid():
+            with transaction.atomic():
+                # Если был approved — откат начисления
+                if report.status == GroupReport.Status.APPROVED and report.paid_reward:
+                    owner = User.objects.select_for_update().get(pk=report.user_id)
+                    _old = owner.balance or 0
+                    owner.balance = _old - report.paid_reward
+                    owner.save(update_fields=["balance"])
+                    log_balance_change(
+                        owner, "balance", _old, owner.balance,
+                        f"group_report_reject_rollback#{report_id} -{report.paid_reward}",
+                        request.user,
+                    )
+                    report.paid_reward = 0
+                report.status = GroupReport.Status.REJECTED
+                report.rejection_reason = form.cleaned_data["rejection_reason"]
+                report.reviewed_at = timezone.now()
+                report.reviewed_by = request.user
+                report.save(update_fields=[
+                    "status", "rejection_reason", "reviewed_at", "reviewed_by",
+                    "paid_reward", "updated_at",
+                ])
+            messages.success(request, f"Отчёт #{report_id} отклонён.")
+            return redirect("admin_group_reports_list")
+    else:
+        form = GroupReportRejectForm()
+
+    return render(request, "core/admin_group_report_reject.html", {
+        "form": form, "report": report,
+    })
+
+
+@login_required
+def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpResponse:
+    if not _is_admin_or_main(request.user):
+        return HttpResponseForbidden("Недостаточно прав.")
+    report = get_object_or_404(GroupReport, pk=report_id)
+    if not _is_main_admin(request.user) and not report.is_complete:
+        return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
+
+    if request.method == "POST":
+        form = GroupReportReworkForm(request.POST)
+        if form.is_valid():
+            with transaction.atomic():
+                if report.status == GroupReport.Status.APPROVED and report.paid_reward:
+                    owner = User.objects.select_for_update().get(pk=report.user_id)
+                    _old = owner.balance or 0
+                    owner.balance = _old - report.paid_reward
+                    owner.save(update_fields=["balance"])
+                    log_balance_change(
+                        owner, "balance", _old, owner.balance,
+                        f"group_report_rework_rollback#{report_id} -{report.paid_reward}",
+                        request.user,
+                    )
+                    report.paid_reward = 0
+                report.status = GroupReport.Status.REWORK
+                report.rework_comment = form.cleaned_data.get("rework_comment", "")
+                report.rejection_reason = ""
+                report.reviewed_at = timezone.now()
+                report.reviewed_by = request.user
+                report.save(update_fields=[
+                    "status", "rework_comment", "rejection_reason",
+                    "reviewed_at", "reviewed_by", "paid_reward", "updated_at",
+                ])
+            messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
+            return redirect("admin_group_reports_list")
+    else:
+        form = GroupReportReworkForm()
+
+    return render(request, "core/admin_group_report_rework.html", {
+        "form": form, "report": report,
+    })
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Свободные слоты (урезанный календарь для одобренных менеджеров)
+# ════════════════════════════════════════════════════════════════════════════
+
+# Должно совпадать с /opt/windowgram/backend/app/api/booking.py — расписание
+# и параметры слотов на бот-сервере. При изменении на боте — обновить тут.
+MSK = ZoneInfo("Europe/Moscow")
+SLOT_STEP_MIN = 15
+MIN_GAP_MIN = 15
+SLOT_CAPACITY = 2
+HORIZON_DAYS = 14
+SCHEDULE: dict[int, list[tuple[str, str]]] = {
+    0: [("10:00", "16:00"), ("19:45", "21:00")],
+    1: [("10:00", "16:00"), ("19:45", "21:00")],
+    2: [("10:00", "16:00"), ("19:45", "21:00")],
+    3: [("10:00", "16:00"), ("19:45", "21:00")],
+    4: [("10:00", "16:00"), ("19:45", "21:00")],
+    5: [],
+    6: [("13:00", "18:00")],
+}
+SCHEDULE_OVERRIDES: dict[date, list[tuple[str, str]]] = {
+    date(2026, 5, 7): [("10:00", "16:00")],
+    date(2026, 5, 8): [("10:00", "15:00")],
+}
+NON_BOOKING_PREFIXES = ("[Жду бабки]", "[Ответ]", "[Жду без даты]", "[Просрочка")
+
+
+def _get_ranges_for_day(d: date) -> list[tuple[str, str]]:
+    if d in SCHEDULE_OVERRIDES:
+        return SCHEDULE_OVERRIDES[d]
+    return SCHEDULE.get(d.weekday(), [])
+
+
+def _generate_slots_for_day(d: date) -> list[datetime]:
+    slots: list[datetime] = []
+    for start_str, end_str in _get_ranges_for_day(d):
+        sh, sm = map(int, start_str.split(":"))
+        eh, em = map(int, end_str.split(":"))
+        start = datetime.combine(d, time(sh, sm), tzinfo=MSK)
+        end = datetime.combine(d, time(eh, em), tzinfo=MSK)
+        cur = start
+        while cur < end:
+            slots.append(cur)
+            cur += timedelta(minutes=SLOT_STEP_MIN)
+    return slots
+
+
+def _bookings_by_minute_window(start: date, end: date) -> dict[date, dict[int, int]]:
+    """{date: {minutes_from_midnight: count}} в окне [start, end]. Учитываем
+    только реальные созвоны (без статусных напоминалок)."""
+    sql = """
+        SELECT event_date, event_time, user_name FROM calendar_events
+        WHERE event_date BETWEEN %s AND %s
+    """
+    out: dict[date, dict[int, int]] = {}
+    try:
+        with connections["windowgram"].cursor() as cur:
+            cur.execute(sql, [start, end])
+            for ev_date, ev_time, user_name in cur.fetchall():
+                if not ev_time:
+                    continue
+                name = (user_name or "").strip()
+                if any(name.startswith(p) for p in NON_BOOKING_PREFIXES):
+                    continue
+                parts = ev_time.replace(".", ":").split(":")
+                if len(parts) != 2:
+                    continue
+                try:
+                    h, m = int(parts[0]), int(parts[1])
+                except ValueError:
+                    continue
+                key = h * 60 + m
+                day_map = out.setdefault(ev_date, {})
+                day_map[key] = day_map.get(key, 0) + 1
+    except Exception:
+        return {}
+    return out
+
+
+def _is_slot_free(bookings: dict[date, dict[int, int]], d: date, h: int, m: int) -> bool:
+    """Тот же алгоритм что в booking.py: capacity на тот же минут + min_gap к
+    остальным."""
+    day_map = bookings.get(d, {})
+    slot_min = h * 60 + m
+    if day_map.get(slot_min, 0) >= SLOT_CAPACITY:
+        return False
+    for other_min in day_map.keys():
+        if other_min == slot_min:
+            continue
+        if abs(other_min - slot_min) < MIN_GAP_MIN:
+            return False
+    return True
+
+
+@login_required
+def free_slots_calendar(request: HttpRequest) -> HttpResponse:
+    """Урезанный календарь свободных дат для менеджера. БЕЗ имён клиентов и
+    деталей — только зелёные/серые слоты."""
+    user = request.user
+    if not _is_manager_with_right(user):
+        return HttpResponseForbidden("У вас нет права на отчёты по группам.")
+    if user.status != User.Status.APPROVED:
+        return HttpResponseForbidden("Доступ к календарю — после одобрения профиля.")
+
+    today = timezone.localtime(timezone.now()).date()
+    horizon = today + timedelta(days=HORIZON_DAYS)
+    now_msk = datetime.now(MSK)
+    min_dt = now_msk + timedelta(hours=1)  # ближе чем за час — не показываем
+
+    bookings = _bookings_by_minute_window(today, horizon)
+
+    days = []
+    for i in range(HORIZON_DAYS):
+        d = today + timedelta(days=i)
+        slots = []
+        free_count = 0
+        for dt in _generate_slots_for_day(d):
+            if dt < min_dt:
+                continue
+            free = _is_slot_free(bookings, d, dt.hour, dt.minute)
+            if free:
+                free_count += 1
+            slots.append({
+                "time": f"{dt.hour:02d}:{dt.minute:02d}",
+                "free": free,
+            })
+        if slots:
+            days.append({
+                "date": d,
+                "weekday": d.weekday(),
+                "is_today": d == today,
+                "slots": slots,
+                "free_count": free_count,
+                "total_count": len(slots),
+            })
+
+    return render(request, "core/free_slots_calendar.html", {
+        "days": days,
+        "horizon_days": HORIZON_DAYS,
+        "today": today,
+    })
