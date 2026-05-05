@@ -2610,17 +2610,45 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
         })
 
     selected_admin = None
-    logs = []
+    logs: list = []
     admin_id = request.GET.get("admin_id")
     if admin_id:
-        from .models import LeadReviewLog
+        from .models import LeadReviewLog, SearchReportReviewLog
         selected_admin = User.objects.filter(pk=admin_id, role="admin").first()
         if selected_admin:
-            logs = (
+            lead_logs = (
                 LeadReviewLog.objects.filter(admin=selected_admin)
                 .select_related("lead", "lead__user", "lead__lead_type")
                 .order_by("-created_at")[:200]
             )
+            sr_logs = (
+                SearchReportReviewLog.objects.filter(admin=selected_admin)
+                .select_related("report", "report__user")
+                .order_by("-created_at")[:200]
+            )
+            unified: list[dict] = []
+            for lg in lead_logs:
+                unified.append({
+                    "kind": "lead",
+                    "created_at": lg.created_at,
+                    "action": lg.action,
+                    "obj_id": lg.lead_id,
+                    "user_username": (lg.lead.user.username if lg.lead and lg.lead.user else ""),
+                    "type_label": (lg.lead.lead_type.name if lg.lead and lg.lead.lead_type else "—"),
+                    "rate": int(LEAD_REVIEW_RATE),
+                })
+            for lg in sr_logs:
+                unified.append({
+                    "kind": "sr",
+                    "created_at": lg.created_at,
+                    "action": lg.action,
+                    "obj_id": lg.report_id,
+                    "user_username": (lg.report.user.username if lg.report and lg.report.user else ""),
+                    "type_label": "SearchLink",
+                    "rate": int(SEARCH_REVIEW_RATE),
+                })
+            unified.sort(key=lambda x: x["created_at"], reverse=True)
+            logs = unified[:200]
 
     return render(request, "core/admin_earnings_stats.html", {
         "admin_stats": admin_stats,

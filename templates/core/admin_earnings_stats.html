@@ -52,9 +52,9 @@
                 <tr>
                   <th>Дата</th>
                   <th>Действие</th>
-                  <th>Лид #</th>
+                  <th>Отчёт</th>
                   <th>Пользователь</th>
-                  <th>Тип лида</th>
+                  <th>Тип</th>
                   <th>Начислено</th>
                 </tr>
               </thead>
@@ -71,10 +71,17 @@
                         <span class="badge bg-warning text-dark">Доработка</span>
                       {% endif %}
                     </td>
-                    <td>#{{ log.lead.id }}</td>
-                    <td>@{{ log.lead.user.username }}</td>
-                    <td>{{ log.lead.lead_type.name|default:"—" }}</td>
-                    <td class="text-success">+{{ lead_review_rate }} ₽</td>
+                    <td>
+                      {% if log.kind == 'sr' %}
+                        <span class="badge" style="background:rgba(99,102,241,0.25);color:#c7d2fe;font-size:9px">SR</span>
+                      {% else %}
+                        <span class="badge" style="background:rgba(148,163,184,0.2);color:#cbd5e1;font-size:9px">Lead</span>
+                      {% endif %}
+                      #{{ log.obj_id }}
+                    </td>
+                    <td>@{{ log.user_username }}</td>
+                    <td>{{ log.type_label }}</td>
+                    <td class="text-success">+{{ log.rate }} ₽</td>
                   </tr>
                 {% endfor %}
               </tbody>
