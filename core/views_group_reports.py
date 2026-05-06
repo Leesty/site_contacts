@@ -387,70 +387,85 @@ def admin_group_report_permissions(request: HttpRequest) -> HttpResponse:
     })
 
 
+def _parse_vk_link(s: str) -> str:
+    """`https://vk.com/id12345` / `vk.com/foo` / `@foo` / `foo` → `foo` / `id12345`."""
+    s = (s or "").strip().lstrip("@")
+    if not s:
+        return ""
+    low = s.lower()
+    for marker in ("vk.com/", "vk.ru/"):
+        if marker in low:
+            idx = low.find(marker)
+            rest = s[idx + len(marker):].split("?")[0].strip().rstrip("/")
+            return rest.lower()
+    return s.lower()
+
+
 @login_required
 @require_POST
 def admin_group_report_grant(request: HttpRequest, user_id: int) -> HttpResponse:
     """Выдать право + зарегистрировать на бот-сервере как подадмина.
 
-    Обязательные поля POST:
-      platform (telegram|vk), bot_admin_user_id (int) ИЛИ bot_admin_username.
+    Поддерживается ОБА аккаунта одновременно — менеджер часто работает
+    и через TG, и через VK. Хотя бы одно поле обязательно.
     """
     if not _is_main_admin(request.user):
         return HttpResponseForbidden("Только главный админ.")
     target = get_object_or_404(User, pk=user_id, role=User.Role.USER)
 
-    platform = (request.POST.get("platform") or "").strip().lower()
-    if platform not in ("telegram", "vk"):
-        messages.error(request, "Платформа должна быть telegram или vk.")
-        return redirect("admin_group_report_permissions")
+    tg_username = (request.POST.get("tg_username") or "").strip().lstrip("@").lower()
+    vk_screen = _parse_vk_link(request.POST.get("vk_link") or "")
 
-    raw_user_id = (request.POST.get("bot_admin_user_id") or "").strip()
-    bot_user_id: int | None = None
-    if raw_user_id:
-        try:
-            bot_user_id = int(raw_user_id)
-        except ValueError:
-            messages.error(request, "ID должен быть числом.")
-            return redirect("admin_group_report_permissions")
-
-    bot_username = (request.POST.get("bot_admin_username") or "").strip().lstrip("@").lower() or ""
-
-    if bot_user_id is None and not bot_username:
+    if not tg_username and not vk_screen:
         messages.error(
             request,
-            "Укажите telegram/vk ID или username — обязательно для регистрации на бот-сервере.",
+            "Укажите Telegram @username и/или VK ссылку — хотя бы одно обязательно.",
         )
         return redirect("admin_group_report_permissions")
 
     display_name = " ".join(filter(None, [target.first_name, target.last_name])) or target.username
 
-    # Сначала пробуем зарегистрировать на бот-сервере. Если упадёт — не выдаём
-    # право вообще, чтобы не было рассинхрона.
-    ok, note = _windowgram_register_subadmin(
-        platform=platform,
-        platform_user_id=bot_user_id,
-        username=bot_username or None,
-        display_name=display_name,
-    )
-    if not ok:
+    # Регистрируем на бот-сервере — отдельная запись на каждую платформу.
+    # Если хоть один sync упал — право не выдаём, чтобы не было рассинхрона.
+    errors: list[str] = []
+    if tg_username:
+        ok, note = _windowgram_register_subadmin(
+            platform="telegram", platform_user_id=None,
+            username=tg_username, display_name=display_name,
+        )
+        if not ok:
+            errors.append(f"TG: {note}")
+    if vk_screen:
+        ok, note = _windowgram_register_subadmin(
+            platform="vk", platform_user_id=None,
+            username=vk_screen, display_name=display_name,
+        )
+        if not ok:
+            errors.append(f"VK: {note}")
+
+    if errors:
         messages.error(
             request,
-            f"Не удалось зарегистрировать @{target.username} как подадмина на бот-сервере: {note}. "
-            f"Право не выдано.",
+            f"Не удалось зарегистрировать @{target.username} на бот-сервере: "
+            f"{'; '.join(errors)}. Право не выдано.",
         )
         return redirect("admin_group_report_permissions")
 
     target.can_create_group_reports = True
-    target.bot_admin_platform = platform
-    target.bot_admin_user_id = bot_user_id
-    target.bot_admin_username = bot_username
+    target.bot_admin_tg_username = tg_username
+    target.bot_admin_vk_screen_name = vk_screen
     target.save(update_fields=[
-        "can_create_group_reports", "bot_admin_platform",
-        "bot_admin_user_id", "bot_admin_username",
+        "can_create_group_reports",
+        "bot_admin_tg_username", "bot_admin_vk_screen_name",
     ])
+    parts = []
+    if tg_username:
+        parts.append(f"TG @{tg_username}")
+    if vk_screen:
+        parts.append(f"VK {vk_screen}")
     messages.success(
         request,
-        f"@{target.username} получил право и зарегистрирован как подадмин на боте.",
+        f"@{target.username} получил право и зарегистрирован как подадмин ({', '.join(parts)}).",
     )
     return redirect("admin_group_report_permissions")
 
@@ -465,28 +480,36 @@ def admin_group_report_revoke(request: HttpRequest, user_id: int) -> HttpRespons
         messages.info(request, f"У @{target.username} и так нет права.")
         return redirect("admin_group_report_permissions")
 
-    # Параллельно снимаем подадмина с бот-сервера. Soft-fail — если бот
-    # недоступен, в нашей БД право снимем всё равно (юзер потеряет UI),
-    # но bot_command_admins останется до ручной чистки.
-    if target.bot_admin_platform and (target.bot_admin_user_id or target.bot_admin_username):
+    # Снимаем подадмина с бот-сервера на КАЖДОЙ привязанной платформе.
+    # Soft-fail — если бот недоступен, в нашей БД право снимем всё равно.
+    bot_errors: list[str] = []
+    if target.bot_admin_tg_username:
         ok, note = _windowgram_revoke_subadmin(
-            platform=target.bot_admin_platform,
-            platform_user_id=target.bot_admin_user_id,
-            username=target.bot_admin_username or None,
+            platform="telegram", platform_user_id=None,
+            username=target.bot_admin_tg_username,
         )
         if not ok:
-            messages.warning(
-                request,
-                f"Право у @{target.username} снято локально, но на бот-сервере не получилось: {note}. "
-                f"Снимите вручную через /api/admins.",
-            )
+            bot_errors.append(f"TG: {note}")
+    if target.bot_admin_vk_screen_name:
+        ok, note = _windowgram_revoke_subadmin(
+            platform="vk", platform_user_id=None,
+            username=target.bot_admin_vk_screen_name,
+        )
+        if not ok:
+            bot_errors.append(f"VK: {note}")
+    if bot_errors:
+        messages.warning(
+            request,
+            f"Право у @{target.username} снято локально, но на бот-сервере не получилось: "
+            f"{'; '.join(bot_errors)}. Снимите вручную через /api/admins.",
+        )
+
     target.can_create_group_reports = False
-    target.bot_admin_platform = ""
-    target.bot_admin_user_id = None
-    target.bot_admin_username = ""
+    target.bot_admin_tg_username = ""
+    target.bot_admin_vk_screen_name = ""
     target.save(update_fields=[
-        "can_create_group_reports", "bot_admin_platform",
-        "bot_admin_user_id", "bot_admin_username",
+        "can_create_group_reports",
+        "bot_admin_tg_username", "bot_admin_vk_screen_name",
     ])
     messages.success(request, f"У @{target.username} отозвано право на отчёты по группам.")
     return redirect("admin_group_report_permissions")

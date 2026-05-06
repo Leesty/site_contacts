@@ -30,8 +30,9 @@
           <div class="alert alert-warning small mb-0">Никого не найдено по «{{ q }}».</div>
         {% elif q %}
           <div class="alert alert-info small">
-            Для выдачи укажите telegram/vk ID или username — он улетит на бот-сервер
-            и менеджер сразу станет подадмином (команды /линк, /оффер, /созвон заработают).
+            Укажите Telegram-username и/или VK ссылку — менеджер зарегистрируется
+            как подадмин на бот-сервере, команды /линк, /оффер, /созвон сразу заработают.
+            Один админ может работать через обе платформы — заполните оба поля, если нужно.
           </div>
           <ul class="list-group list-group-flush">
             {% for u in candidates %}
@@ -51,29 +52,22 @@
                 <form method="post" action="{% url 'admin_group_report_grant' u.id %}" class="m-0">
                   {% csrf_token %}
                   <div class="row g-2 align-items-end">
-                    <div class="col-md-3">
-                      <label class="form-label small text-muted mb-1">Платформа</label>
-                      <select name="platform" class="form-select form-select-sm" required>
-                        <option value="telegram">Telegram</option>
-                        <option value="vk">VK</option>
-                      </select>
-                    </div>
-                    <div class="col-md-3">
-                      <label class="form-label small text-muted mb-1">ID в боте</label>
-                      <input type="text" name="bot_admin_user_id" class="form-control form-control-sm"
-                             placeholder="987654321">
-                    </div>
-                    <div class="col-md-3">
-                      <label class="form-label small text-muted mb-1">или username</label>
-                      <input type="text" name="bot_admin_username" class="form-control form-control-sm"
+                    <div class="col-md-4">
+                      <label class="form-label small text-muted mb-1">Telegram @username</label>
+                      <input type="text" name="tg_username" class="form-control form-control-sm"
                              placeholder="@vasya">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
+                      <label class="form-label small text-muted mb-1">VK ссылка или screen_name</label>
+                      <input type="text" name="vk_link" class="form-control form-control-sm"
+                             placeholder="vk.com/vasya">
+                    </div>
+                    <div class="col-md-4">
                       <button type="submit" class="btn btn-success btn-sm w-100">＋ Выдать и зарегистрировать</button>
                     </div>
                   </div>
                   <div class="form-text small text-muted mt-1">
-                    Хотя бы одно из полей (ID или username) обязательно.
+                    Хотя бы одно из полей (TG username или VK ссылка) обязательно.
                   </div>
                 </form>
               </li>
@@ -108,17 +102,17 @@
                   {% else %}
                     <span class="badge bg-warning text-dark ms-1" style="font-size:9px">{{ u.get_status_display }}</span>
                   {% endif %}
-                  {% if u.bot_admin_platform %}
+                  {% if u.bot_admin_tg_username or u.bot_admin_vk_screen_name %}
                     <br>
-                    <span class="text-muted small">
-                      бот:
-                      {% if u.bot_admin_platform == 'vk' %}
-                        <span class="badge" style="background:rgba(6,182,212,0.25);color:#cffafe;font-size:9px">VK</span>
-                      {% else %}
+                    <span class="text-muted small">бот:
+                      {% if u.bot_admin_tg_username %}
                         <span class="badge" style="background:rgba(99,102,241,0.25);color:#c7d2fe;font-size:9px">TG</span>
+                        @{{ u.bot_admin_tg_username }}
                       {% endif %}
-                      {% if u.bot_admin_user_id %}<code>{{ u.bot_admin_user_id }}</code>{% endif %}
-                      {% if u.bot_admin_username %}@{{ u.bot_admin_username }}{% endif %}
+                      {% if u.bot_admin_vk_screen_name %}
+                        <span class="badge" style="background:rgba(6,182,212,0.25);color:#cffafe;font-size:9px">VK</span>
+                        {{ u.bot_admin_vk_screen_name }}
+                      {% endif %}
                     </span>
                   {% else %}
                     <br><span class="text-warning small">⚠ не привязан к боту (legacy grant)</span>
