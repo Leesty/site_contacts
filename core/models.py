@@ -1657,3 +1657,38 @@ class GroupReport(TimeStampedModel):
     def __str__(self) -> str:
         return f"GroupReport #{self.pk} user={self.user_id} status={self.status}"
 
+
+class GroupReportReviewLog(TimeStampedModel):
+    """История модерации GroupReport: одобрен / отклонён / на доработку.
+
+    Аналог LeadReviewLog / SearchReportReviewLog. Нужна чтобы корректно
+    начислять админу 15 ₽ за каждое action — даже если статус потом сменили
+    другим админом, первый сохраняет свой кредит.
+    """
+
+    class Action(models.TextChoices):
+        APPROVED = "approved", "Одобрено"
+        REJECTED = "rejected", "Отклонено"
+        REWORK = "rework", "На доработку"
+
+    report = models.ForeignKey(
+        GroupReport,
+        on_delete=models.CASCADE,
+        related_name="review_logs",
+    )
+    admin = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="group_report_review_logs",
+    )
+    action = models.CharField(max_length=20, choices=Action.choices)
+
+    class Meta:
+        verbose_name = "Событие модерации GroupReport"
+        verbose_name_plural = "События модерации GroupReport"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"GR#{self.report_id}: {self.get_action_display()} ({self.created_at})"
+

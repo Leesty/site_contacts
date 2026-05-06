@@ -47,7 +47,7 @@ from .forms import (
     GroupReportRejectForm,
     GroupReportReworkForm,
 )
-from .models import GroupReport, User, log_balance_change
+from .models import GroupReport, GroupReportReviewLog, User, log_balance_change
 
 
 GROUP_REPORT_APPROVE_REWARD = 200  # ₽ за approve менеджеру
@@ -491,6 +491,10 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
             f"group_report_approve#{report_id} +{GROUP_REPORT_APPROVE_REWARD}",
             request.user,
         )
+        GroupReportReviewLog.objects.create(
+            report=report, admin=request.user,
+            action=GroupReportReviewLog.Action.APPROVED,
+        )
 
     messages.success(
         request,
@@ -532,6 +536,10 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
                     "status", "rejection_reason", "reviewed_at", "reviewed_by",
                     "paid_reward", "updated_at",
                 ])
+                GroupReportReviewLog.objects.create(
+                    report=report, admin=request.user,
+                    action=GroupReportReviewLog.Action.REJECTED,
+                )
             messages.success(request, f"Отчёт #{report_id} отклонён.")
             return redirect("admin_group_reports_list")
     else:
@@ -574,6 +582,10 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
                     "status", "rework_comment", "rejection_reason",
                     "reviewed_at", "reviewed_by", "paid_reward", "updated_at",
                 ])
+                GroupReportReviewLog.objects.create(
+                    report=report, admin=request.user,
+                    action=GroupReportReviewLog.Action.REWORK,
+                )
             messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
             return redirect("admin_group_reports_list")
     else:

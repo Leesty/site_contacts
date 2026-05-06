@@ -8,7 +8,7 @@
     <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← Панель</a>
   </div>
 
-  <p class="text-muted small mb-3">Каждое действие по обычному отчёту (Поиск/Дожим) — {{ lead_review_rate }} ₽. По отчёту SearchLink — {{ search_review_rate }} ₽.</p>
+  <p class="text-muted small mb-3">Каждое действие по обычному отчёту (Поиск/Дожим) — {{ lead_review_rate }} ₽. По SearchLink — {{ search_review_rate }} ₽. По отчёту по группе — {{ group_report_review_rate }} ₽.</p>
 
   <div class="card shadow-sm mb-4">
     <div class="card-body p-0">
@@ -74,6 +74,8 @@
                     <td>
                       {% if log.kind == 'sr' %}
                         <span class="badge" style="background:rgba(99,102,241,0.25);color:#c7d2fe;font-size:9px">SR</span>
+                      {% elif log.kind == 'gr' %}
+                        <span class="badge" style="background:rgba(74,222,128,0.25);color:#bbf7d0;font-size:9px">GR</span>
                       {% else %}
                         <span class="badge" style="background:rgba(148,163,184,0.2);color:#cbd5e1;font-size:9px">Lead</span>
                       {% endif %}

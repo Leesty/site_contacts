@@ -2590,10 +2590,13 @@ def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
-    """Страница статистики начислений админов: 10₽ за Lead-action, 10₽ за SearchLink-action."""
+    """Страница статистики начислений админов: 10₽ за Lead/SR-action, 15₽ за GroupReport-action."""
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
-    from .admin_earnings import total_actions, total_earned, LEAD_REVIEW_RATE, SEARCH_REVIEW_RATE
+    from .admin_earnings import (
+        total_actions, total_earned,
+        LEAD_REVIEW_RATE, SEARCH_REVIEW_RATE, GROUP_REPORT_REVIEW_RATE,
+    )
 
     admins = User.objects.filter(role="admin").order_by("username")
     admin_stats = []
@@ -2613,7 +2616,7 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
     logs: list = []
     admin_id = request.GET.get("admin_id")
     if admin_id:
-        from .models import LeadReviewLog, SearchReportReviewLog
+        from .models import LeadReviewLog, SearchReportReviewLog, GroupReportReviewLog
         selected_admin = User.objects.filter(pk=admin_id, role="admin").first()
         if selected_admin:
             lead_logs = (
@@ -2623,6 +2626,11 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
             )
             sr_logs = (
                 SearchReportReviewLog.objects.filter(admin=selected_admin)
+                .select_related("report", "report__user")
+                .order_by("-created_at")[:200]
+            )
+            gr_logs = (
+                GroupReportReviewLog.objects.filter(admin=selected_admin)
                 .select_related("report", "report__user")
                 .order_by("-created_at")[:200]
             )
@@ -2647,6 +2655,16 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
                     "type_label": "SearchLink",
                     "rate": int(SEARCH_REVIEW_RATE),
                 })
+            for lg in gr_logs:
+                unified.append({
+                    "kind": "gr",
+                    "created_at": lg.created_at,
+                    "action": lg.action,
+                    "obj_id": lg.report_id,
+                    "user_username": (lg.report.user.username if lg.report and lg.report.user else ""),
+                    "type_label": "Группа",
+                    "rate": int(GROUP_REPORT_REVIEW_RATE),
+                })
             unified.sort(key=lambda x: x["created_at"], reverse=True)
             logs = unified[:200]
 
@@ -2656,6 +2674,7 @@ def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
         "logs": logs,
         "lead_review_rate": int(LEAD_REVIEW_RATE),
         "search_review_rate": int(SEARCH_REVIEW_RATE),
+        "group_report_review_rate": int(GROUP_REPORT_REVIEW_RATE),
     })
 
 
