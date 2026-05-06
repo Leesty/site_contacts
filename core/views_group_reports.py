@@ -12,7 +12,7 @@
 
 3. **Модерация** (admin / main_admin):
    - Список + фильтр по статусу
-   - approve (+200₽), reject, rework
+   - approve (+80₽ менеджеру, +10₽ админу), reject, rework
    - Просмотр скринкаста любого отчёта
 
 4. **Авто-валидация** против `windowgram.admin_task_progress`. Если запись
@@ -50,7 +50,7 @@ from .forms import (
 from .models import GroupReport, GroupReportReviewLog, User, log_balance_change
 
 
-GROUP_REPORT_APPROVE_REWARD = 200  # ₽ за approve менеджеру
+GROUP_REPORT_APPROVE_REWARD = 80  # ₽ за approve менеджеру
 
 
 # ════════════════════════════════════════════════════════════════════════════

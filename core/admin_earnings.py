@@ -4,7 +4,7 @@
   (approve / reject / rework). Покрывает «Поиск» и «Дожим» — оба идут
   через одну Lead-таблицу.
 - SearchLink-отчёты (через SearchReportReviewLog): 10 ₽ за action.
-- GroupReport (через GroupReportReviewLog): 15 ₽ за action.
+- GroupReport (через GroupReportReviewLog): 10 ₽ за action.
 
 Используется в:
 - core.views.user_dashboard (баланс админа)
@@ -15,7 +15,7 @@ from decimal import Decimal
 
 LEAD_REVIEW_RATE = Decimal("10")
 SEARCH_REVIEW_RATE = Decimal("10")
-GROUP_REPORT_REVIEW_RATE = Decimal("15")
+GROUP_REPORT_REVIEW_RATE = Decimal("10")
 
 _REVIEWED_STATUSES = ("approved", "rejected", "rework")
 
