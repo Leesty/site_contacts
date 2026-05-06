@@ -81,6 +81,18 @@
       </div>
     </div>
     <div class="col">
+      <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.02) 100%); border: 1px solid rgba(99,102,241,0.25);">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">📊 Группы — модерация</h2>
+            {% if pending_group_reports_count %}<span class="badge bg-danger">{{ pending_group_reports_count }}</span>{% endif %}
+          </div>
+          <p class="text-muted small mb-2">Отчёты менеджеров по группам. За одобренный — 80 ₽ менеджеру, +10 ₽ за каждое action вам.</p>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_group_reports_list' %}">Открыть</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
           <div class="d-flex align-items-center justify-content-between mb-2">
@@ -99,18 +111,6 @@
           </div>
           <p class="text-muted small mb-2">Кто из админов что одобрил / отклонил / кинул на доработку. С причинами.</p>
           <a class="btn btn-outline-warning btn-sm" href="{% url 'admin_moderation_by_admin_list' %}">Смотреть</a>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.02) 100%); border: 1px solid rgba(99,102,241,0.25);">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <h2 class="h6 mb-0">📊 Группы — модерация <span class="badge bg-warning text-dark ms-1" style="font-size:9px;">бета</span></h2>
-            {% if pending_group_reports_count %}<span class="badge bg-danger">{{ pending_group_reports_count }}</span>{% endif %}
-          </div>
-          <p class="text-muted small mb-2">Отчёты менеджеров по группам. За одобренный — 80 ₽ менеджеру, +10 ₽ за каждое action вам.</p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'admin_group_reports_list' %}">Открыть</a>
         </div>
       </div>
     </div>
