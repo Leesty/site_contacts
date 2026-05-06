@@ -2609,7 +2609,7 @@ def standalone_admin_reset_password(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_earnings_stats(request: HttpRequest) -> HttpResponse:
-    """Страница статистики начислений админов: 10₽ за Lead/SR-action, 15₽ за GroupReport-action."""
+    """Страница статистики начислений админов: 2.5₽ за Lead-action, 10₽ за SearchLink-action, 10₽ за GroupReport-action."""
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
     from .admin_earnings import (
