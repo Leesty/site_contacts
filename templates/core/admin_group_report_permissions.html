@@ -104,18 +104,18 @@
                   {% endif %}
                   {% if u.bot_admin_tg_username or u.bot_admin_vk_screen_name %}
                     <br>
-                    <span class="text-muted small">бот:
+                    <span class="text-muted small">
                       {% if u.bot_admin_tg_username %}
                         <span class="badge" style="background:rgba(99,102,241,0.25);color:#c7d2fe;font-size:9px">TG</span>
                         @{{ u.bot_admin_tg_username }}
                       {% endif %}
                       {% if u.bot_admin_vk_screen_name %}
-                        <span class="badge" style="background:rgba(6,182,212,0.25);color:#cffafe;font-size:9px">VK</span>
+                        <span class="badge ms-1" style="background:rgba(6,182,212,0.25);color:#cffafe;font-size:9px">VK</span>
                         {{ u.bot_admin_vk_screen_name }}
                       {% endif %}
                     </span>
                   {% else %}
-                    <br><span class="text-warning small">⚠ не привязан к боту (legacy grant)</span>
+                    <br><span class="text-warning small">⚠ не привязан (legacy grant)</span>
                   {% endif %}
                 </span>
                 <form method="post" action="{% url 'admin_group_report_revoke' u.id %}" class="m-0"
