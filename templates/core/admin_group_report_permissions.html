@@ -29,22 +29,52 @@
         {% if q and not candidates %}
           <div class="alert alert-warning small mb-0">Никого не найдено по «{{ q }}».</div>
         {% elif q %}
+          <div class="alert alert-info small">
+            Для выдачи укажите telegram/vk ID или username — он улетит на бот-сервер
+            и менеджер сразу станет подадмином (команды /линк, /оффер, /созвон заработают).
+          </div>
           <ul class="list-group list-group-flush">
             {% for u in candidates %}
-              <li class="list-group-item d-flex justify-content-between align-items-center"
+              <li class="list-group-item"
                   style="background:transparent;border-color:rgba(255,255,255,0.06);color:#e2e8f0">
-                <span>
-                  <strong>@{{ u.username }}</strong>
-                  {% if u.first_name or u.last_name %}
-                    <span class="text-muted small ms-1">{{ u.first_name }} {{ u.last_name }}</span>
-                  {% endif %}
-                  {% if u.status != 'approved' %}
-                    <span class="badge bg-warning text-dark ms-1" style="font-size:9px">{{ u.get_status_display }}</span>
-                  {% endif %}
-                </span>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>
+                    <strong>@{{ u.username }}</strong>
+                    {% if u.first_name or u.last_name %}
+                      <span class="text-muted small ms-1">{{ u.first_name }} {{ u.last_name }}</span>
+                    {% endif %}
+                    {% if u.status != 'approved' %}
+                      <span class="badge bg-warning text-dark ms-1" style="font-size:9px">{{ u.get_status_display }}</span>
+                    {% endif %}
+                  </span>
+                </div>
                 <form method="post" action="{% url 'admin_group_report_grant' u.id %}" class="m-0">
                   {% csrf_token %}
-                  <button type="submit" class="btn btn-success btn-sm py-0">＋ Выдать</button>
+                  <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                      <label class="form-label small text-muted mb-1">Платформа</label>
+                      <select name="platform" class="form-select form-select-sm" required>
+                        <option value="telegram">Telegram</option>
+                        <option value="vk">VK</option>
+                      </select>
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label small text-muted mb-1">ID в боте</label>
+                      <input type="text" name="bot_admin_user_id" class="form-control form-control-sm"
+                             placeholder="987654321">
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label small text-muted mb-1">или username</label>
+                      <input type="text" name="bot_admin_username" class="form-control form-control-sm"
+                             placeholder="@vasya">
+                    </div>
+                    <div class="col-md-3">
+                      <button type="submit" class="btn btn-success btn-sm w-100">＋ Выдать и зарегистрировать</button>
+                    </div>
+                  </div>
+                  <div class="form-text small text-muted mt-1">
+                    Хотя бы одно из полей (ID или username) обязательно.
+                  </div>
                 </form>
               </li>
             {% endfor %}
@@ -78,9 +108,24 @@
                   {% else %}
                     <span class="badge bg-warning text-dark ms-1" style="font-size:9px">{{ u.get_status_display }}</span>
                   {% endif %}
+                  {% if u.bot_admin_platform %}
+                    <br>
+                    <span class="text-muted small">
+                      бот:
+                      {% if u.bot_admin_platform == 'vk' %}
+                        <span class="badge" style="background:rgba(6,182,212,0.25);color:#cffafe;font-size:9px">VK</span>
+                      {% else %}
+                        <span class="badge" style="background:rgba(99,102,241,0.25);color:#c7d2fe;font-size:9px">TG</span>
+                      {% endif %}
+                      {% if u.bot_admin_user_id %}<code>{{ u.bot_admin_user_id }}</code>{% endif %}
+                      {% if u.bot_admin_username %}@{{ u.bot_admin_username }}{% endif %}
+                    </span>
+                  {% else %}
+                    <br><span class="text-warning small">⚠ не привязан к боту (legacy grant)</span>
+                  {% endif %}
                 </span>
                 <form method="post" action="{% url 'admin_group_report_revoke' u.id %}" class="m-0"
-                      onsubmit="return confirm('Отозвать право у @{{ u.username }}?');">
+                      onsubmit="return confirm('Отозвать право у @{{ u.username }}? Подадмин с бот-сервера тоже будет удалён.');">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-outline-danger btn-sm py-0">× Отозвать</button>
                 </form>

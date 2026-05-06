@@ -152,6 +152,17 @@ class User(AbstractUser):
         db_index=True,
         help_text="Может ли менеджер создавать отчёты по группам (отдельный поток отчётов).",
     )
+    # Связка с подадмином на бот-сервере (windowgram.bot_command_admins).
+    # Заполняется при grant — главный админ обязан указать TG/VK ID, чтобы
+    # синхронно зарегистрировать менеджера как sub-admin на боте (тогда
+    # команды /линк, /оффер, /созвон будут работать в его группах).
+    BOT_ADMIN_PLATFORMS = [("telegram", "Telegram"), ("vk", "VK")]
+    bot_admin_platform = models.CharField(
+        max_length=16, blank=True, default="",
+        choices=BOT_ADMIN_PLATFORMS,
+    )
+    bot_admin_user_id = models.BigIntegerField(null=True, blank=True)
+    bot_admin_username = models.CharField(max_length=100, blank=True, default="")
 
     def is_approved(self) -> bool:
         return self.status == self.Status.APPROVED
