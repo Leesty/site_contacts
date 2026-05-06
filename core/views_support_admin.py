@@ -21,6 +21,7 @@ from django.views.decorators.http import require_http_methods
 from openpyxl import Workbook, load_workbook
 
 from .forms import BaseCategoryUploadForm, BaseExcelUploadForm, LeadRejectForm, LeadReworkForm, LeadsExcelUploadForm
+from .lead_utils import normalize_lead_contact
 from .models import (
     BaseType,
     BasesImportJob,
@@ -1211,13 +1212,25 @@ def admin_stats(request: HttpRequest) -> HttpResponse:
 
 
 def _allocate_contacts_to_user(target_user, base_type, count: int) -> int:
-    """Выдаёт пользователю до count контактов из базы. Возвращает количество выданных."""
+    """Выдаёт пользователю до count контактов из базы. Возвращает количество выданных.
+
+    Применяет глобальный антидубль по `normalized_value` — один и тот же
+    нормализованный номер/ник не может быть выдан второй раз, даже через
+    другую базу.
+    """
     from django.db import transaction
+    from django.db.models import Exists, OuterRef
 
     with transaction.atomic():
+        taken_subq = Contact.objects.filter(
+            normalized_value=OuterRef("normalized_value"),
+            assigned_to__isnull=False,
+        ).exclude(normalized_value="")
         free_qs = (
             Contact.objects.select_for_update()
             .filter(base_type=base_type, assigned_to__isnull=True, is_active=True)
+            .annotate(_taken=Exists(taken_subq))
+            .filter(_taken=False)
             .order_by("id")[:count]
         )
         contacts_to_give = list(free_qs)
@@ -1493,7 +1506,9 @@ def _replicate_to_phone_bases(values: list[str], source_slug: str) -> dict[str, 
         for i in range(0, len(values), BULK_CREATE_BATCH_SIZE):
             chunk = values[i : i + BULK_CREATE_BATCH_SIZE]
             Contact.objects.bulk_create(
-                [Contact(base_type=bt, value=v) for v in chunk],
+                [Contact(base_type=bt, value=v,
+                         normalized_value=normalize_lead_contact(v))
+                 for v in chunk],
                 ignore_conflicts=True,
             )
         count_after = Contact.objects.filter(base_type=bt).count()
@@ -1614,7 +1629,9 @@ def _process_excel_all_sheets(wb, max_rows: int | None = MAX_UPLOAD_ROWS) -> tup
         for i in range(0, len(to_process), BULK_CREATE_BATCH_SIZE):
             chunk = to_process[i : i + BULK_CREATE_BATCH_SIZE]
             Contact.objects.bulk_create(
-                [Contact(base_type=base_type, value=v) for v in chunk],
+                [Contact(base_type=base_type, value=v,
+                         normalized_value=normalize_lead_contact(v))
+                 for v in chunk],
                 ignore_conflicts=True,
             )
         count_after = Contact.objects.filter(base_type=base_type).count()
@@ -1664,7 +1681,9 @@ def _process_excel_single_sheet(wb, base_type: BaseType) -> tuple[int, int]:
     for i in range(0, len(free_values), BULK_CREATE_BATCH_SIZE):
         chunk = free_values[i : i + BULK_CREATE_BATCH_SIZE]
         Contact.objects.bulk_create(
-            [Contact(base_type=base_type, value=v) for v in chunk],
+            [Contact(base_type=base_type, value=v,
+                     normalized_value=normalize_lead_contact(v))
+             for v in chunk],
             ignore_conflicts=True,
         )
     count_after = Contact.objects.filter(base_type=base_type).count()

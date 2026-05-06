@@ -206,6 +206,15 @@ class Contact(TimeStampedModel):
         max_length=255,
         help_text="Сырые данные контакта (юзернейм, телефон, ссылка и т.п.).",
     )
+    normalized_value = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=("Нормализованный value (phone:79..., telegram:user, vk:id1) — "
+                   "для глобальной защиты от двойной выдачи одного и того же "
+                   "номера/ника через разные базы."),
+    )
     assigned_to = models.ForeignKey(
         User,
         null=True,
@@ -229,6 +238,12 @@ class Contact(TimeStampedModel):
         unique_together = ("base_type", "value")
         verbose_name = "Контакт"
         verbose_name_plural = "Контакты"
+
+    def save(self, *args, **kwargs):
+        # Поддерживаем normalized_value в актуальном состоянии при любой записи
+        from .lead_utils import normalize_lead_contact
+        self.normalized_value = normalize_lead_contact(self.value or "")
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:  # pragma: no cover - простое представление
         return f"{self.base_type.slug}: {self.value}"

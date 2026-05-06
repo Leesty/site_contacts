@@ -555,9 +555,9 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
                     .filter(base_type=selected_base, assigned_to__isnull=True, is_active=True)
                     .order_by("id")
                 )
-                # Глобальный дедуп: исключаем любые value, уже выданные юзеру
-                # в ЛЮБОЙ другой базе. Один и тот же контакт второй раз не выпадает,
-                # даже если выбрана другая платформа.
+                # ─── Глобальный антидубль ───
+                # 1. Не выдаём value, уже выданное ТЕКУЩЕМУ юзеру (по value, для
+                #    обратной совместимости со старыми записями где normalized_value="").
                 already_issued_values = set(
                     Contact.objects.filter(assigned_to=user)
                     .exclude(base_type=selected_base)
@@ -565,6 +565,16 @@ def contacts_placeholder(request: HttpRequest) -> HttpResponse:
                 )
                 if already_issued_values:
                     free_qs = free_qs.exclude(value__in=already_issued_values)
+                # 2. Главное: один и тот же НОМЕР/НИК (нормализованный) не должен
+                #    попадать ДВУМ разным менеджерам через разные базы. Исключаем
+                #    любой Contact, чей normalized_value уже выдан кому угодно.
+                #    Подзапрос — по индексу normalized_value, быстро.
+                from django.db.models import Exists, OuterRef
+                taken_subq = Contact.objects.filter(
+                    normalized_value=OuterRef("normalized_value"),
+                    assigned_to__isnull=False,
+                ).exclude(normalized_value="")
+                free_qs = free_qs.annotate(_taken=Exists(taken_subq)).filter(_taken=False)
                 free_count = free_qs.count()
                 if free_count == 0 or (not partial_ok and free_count < can_give):
                     reason = "not_enough"
@@ -1083,18 +1093,22 @@ def request_contact_create(request: HttpRequest) -> HttpResponse:
 
 
 def _issue_base_for_accredited(user, base_type) -> int:
-    """Выдать аккредитованному юзеру пачку контактов из base_type. Возвращает сколько выдано."""
+    """Выдать аккредитованному юзеру пачку контактов из base_type. Возвращает сколько выдано.
+
+    Применяет 2-уровневый антидубль:
+      - не выдаём value уже у этого юзера в другой базе;
+      - не выдаём normalized_value, уже выданный кому угодно в любой базе.
+    """
     can_give = base_type.default_daily_limit
     if can_give <= 0:
         return 0
     with transaction.atomic():
+        from django.db.models import Exists, OuterRef
         free_qs = (
             Contact.objects.select_for_update()
             .filter(base_type=base_type, assigned_to__isnull=True, is_active=True)
             .order_by("id")
         )
-        # Глобальный дедуп: один контакт — одной секции, не выдаём value, который
-        # уже у юзера в любой другой базе.
         already_issued_values = set(
             Contact.objects.filter(assigned_to=user)
             .exclude(base_type=base_type)
@@ -1102,6 +1116,12 @@ def _issue_base_for_accredited(user, base_type) -> int:
         )
         if already_issued_values:
             free_qs = free_qs.exclude(value__in=already_issued_values)
+        # Глобальный антидубль по нормализованному value
+        taken_subq = Contact.objects.filter(
+            normalized_value=OuterRef("normalized_value"),
+            assigned_to__isnull=False,
+        ).exclude(normalized_value="")
+        free_qs = free_qs.annotate(_taken=Exists(taken_subq)).filter(_taken=False)
         contacts_to_give = list(free_qs[:can_give])
         if not contacts_to_give:
             return 0
