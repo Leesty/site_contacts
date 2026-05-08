@@ -319,29 +319,31 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         )
         compress_lead_attachment(report)
 
-        # Дубликат по нормализованному контакту? (по всем менеджерам, любой тип)
-        if normalized:
-            dup_report = _find_duplicate_report_by_contact(
-                exclude_report_id=report.pk, normalized_contact=normalized,
+        # Дубликат по реальному идентификатору клиента (telegram_id / vk_id /
+        # username из бота, либо client_phone для phone_callback) — НЕ по
+        # raw_contact, который ввёл менеджер. См. _find_duplicate_search_report.
+        dup_report = _find_duplicate_search_report(
+            exclude_report_id=report.pk, link=link,
+            client_phone=client_phone if is_phone else "",
+        )
+        if dup_report:
+            # Помечаем link как duplicate_of первой ссылки + report → rejected
+            report.status = SearchReport.Status.REJECTED
+            report.rejection_reason = (
+                f"Автоотклонение: дубликат — этот клиент уже привлечён в отчёте "
+                f"#{dup_report.search_link.display_id or dup_report.search_link.id} "
+                f"(@{dup_report.user.username})."
             )
-            if dup_report:
-                # Помечаем link как duplicate_of первой ссылки + report → rejected
-                report.status = SearchReport.Status.REJECTED
-                report.rejection_reason = (
-                    f"Автоотклонение: дубликат — этот контакт уже использовался в отчёте "
-                    f"#{dup_report.search_link.display_id or dup_report.search_link.id} "
-                    f"(@{dup_report.user.username})."
-                )
-                report.reviewed_at = timezone.now()
-                report.save(update_fields=["status", "rejection_reason", "reviewed_at", "updated_at"])
-                if not link.duplicate_of_id:
-                    link.duplicate_of = dup_report.search_link
-                    link.save(update_fields=["duplicate_of", "updated_at"])
-                messages.warning(
-                    request,
-                    f"Этот контакт уже был привлечён ранее (отчёт #{dup_report.search_link.display_id or dup_report.search_link.id} от @{dup_report.user.username}). Отчёт отклонён как дубликат.",
-                )
-                return redirect("search_links_my")
+            report.reviewed_at = timezone.now()
+            report.save(update_fields=["status", "rejection_reason", "reviewed_at", "updated_at"])
+            if not link.duplicate_of_id:
+                link.duplicate_of = dup_report.search_link
+                link.save(update_fields=["duplicate_of", "updated_at"])
+            messages.warning(
+                request,
+                f"Этот клиент уже привлечён ранее (отчёт #{dup_report.search_link.display_id or dup_report.search_link.id} от @{dup_report.user.username}). Отчёт отклонён как дубликат.",
+            )
+            return redirect("search_links_my")
 
         if is_phone:
             messages.success(
@@ -521,33 +523,40 @@ def _find_duplicate_link(*, exclude_link_id, telegram_id=None, telegram_username
     )
 
 
-def _find_duplicate_phone_report(*, exclude_report_id, client_phone):
-    """Ищет другой SearchReport (типа phone_callback) с тем же нормализованным client_phone.
+def _find_duplicate_search_report(*, exclude_report_id, link, client_phone=""):
+    """Ищет другой SearchReport на ТОГО ЖЕ КЛИЕНТА.
 
-    Возвращает SearchReport (оригинал) или None.
+    Главное правило: дедуп идёт по идентификаторам, которые мы реально
+    получили от бота (telegram_id / username / vk_id / screen_name) или
+    по телефону клиента (для phone_callback). НЕ по тому, что менеджер
+    вписал в `raw_contact` — там может быть просто имя «Никита» / «Иван»,
+    которое случайно совпадёт с другим клиентом.
+
+    Возвращает оригинал (самый ранний по created_at) или None, если у
+    текущей `link` нет ни одного идентификатора, по которому можно сравнить.
     """
-    if not client_phone:
+    from django.db.models import Q
+    q = Q()
+    has_filter = False
+    if link.telegram_id:
+        q |= Q(search_link__telegram_id=link.telegram_id)
+        has_filter = True
+    if link.telegram_username:
+        q |= Q(search_link__telegram_username__iexact=link.telegram_username)
+        has_filter = True
+    if link.vk_user_id:
+        q |= Q(search_link__vk_user_id=link.vk_user_id)
+        has_filter = True
+    if link.vk_screen_name:
+        q |= Q(search_link__vk_screen_name__iexact=link.vk_screen_name)
+        has_filter = True
+    if client_phone:
+        q |= Q(client_phone=client_phone)
+        has_filter = True
+    if not has_filter:
         return None
     return (
-        SearchReport.objects.filter(
-            report_type=SearchReport.ReportType.PHONE_CALLBACK,
-            client_phone=client_phone,
-        )
-        .exclude(pk=exclude_report_id)
-        .order_by("created_at")
-        .first()
-    )
-
-
-def _find_duplicate_report_by_contact(*, exclude_report_id, normalized_contact):
-    """Ищет другой SearchReport с тем же normalized_contact (любой тип, любой менеджер).
-
-    Возвращает оригинал или None. Используется для дедупа по raw_contact.
-    """
-    if not normalized_contact:
-        return None
-    return (
-        SearchReport.objects.filter(normalized_contact=normalized_contact)
+        SearchReport.objects.filter(q)
         .exclude(pk=exclude_report_id)
         .order_by("created_at")
         .first()
