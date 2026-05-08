@@ -118,6 +118,12 @@ class User(AbstractUser):
         related_name="registered_users",
         help_text="Реферальная ссылка, по которой зарегистрировался пользователь (для affiliate-ставки).",
     )
+    partner_group_report_cut = models.PositiveIntegerField(
+        default=50,
+        help_text=("Доля партнёра (₽) с одобренного отчёта по группам реферала. "
+                   "Default 50 — реферал получает 80-50=30. Применяется ко всем "
+                   "рефералам этого партнёра."),
+    )
     ref_searchlink_enabled = models.BooleanField(
         default=True,
         help_text="Разрешён ли SearchLink для реферала. По умолчанию включено для всех новых рефералов.",
@@ -982,6 +988,12 @@ class PartnerLink(TimeStampedModel):
         default=50,
         help_text="Доля рефовода (руб.) с одобренного SearchLink-отчёта реферала. Реф получает SEARCH_REPORT_REWARD - ref_searchlink_cut. По умолчанию 50 (реф 100, рефовод 50 при награде 150).",
     )
+    ref_group_report_cut = models.PositiveIntegerField(
+        default=50,
+        help_text=("Доля рефовода (₽) с одобренного отчёта по группам реферала. "
+                   "Реф получает GROUP_REPORT_APPROVE_REWARD - ref_group_report_cut. "
+                   "По умолчанию 50 (реф 30, рефовод 50)."),
+    )
 
     class Meta:
         verbose_name = "Реферальная ссылка партнёра"
@@ -1024,6 +1036,13 @@ class PartnerEarning(TimeStampedModel):
     )
     search_report = models.OneToOneField(
         "SearchReport",
+        on_delete=models.SET_NULL,
+        related_name="partner_earning",
+        null=True,
+        blank=True,
+    )
+    group_report = models.OneToOneField(
+        "GroupReport",
         on_delete=models.SET_NULL,
         related_name="partner_earning",
         null=True,

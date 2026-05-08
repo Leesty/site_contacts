@@ -44,15 +44,20 @@
         {% csrf_token %}
         <div class="row g-3 align-items-end">
           <div class="col-6 col-md-3">
-            <label class="form-label small mb-1" for="ref_searchlink_cut">Ваша доля (руб.)</label>
-            <input type="number" class="form-control form-control-sm" id="ref_searchlink_cut" name="ref_searchlink_cut" min="1" max="{{ search_total_reward|add:'-1' }}" value="50" required>
-            <div class="form-text text-muted" style="font-size: 11px;">с одобренного SearchLink-отчёта реферала. Реф получит {{ search_total_reward }} − ваша доля.</div>
+            <label class="form-label small mb-1" for="ref_searchlink_cut">Доля с SearchLink ({{ search_total_reward }} ₽)</label>
+            <input type="number" class="form-control form-control-sm" id="ref_searchlink_cut" name="ref_searchlink_cut" min="0" max="{{ search_total_reward }}" value="50" required>
+            <div class="form-text text-muted" style="font-size: 11px;">Ваша доля с одобренного SearchLink-отчёта. Реф получит {{ search_total_reward }} − ваша доля.</div>
           </div>
-          <div class="col-6 col-md-5">
+          <div class="col-6 col-md-3">
+            <label class="form-label small mb-1" for="ref_group_report_cut">Доля с группы (80 ₽)</label>
+            <input type="number" class="form-control form-control-sm" id="ref_group_report_cut" name="ref_group_report_cut" min="0" max="80" value="50" required>
+            <div class="form-text text-muted" style="font-size: 11px;">Ваша доля с одобренного отчёта по группам. Реф получит 80 − ваша доля.</div>
+          </div>
+          <div class="col-6 col-md-3">
             <label class="form-label small mb-1" for="note">Заметка</label>
             <input type="text" class="form-control form-control-sm" id="note" name="note" placeholder="Необязательно" maxlength="100">
           </div>
-          <div class="col-12 col-md-4">
+          <div class="col-6 col-md-3">
             <button type="submit" class="btn btn-primary btn-sm w-100">Создать ссылку</button>
           </div>
         </div>
@@ -72,9 +77,9 @@
             <thead>
               <tr>
                 <th>Ссылка</th>
-                <th class="text-center">Рефу</th>
-                <th class="text-center">Вам</th>
-                <th class="text-center">Зарегистрировалось</th>
+                <th class="text-center small" colspan="2">SearchLink<br><span class="text-muted fw-normal">реф / вы</span></th>
+                <th class="text-center small" colspan="2">Группы<br><span class="text-muted fw-normal">реф / вы</span></th>
+                <th class="text-center">Регистраций</th>
                 <th class="text-center">Статус</th>
                 <th class="text-center" style="width: 70px;"></th>
               </tr>
@@ -95,6 +100,8 @@
                   </td>
                   <td class="text-center text-nowrap">{{ link.ref_searchlink_share }} ₽</td>
                   <td class="text-center text-nowrap text-success fw-semibold">{{ link.ref_searchlink_cut }} ₽</td>
+                  <td class="text-center text-nowrap">{{ link.ref_group_report_share }} ₽</td>
+                  <td class="text-center text-nowrap text-success fw-semibold">{{ link.ref_group_report_cut }} ₽</td>
                   <td class="text-center">{{ link.ref_count }}</td>
                   <td class="text-center">
                     {% if link.is_active %}<span class="badge bg-success">Активна</span>

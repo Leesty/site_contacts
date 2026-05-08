@@ -145,6 +145,59 @@ def partner_update_rates(request: HttpRequest) -> HttpResponse:
     return redirect("partner_dashboard")
 
 
+@login_required
+def partner_ref_rates(request: HttpRequest) -> HttpResponse:
+    """Отдельная страница «Реф-ставки» партнёра. SearchLink + GroupReport.
+
+    Lead и дожим-лид (легаси) сюда не выносятся — используются базовая
+    ставка `partner_rate` для Lead и `partner_dozhim_cut` для дожима как
+    раньше, без UI на этой странице.
+    """
+    if not _require_partner(request):
+        return HttpResponseForbidden("Только для партнёров.")
+
+    SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
+    GR_TOTAL = 80  # GROUP_REPORT_APPROVE_REWARD
+
+    if request.method == "POST":
+        update_fields: list[str] = []
+        raw_sl = request.POST.get("partner_searchlink_cut")
+        if raw_sl is not None and raw_sl != "":
+            try:
+                sl = max(0, min(SEARCH_TOTAL, int(raw_sl)))
+            except (TypeError, ValueError):
+                messages.error(request, "SearchLink ставка должна быть числом.")
+                return redirect("partner_ref_rates")
+            request.user.partner_searchlink_cut = sl
+            update_fields.append("partner_searchlink_cut")
+
+        raw_gr = request.POST.get("partner_group_report_cut")
+        if raw_gr is not None and raw_gr != "":
+            try:
+                gr = max(0, min(GR_TOTAL, int(raw_gr)))
+            except (TypeError, ValueError):
+                messages.error(request, "GroupReport ставка должна быть числом.")
+                return redirect("partner_ref_rates")
+            request.user.partner_group_report_cut = gr
+            update_fields.append("partner_group_report_cut")
+
+        if update_fields:
+            request.user.save(update_fields=update_fields)
+            messages.success(request, "Реф-ставки сохранены.")
+        return redirect("partner_ref_rates")
+
+    user = request.user
+    return render(request, "partner/ref_rates.html", {
+        "user": user,
+        "search_total_reward": SEARCH_TOTAL,
+        "group_report_total_reward": GR_TOTAL,
+        "partner_searchlink_cut": user.partner_searchlink_cut,
+        "partner_searchlink_ref_share": max(0, SEARCH_TOTAL - user.partner_searchlink_cut),
+        "partner_group_report_cut": user.partner_group_report_cut,
+        "partner_group_report_ref_share": max(0, GR_TOTAL - user.partner_group_report_cut),
+    })
+
+
 # ─── Реферальные ссылки ────────────────────────────────────────────────────────
 
 @login_required
@@ -553,10 +606,11 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         .annotate(ref_count=Count("registered_users"))
         .order_by("-created_at")
     )
+    GR_TOTAL = 80  # GROUP_REPORT_APPROVE_REWARD
     links = list(links_qs)
     for link in links:
-        # Доля рефа с одного одобренного SearchLink-отчёта.
         link.ref_searchlink_share = max(0, SEARCH_TOTAL - link.ref_searchlink_cut)
+        link.ref_group_report_share = max(0, GR_TOTAL - link.ref_group_report_cut)
 
     return render(request, "core/user_referrals.html", {
         "user": user,
@@ -565,6 +619,7 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         "earnings": earnings,
         "links": links,
         "search_total_reward": SEARCH_TOTAL,
+        "group_report_total_reward": GR_TOTAL,
     })
 
 
@@ -584,17 +639,27 @@ def user_referral_create_link(request: HttpRequest) -> HttpResponse:
         ref_searchlink_cut = int(request.POST.get("ref_searchlink_cut", 50))
     except (TypeError, ValueError):
         ref_searchlink_cut = 50
-    ref_searchlink_cut = max(1, min(SEARCH_TOTAL - 1, ref_searchlink_cut))
+    ref_searchlink_cut = max(0, min(SEARCH_TOTAL, ref_searchlink_cut))
+
+    GR_TOTAL = 80
+    try:
+        ref_group_report_cut = int(request.POST.get("ref_group_report_cut", 50))
+    except (TypeError, ValueError):
+        ref_group_report_cut = 50
+    ref_group_report_cut = max(0, min(GR_TOTAL, ref_group_report_cut))
 
     code = uuid4().hex[:24]
     PartnerLink.objects.create(
         partner=request.user, code=code, note=note,
         ref_searchlink_cut=ref_searchlink_cut,
+        ref_group_report_cut=ref_group_report_cut,
     )
-    ref_share = SEARCH_TOTAL - ref_searchlink_cut
+    sl_share = SEARCH_TOTAL - ref_searchlink_cut
+    gr_share = GR_TOTAL - ref_group_report_cut
     messages.success(
         request,
-        f"Ссылка создана. С каждого одобренного SearchLink-отчёта реф получит {ref_share} руб., вы — {ref_searchlink_cut} руб.",
+        f"Ссылка создана. SearchLink: реф {sl_share} ₽ / вы {ref_searchlink_cut} ₽. "
+        f"Группы: реф {gr_share} ₽ / вы {ref_group_report_cut} ₽.",
     )
     return redirect("user_referrals")
 

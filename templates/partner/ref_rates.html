@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Реф-ставки — Партнёрка{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a class="text-muted small text-decoration-none" href="{% url 'partner_dashboard' %}">← Кабинет</a>
+  <h1 class="h4 mb-1 mt-2">⚙ Мои реф-ставки</h1>
+  <p class="text-muted small mb-0">
+    Ваша доля от общего пула выплаты — применяется ко всем вашим рефералам.
+    Реф получает остаток. Базовая ставка за обычные Lead-отчёты не настраивается
+    тут (легаси-поток).
+  </p>
+</div>
+
+<div class="card shadow-sm" style="max-width: 600px;">
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="mb-3">
+        <label class="form-label small mb-1" for="partner_searchlink_cut">
+          SearchLink-отчёт <span class="text-muted">(пул {{ search_total_reward }} ₽)</span>
+        </label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">Вам</span>
+          <input type="number" class="form-control" id="partner_searchlink_cut" name="partner_searchlink_cut"
+                 min="0" max="{{ search_total_reward }}" value="{{ partner_searchlink_cut }}" required>
+          <span class="input-group-text">₽ · рефу <strong>{{ partner_searchlink_ref_share }} ₽</strong></span>
+        </div>
+        <div class="form-text small text-muted">Сколько вы получите с каждого одобренного SearchLink-отчёта реферала.</div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label small mb-1" for="partner_group_report_cut">
+          Отчёт по группам <span class="text-muted">(пул {{ group_report_total_reward }} ₽)</span>
+        </label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">Вам</span>
+          <input type="number" class="form-control" id="partner_group_report_cut" name="partner_group_report_cut"
+                 min="0" max="{{ group_report_total_reward }}" value="{{ partner_group_report_cut }}" required>
+          <span class="input-group-text">₽ · рефу <strong>{{ partner_group_report_ref_share }} ₽</strong></span>
+        </div>
+        <div class="form-text small text-muted">Сколько вы получите с каждого одобренного отчёта по группам реферала.</div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить ставки</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

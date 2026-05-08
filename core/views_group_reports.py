@@ -605,16 +605,42 @@ def admin_group_report_attachment(request: HttpRequest, report_id: int) -> HttpR
                         filename=report.screencast.name.rsplit("/", 1)[-1])
 
 
+def _split_group_report_payout(manager: "User") -> tuple[int, int, "User | None"]:
+    """Считает разделение `GROUP_REPORT_APPROVE_REWARD` между рефералом
+    (менеджером) и его рефоводом/партнёром.
+
+    Возвращает `(referral_reward, owner_cut, owner_user)`.
+    Если у менеджера нет `partner_owner` — owner_user=None, owner_cut=0.
+
+    Для роли `partner` берётся общая ставка `User.partner_group_report_cut`.
+    Для обычного рефовода (role=user) — `PartnerLink.ref_group_report_cut`
+    из той ссылки, по которой реферал зарегистрировался.
+    """
+    pool = GROUP_REPORT_APPROVE_REWARD
+    owner = getattr(manager, "partner_owner", None)
+    if not owner:
+        return pool, 0, None
+    if owner.role == "partner":
+        cut = owner.partner_group_report_cut or 50
+    else:
+        link = getattr(manager, "partner_link", None)
+        cut = link.ref_group_report_cut if link else 50
+    cut = max(0, min(pool, int(cut)))
+    return pool - cut, cut, owner
+
+
 @login_required
 @require_POST
 def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResponse:
     if not _is_admin_or_main(request.user):
         return HttpResponseForbidden("Недостаточно прав.")
 
+    from .models import PartnerEarning
+
     with transaction.atomic():
         report = (
             GroupReport.objects.select_for_update()
-            .select_related("user")
+            .select_related("user", "user__partner_owner", "user__partner_link")
             .filter(pk=report_id)
             .first()
         )
@@ -627,36 +653,52 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
             messages.info(request, f"Отчёт #{report_id} уже одобрен.")
             return redirect("admin_group_reports_list")
 
+        ref_reward, owner_cut, owner_user = _split_group_report_payout(report.user)
+
         report.status = GroupReport.Status.APPROVED
         report.rejection_reason = ""
         report.rework_comment = ""
         report.reviewed_at = timezone.now()
         report.reviewed_by = request.user
-        report.paid_reward = GROUP_REPORT_APPROVE_REWARD
+        report.paid_reward = ref_reward
         report.save(update_fields=[
             "status", "rejection_reason", "rework_comment",
             "reviewed_at", "reviewed_by", "paid_reward", "updated_at",
         ])
 
-        owner = User.objects.select_for_update().get(pk=report.user_id)
-        _old = owner.balance or 0
-        owner.balance = _old + GROUP_REPORT_APPROVE_REWARD
-        owner.save(update_fields=["balance"])
+        # Реферал / менеджер
+        manager = User.objects.select_for_update().get(pk=report.user_id)
+        _old = manager.balance or 0
+        manager.balance = _old + ref_reward
+        manager.save(update_fields=["balance"])
         log_balance_change(
-            owner, "balance", _old, owner.balance,
-            f"group_report_approve#{report_id} +{GROUP_REPORT_APPROVE_REWARD}",
+            manager, "balance", _old, manager.balance,
+            f"group_report_approve#{report_id} +{ref_reward}",
             request.user,
         )
+
+        # Рефовод/партнёр (если есть)
+        if owner_user and owner_cut > 0:
+            PartnerEarning.objects.create(
+                partner=owner_user, group_report=report, amount=owner_cut,
+            )
+
         GroupReportReviewLog.objects.create(
             report=report, admin=request.user,
             action=GroupReportReviewLog.Action.APPROVED,
         )
 
-    messages.success(
-        request,
-        f"Отчёт #{report_id} одобрен. @{report.user.username} начислено "
-        f"{GROUP_REPORT_APPROVE_REWARD} ₽.",
-    )
+    if owner_user and owner_cut > 0:
+        messages.success(
+            request,
+            f"Отчёт #{report_id} одобрен. Реф @{report.user.username} +{ref_reward} ₽, "
+            f"рефовод @{owner_user.username} +{owner_cut} ₽.",
+        )
+    else:
+        messages.success(
+            request,
+            f"Отчёт #{report_id} одобрен. @{report.user.username} начислено {ref_reward} ₽.",
+        )
     return redirect("admin_group_reports_list")
 
 
@@ -671,8 +713,9 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
     if request.method == "POST":
         form = GroupReportRejectForm(request.POST)
         if form.is_valid():
+            from .models import PartnerEarning
             with transaction.atomic():
-                # Если был approved — откат начисления
+                # Если был approved — откат начисления реферала + удаление partner earning
                 if report.status == GroupReport.Status.APPROVED and report.paid_reward:
                     owner = User.objects.select_for_update().get(pk=report.user_id)
                     _old = owner.balance or 0
@@ -684,6 +727,8 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
                         request.user,
                     )
                     report.paid_reward = 0
+                # Откат начисления рефоводу
+                PartnerEarning.objects.filter(group_report=report).delete()
                 report.status = GroupReport.Status.REJECTED
                 report.rejection_reason = form.cleaned_data["rejection_reason"]
                 report.reviewed_at = timezone.now()
@@ -717,6 +762,7 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
     if request.method == "POST":
         form = GroupReportReworkForm(request.POST)
         if form.is_valid():
+            from .models import PartnerEarning
             with transaction.atomic():
                 if report.status == GroupReport.Status.APPROVED and report.paid_reward:
                     owner = User.objects.select_for_update().get(pk=report.user_id)
@@ -729,6 +775,8 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
                         request.user,
                     )
                     report.paid_reward = 0
+                # Откат начисления рефоводу
+                PartnerEarning.objects.filter(group_report=report).delete()
                 report.status = GroupReport.Status.REWORK
                 report.rework_comment = form.cleaned_data.get("rework_comment", "")
                 report.rejection_reason = ""
