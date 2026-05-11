@@ -638,8 +638,10 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
     from .models import PartnerEarning
 
     with transaction.atomic():
+        # of=("self",) — иначе Postgres ругается на FOR UPDATE поверх LEFT JOIN
+        # на nullable partner_owner/partner_link через select_related.
         report = (
-            GroupReport.objects.select_for_update()
+            GroupReport.objects.select_for_update(of=("self",))
             .select_related("user", "user__partner_owner", "user__partner_link")
             .filter(pk=report_id)
             .first()
