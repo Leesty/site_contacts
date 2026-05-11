@@ -637,6 +637,17 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
 
     from .models import PartnerEarning
 
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def _resp_or_redirect(success: bool, message: str, status: int = 200):
+        if is_ajax:
+            return JsonResponse({"success": success, "message": message}, status=status if success else 400)
+        if success:
+            messages.success(request, message)
+        else:
+            messages.error(request, message)
+        return redirect("admin_group_reports_list")
+
     with transaction.atomic():
         # of=("self",) — иначе Postgres ругается на FOR UPDATE поверх LEFT JOIN
         # на nullable partner_owner/partner_link через select_related.
@@ -647,13 +658,13 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
             .first()
         )
         if not report:
-            messages.error(request, "Отчёт не найден.")
-            return redirect("admin_group_reports_list")
+            return _resp_or_redirect(False, "Отчёт не найден.")
         if not _is_main_admin(request.user) and not report.is_complete:
+            if is_ajax:
+                return JsonResponse({"success": False, "message": "Этот отчёт не прошёл авто-валидацию."}, status=403)
             return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
         if report.status == GroupReport.Status.APPROVED:
-            messages.info(request, f"Отчёт #{report_id} уже одобрен.")
-            return redirect("admin_group_reports_list")
+            return _resp_or_redirect(False, f"Отчёт #{report_id} уже одобрен.")
 
         ref_reward, owner_cut, owner_user = _split_group_report_payout(report.user)
 
@@ -691,17 +702,13 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
         )
 
     if owner_user and owner_cut > 0:
-        messages.success(
-            request,
+        msg = (
             f"Отчёт #{report_id} одобрен. Реф @{report.user.username} +{ref_reward} ₽, "
-            f"рефовод @{owner_user.username} +{owner_cut} ₽.",
+            f"рефовод @{owner_user.username} +{owner_cut} ₽."
         )
     else:
-        messages.success(
-            request,
-            f"Отчёт #{report_id} одобрен. @{report.user.username} начислено {ref_reward} ₽.",
-        )
-    return redirect("admin_group_reports_list")
+        msg = f"Отчёт #{report_id} одобрен. @{report.user.username} начислено {ref_reward} ₽."
+    return _resp_or_redirect(True, msg)
 
 
 @login_required

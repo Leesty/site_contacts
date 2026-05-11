@@ -67,7 +67,7 @@
         </thead>
         <tbody>
           {% for r in page_obj %}
-            <tr>
+            <tr data-row-id="{{ r.id }}">
               <td>#{{ r.id }}</td>
               <td>@{{ r.user.username }}</td>
               <td>
@@ -103,12 +103,10 @@
                 {% endif %}
               </td>
               {% if tab == 'pending' or tab == 'rework' or tab == 'incomplete' %}
-              <td class="text-nowrap">
+              <td class="text-nowrap" data-row-id="{{ r.id }}">
                 {% if r.is_complete or is_main %}
-                  <form method="post" action="{% url 'admin_group_report_approve' r.id %}" class="d-inline">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-success btn-sm py-0">✓</button>
-                  </form>
+                  <button type="button" class="btn btn-success btn-sm py-0 js-gr-approve"
+                          data-report-id="{{ r.id }}" title="Одобрить">✓</button>
                   <a href="{% url 'admin_group_report_rework' r.id %}" class="btn btn-warning btn-sm py-0">✎</a>
                   <a href="{% url 'admin_group_report_reject' r.id %}" class="btn btn-danger btn-sm py-0">✗</a>
                 {% else %}
@@ -160,4 +158,60 @@
 </div>
 
 <script src="{% static 'js/video-preview.js' %}"></script>
+
+<div id="gr-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index: 1100; display: none;" role="alert"></div>
+{% csrf_token %}
+<script>
+(function() {
+  var toast = document.getElementById('gr-toast');
+  function getCsrf() {
+    var el = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+  function showToast(msg, type) {
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-' + (type || 'success') + ' py-2 px-3 mb-0 shadow-sm';
+    toast.style.display = 'block';
+    setTimeout(function() { toast.style.display = 'none'; }, 3500);
+  }
+  function fadeRow(rowId) {
+    var row = document.querySelector('tr[data-row-id="' + rowId + '"]');
+    if (!row) return;
+    row.style.transition = 'opacity .35s ease';
+    row.style.opacity = '0';
+    setTimeout(function() { row.remove(); }, 380);
+  }
+  document.querySelectorAll('.js-gr-approve').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var rid = btn.getAttribute('data-report-id');
+      btn.disabled = true;
+      btn.textContent = '…';
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      fetch('/staff/group-reports/' + rid + '/approve/', {
+        method: 'POST', body: body,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin'
+      })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(res) {
+          if (res.ok && res.data.success) {
+            fadeRow(rid);
+            showToast(res.data.message || 'Отчёт одобрен', 'success');
+          } else {
+            btn.disabled = false; btn.textContent = '✓';
+            showToast(res.data.message || 'Не удалось одобрить', 'danger');
+          }
+        })
+        .catch(function() {
+          btn.disabled = false; btn.textContent = '✓';
+          showToast('Ошибка сети', 'danger');
+        });
+    });
+  });
+})();
+</script>
 {% endblock %}
