@@ -468,6 +468,7 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
         report_type_raw = (request.POST.get("report_type") or report.report_type).strip()
         switch_to_phone = report_type_raw == SearchReport.ReportType.PHONE_CALLBACK
         client_phone_raw = (request.POST.get("client_phone") or "").strip()
+        manual_client_input = (request.POST.get("manual_client_input") or "").strip()
 
         # Если меняется тип — валидируем нужные поля.
         new_client_phone = report.client_phone
@@ -481,6 +482,29 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
             # bot_start — нужен контакт/ссылка
             if not (raw_contact or report.raw_contact):
                 messages.error(request, "Укажите контакт или ссылку на клиента.")
+                return render(request, "search/report_redo.html", {"link": link, "report": report})
+
+        # Ручная привязка клиента: если переход по ссылке не зафиксирован
+        # и тип = bot_start, и менеджер ввёл идентификатор клиента —
+        # парсим и записываем в SearchLink (теперь дедуп будет работать).
+        manual_parsed: dict = {}
+        if not switch_to_phone and not link.bot_started and manual_client_input:
+            manual_parsed = parse_manual_client_input(manual_client_input)
+            if not manual_parsed:
+                messages.error(
+                    request,
+                    "Не удалось распознать ID клиента. Используйте: 123456789, "
+                    "@username, https://t.me/username, https://vk.com/id123 или https://vk.com/screen_name.",
+                )
+                return render(request, "search/report_redo.html", {"link": link, "report": report})
+            other_link = _find_other_link_for_client(manual_parsed, exclude_link_id=link.id)
+            if other_link:
+                messages.warning(
+                    request,
+                    f"Этот клиент уже привязан к @{other_link.user.username} "
+                    f"(SearchLink #{other_link.display_id or other_link.id}). "
+                    f"Привязать не получится.",
+                )
                 return render(request, "search/report_redo.html", {"link": link, "report": report})
 
         update_fields = []
@@ -531,6 +555,28 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
         if attachment:
             from .lead_utils import compress_lead_attachment
             compress_lead_attachment(report)
+
+        # Ручная привязка идентификатора — записываем прямо в SearchLink.
+        if manual_parsed:
+            link_fields = []
+            if manual_parsed.get("telegram_id") and not link.telegram_id:
+                link.telegram_id = manual_parsed["telegram_id"]
+                link_fields.append("telegram_id")
+            if manual_parsed.get("telegram_username") and not link.telegram_username:
+                link.telegram_username = manual_parsed["telegram_username"]
+                link_fields.append("telegram_username")
+            if manual_parsed.get("vk_user_id") and not link.vk_user_id:
+                link.vk_user_id = manual_parsed["vk_user_id"]
+                link_fields.append("vk_user_id")
+            if manual_parsed.get("vk_screen_name") and not link.vk_screen_name:
+                link.vk_screen_name = manual_parsed["vk_screen_name"]
+                link_fields.append("vk_screen_name")
+            if not link.bot_started:
+                link.bot_started = True
+                link_fields.append("bot_started")
+            if link_fields:
+                link_fields.append("updated_at")
+                link.save(update_fields=link_fields)
 
         if switch_to_phone:
             messages.success(request, f"Отчёт обновлён. Ждём звонок с {report.client_phone} на любой из наших номеров.")
