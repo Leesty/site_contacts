@@ -609,7 +609,9 @@ def _find_blocking_manual_claim(*, link):
         return None
     return (
         ManualSearchClaim.objects
-        .filter(q, status=ManualSearchClaim.Status.APPROVED)
+        .filter(q, status__in=[
+            ManualSearchClaim.Status.PENDING, ManualSearchClaim.Status.APPROVED,
+        ])
         .exclude(user_id=link.user_id)
         .select_related("user")
         .order_by("created_at")

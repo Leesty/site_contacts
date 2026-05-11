@@ -1789,6 +1789,11 @@ class ManualSearchClaim(TimeStampedModel):
         default=0,
         help_text="Сколько начислено менеджеру в момент сабмита (150 при approved, 0 при rejected).",
     )
+    search_link = models.OneToOneField(
+        "SearchLink", null=True, blank=True, on_delete=models.CASCADE,
+        related_name="manual_claim",
+        help_text="SearchLink менеджера, к которой относится ручная привязка.",
+    )
     matched_search_link = models.ForeignKey(
         "SearchLink", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="manual_claims_conflicting",

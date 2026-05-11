@@ -1,10 +1,16 @@
-"""Ручная привязка клиента к менеджеру (SearchLink-аналог).
+"""Ручная привязка клиента к SearchLink менеджера.
 
-Менеджер вводит telegram_id / @username / vk-ссылку клиента, который
-пришёл не по его реф-ссылке. Система проверяет — занят ли клиент:
-- если по этому идентификатору уже есть SearchLink или предыдущий
-  ManualSearchClaim → отклоняем;
-- иначе → одобряем, начисляем 150 ₽, фиксируем клиента за менеджером.
+Менеджер уже создал реф-ссылку, но клиент не пришёл по ней (перехода нет,
+`link.bot_started=False`). Прямо в карточке этой ссылки менеджер вводит
+telegram_id / @username / vk-ссылку клиента и отправляет на проверку.
+
+Если по идентификатору:
+- никто другой не привязан → заявка PENDING, ждёт админа;
+- кто-то уже привязан → заявка REJECTED сразу (auto).
+
+Админ на /staff/manual-claims/ одобряет → +150 ₽ менеджеру + проставляются
+identifier-поля на SearchLink + bot_started=True (теперь дедуп SR работает
+для этого клиента).
 """
 
 from __future__ import annotations
@@ -24,7 +30,7 @@ from django.views.decorators.http import require_POST
 from .models import ManualSearchClaim, SearchLink, User, log_balance_change
 
 
-MANUAL_CLAIM_REWARD = 150  # ₽ за успешный ручной claim
+MANUAL_CLAIM_REWARD = 150  # ₽ за approved ручную привязку
 
 
 def _require_approved_user(request: HttpRequest) -> bool:
@@ -39,242 +45,209 @@ def _require_approved_user(request: HttpRequest) -> bool:
 def _parse_manual_claim_input(raw: str) -> dict:
     """Парсит ввод менеджера в идентификаторы клиента.
 
-    Поддерживает форматы:
+    Поддерживает:
       - 123456789           → telegram_id (чистое число)
       - @ivanov             → telegram_username
       - t.me/ivanov         → telegram_username
       - https://vk.com/id12 → vk_user_id
       - vk.com/ivanov       → vk_screen_name
-
-    Возвращает dict с ключами {platform, telegram_id, telegram_username,
-    vk_user_id, vk_screen_name, normalized_identifier}. Пустой dict если
-    не удалось распарсить.
     """
     s = (raw or "").strip()
     if not s:
         return {}
     low = s.lower()
 
-    # VK ссылка
     for marker in ("vk.com/", "vk.ru/"):
         if marker in low:
             idx = low.find(marker)
             rest = s[idx + len(marker):].split("?")[0].strip().rstrip("/").lower()
             if rest.startswith("id") and rest[2:].isdigit():
                 vid = int(rest[2:])
-                return {
-                    "platform": "vk",
-                    "vk_user_id": vid,
-                    "normalized_identifier": f"vk:id{vid}",
-                }
+                return {"platform": "vk", "vk_user_id": vid,
+                        "normalized_identifier": f"vk:id{vid}"}
             if rest and re.match(r"^[a-z0-9_.]+$", rest):
-                return {
-                    "platform": "vk",
-                    "vk_screen_name": rest,
-                    "normalized_identifier": f"vk:{rest}",
-                }
+                return {"platform": "vk", "vk_screen_name": rest,
+                        "normalized_identifier": f"vk:{rest}"}
             return {}
 
-    # t.me / telegram.me
     for marker in ("t.me/", "telegram.me/", "telegram.dog/"):
         if marker in low:
             idx = low.find(marker)
             rest = s[idx + len(marker):].split("?")[0].strip().rstrip("/").lstrip("@").lower()
-            if rest.startswith("+"):  # invite link — не распарсить в id
+            if rest.startswith("+"):
                 return {}
             if rest.isdigit():
                 tid = int(rest)
-                return {
-                    "platform": "telegram",
-                    "telegram_id": tid,
-                    "normalized_identifier": f"telegram:{tid}",
-                }
+                return {"platform": "telegram", "telegram_id": tid,
+                        "normalized_identifier": f"telegram:{tid}"}
             if rest and re.match(r"^[a-z0-9_]+$", rest):
-                return {
-                    "platform": "telegram",
-                    "telegram_username": rest,
-                    "normalized_identifier": f"telegram:{rest}",
-                }
+                return {"platform": "telegram", "telegram_username": rest,
+                        "normalized_identifier": f"telegram:{rest}"}
             return {}
 
-    # @username
     if s.startswith("@"):
         rest = s[1:].strip().lower()
         if rest.isdigit():
             tid = int(rest)
-            return {
-                "platform": "telegram",
-                "telegram_id": tid,
-                "normalized_identifier": f"telegram:{tid}",
-            }
+            return {"platform": "telegram", "telegram_id": tid,
+                    "normalized_identifier": f"telegram:{tid}"}
         if rest and re.match(r"^[a-z0-9_]+$", rest):
-            return {
-                "platform": "telegram",
-                "telegram_username": rest,
-                "normalized_identifier": f"telegram:{rest}",
-            }
+            return {"platform": "telegram", "telegram_username": rest,
+                    "normalized_identifier": f"telegram:{rest}"}
         return {}
 
-    # Чистое число → telegram_id
     if s.isdigit():
         tid = int(s)
-        return {
-            "platform": "telegram",
-            "telegram_id": tid,
-            "normalized_identifier": f"telegram:{tid}",
-        }
+        return {"platform": "telegram", "telegram_id": tid,
+                "normalized_identifier": f"telegram:{tid}"}
 
-    # Чистый username (буквы/цифры/подчёркивания, без пробелов)
     if re.match(r"^[a-zA-Z0-9_]{3,}$", s):
         u = s.lower()
-        return {
-            "platform": "telegram",
-            "telegram_username": u,
-            "normalized_identifier": f"telegram:{u}",
-        }
-
+        return {"platform": "telegram", "telegram_username": u,
+                "normalized_identifier": f"telegram:{u}"}
     return {}
 
 
-def _find_existing_claim_owner(parsed: dict) -> tuple[SearchLink | None, ManualSearchClaim | None]:
-    """Ищем кто уже привязан к этому клиенту: SearchLink или прежний
-    ManualSearchClaim. Возвращаем первого найденного владельца."""
+def _find_existing_claim_owner(parsed: dict, exclude_link_id=None) -> tuple[SearchLink | None, ManualSearchClaim | None]:
+    """Кто уже привязан к этому клиенту: SearchLink (bot_started=True) или
+    предыдущий PENDING/APPROVED ManualSearchClaim. Возвращает первого."""
     if not parsed:
         return None, None
     sl_q = Q()
     mc_q = Q()
+    has = False
     if parsed.get("telegram_id"):
         sl_q |= Q(telegram_id=parsed["telegram_id"])
         mc_q |= Q(telegram_id=parsed["telegram_id"])
+        has = True
     if parsed.get("telegram_username"):
         sl_q |= Q(telegram_username__iexact=parsed["telegram_username"])
         mc_q |= Q(telegram_username__iexact=parsed["telegram_username"])
+        has = True
     if parsed.get("vk_user_id"):
         sl_q |= Q(vk_user_id=parsed["vk_user_id"])
         mc_q |= Q(vk_user_id=parsed["vk_user_id"])
+        has = True
     if parsed.get("vk_screen_name"):
         sl_q |= Q(vk_screen_name__iexact=parsed["vk_screen_name"])
         mc_q |= Q(vk_screen_name__iexact=parsed["vk_screen_name"])
-    sl_q_has = any([parsed.get("telegram_id"), parsed.get("telegram_username"),
-                    parsed.get("vk_user_id"), parsed.get("vk_screen_name")])
-    if not sl_q_has:
+        has = True
+    if not has:
         return None, None
-    existing_sl = (
-        SearchLink.objects.filter(sl_q)
-        .select_related("user")
-        .order_by("created_at")
-        .first()
-    )
+    existing_sl = SearchLink.objects.filter(sl_q).select_related("user").order_by("created_at")
+    if exclude_link_id:
+        existing_sl = existing_sl.exclude(pk=exclude_link_id)
+    existing_sl = existing_sl.first()
     if existing_sl:
         return existing_sl, None
-    # Блокируем и pending, и approved: пока заявка не отвергнута, никто
-    # другой не может подать на того же клиента.
-    existing_mc = (
+    existing_mc_qs = (
         ManualSearchClaim.objects.filter(
             mc_q,
             status__in=[ManualSearchClaim.Status.PENDING, ManualSearchClaim.Status.APPROVED],
-        )
-        .select_related("user")
-        .order_by("created_at")
-        .first()
+        ).select_related("user").order_by("created_at")
     )
-    return None, existing_mc
+    if exclude_link_id:
+        existing_mc_qs = existing_mc_qs.exclude(search_link_id=exclude_link_id)
+    return None, existing_mc_qs.first()
 
 
 @login_required
-def manual_search_claim(request: HttpRequest) -> HttpResponse:
-    """Форма + список своих claim'ов. POST — обработка."""
+@require_POST
+def search_link_manual_claim(request: HttpRequest, code: str) -> HttpResponse:
+    """POST с client_input — менеджер вручную привязывает клиента к своей
+    SearchLink. Без перехода через бота."""
     if not _require_approved_user(request):
-        return HttpResponseForbidden("Только для одобренных пользователей.")
+        return HttpResponseForbidden("Доступ запрещён.")
 
-    if request.method == "POST":
-        raw = (request.POST.get("client_input") or "").strip()
-        if not raw:
-            messages.error(request, "Введите telegram_id / @username / VK-ссылку клиента.")
-            return redirect("manual_search_claim")
+    link = get_object_or_404(SearchLink, code=code, user=request.user)
 
-        parsed = _parse_manual_claim_input(raw)
-        if not parsed:
-            messages.error(
+    if link.bot_started:
+        messages.info(request, f"Ссылка #{link.display_id or link.id} уже подтверждена ботом.")
+        return redirect("search_links_my")
+    if hasattr(link, "manual_claim") and link.manual_claim:
+        existing = link.manual_claim
+        if existing.status == ManualSearchClaim.Status.PENDING:
+            messages.info(request, f"Заявка на ручную привязку уже ждёт проверки.")
+        elif existing.status == ManualSearchClaim.Status.APPROVED:
+            messages.info(request, f"Клиент уже привязан к этой ссылке.")
+        else:
+            messages.info(
                 request,
-                "Не удалось распознать формат. Используйте: 123456789, "
-                "@username, https://t.me/username, https://vk.com/id123 или https://vk.com/screen_name.",
+                f"Предыдущая ручная привязка отклонена: {existing.rejection_reason or '—'}. "
+                f"Удалите её, чтобы попробовать снова.",
             )
-            return redirect("manual_search_claim")
+        return redirect("search_links_my")
 
-        existing_sl, existing_mc = _find_existing_claim_owner(parsed)
+    raw = (request.POST.get("client_input") or "").strip()
+    if not raw:
+        messages.error(request, "Введите telegram_id / @username / VK-ссылку клиента.")
+        return redirect("search_links_my")
 
-        from django.utils import timezone as _tz
-        with transaction.atomic():
-            if existing_sl or existing_mc:
-                owner = existing_sl.user if existing_sl else existing_mc.user
-                short_id = (
-                    f"SearchLink #{existing_sl.display_id or existing_sl.id}"
-                    if existing_sl else f"ManualClaim #{existing_mc.id}"
-                )
-                ManualSearchClaim.objects.create(
-                    user=request.user,
-                    raw_input=raw,
-                    normalized_identifier=parsed["normalized_identifier"],
-                    platform=parsed["platform"],
-                    telegram_id=parsed.get("telegram_id"),
-                    telegram_username=parsed.get("telegram_username") or "",
-                    vk_user_id=parsed.get("vk_user_id"),
-                    vk_screen_name=parsed.get("vk_screen_name") or "",
-                    status=ManualSearchClaim.Status.REJECTED,
-                    rejection_reason=(
-                        f"Клиент уже привязан к @{owner.username} ({short_id})."
-                    ),
-                    paid_reward=0,
-                    matched_search_link=existing_sl,
-                    matched_manual_claim=existing_mc,
-                    reviewed_at=_tz.now(),
-                )
-                messages.warning(
-                    request,
-                    f"Клиент уже привязан к @{owner.username} ({short_id}). "
-                    f"Заявка отклонена — выплаты нет.",
-                )
-            else:
-                ManualSearchClaim.objects.create(
-                    user=request.user,
-                    raw_input=raw,
-                    normalized_identifier=parsed["normalized_identifier"],
-                    platform=parsed["platform"],
-                    telegram_id=parsed.get("telegram_id"),
-                    telegram_username=parsed.get("telegram_username") or "",
-                    vk_user_id=parsed.get("vk_user_id"),
-                    vk_screen_name=parsed.get("vk_screen_name") or "",
-                    status=ManualSearchClaim.Status.PENDING,
-                    paid_reward=0,
-                )
-                messages.success(
-                    request,
-                    f"Заявка отправлена на проверку администратору. "
-                    f"При одобрении начисляется {MANUAL_CLAIM_REWARD} ₽.",
-                )
+    parsed = _parse_manual_claim_input(raw)
+    if not parsed:
+        messages.error(
+            request,
+            "Не удалось распознать формат. Используйте: 123456789, @username, "
+            "https://t.me/username или https://vk.com/id123 / https://vk.com/screen_name.",
+        )
+        return redirect("search_links_my")
 
-        return redirect("manual_search_claim")
+    existing_sl, existing_mc = _find_existing_claim_owner(parsed, exclude_link_id=link.id)
 
-    qs = (
-        ManualSearchClaim.objects.filter(user=request.user)
-        .select_related("matched_search_link", "matched_search_link__user", "matched_manual_claim__user")
-        .order_by("-created_at")
-    )
-    page_obj = Paginator(qs, 30).get_page(request.GET.get("page", 1))
-    approved_count = ManualSearchClaim.objects.filter(
-        user=request.user, status=ManualSearchClaim.Status.APPROVED,
-    ).count()
+    with transaction.atomic():
+        if existing_sl or existing_mc:
+            owner = existing_sl.user if existing_sl else existing_mc.user
+            short_id = (
+                f"SearchLink #{existing_sl.display_id or existing_sl.id}"
+                if existing_sl else f"ManualClaim #{existing_mc.id}"
+            )
+            ManualSearchClaim.objects.create(
+                user=request.user,
+                search_link=link,
+                raw_input=raw,
+                normalized_identifier=parsed["normalized_identifier"],
+                platform=parsed["platform"],
+                telegram_id=parsed.get("telegram_id"),
+                telegram_username=parsed.get("telegram_username") or "",
+                vk_user_id=parsed.get("vk_user_id"),
+                vk_screen_name=parsed.get("vk_screen_name") or "",
+                status=ManualSearchClaim.Status.REJECTED,
+                rejection_reason=f"Клиент уже привязан к @{owner.username} ({short_id}).",
+                paid_reward=0,
+                matched_search_link=existing_sl,
+                matched_manual_claim=existing_mc,
+                reviewed_at=timezone.now(),
+            )
+            messages.warning(
+                request,
+                f"Клиент уже привязан к @{owner.username} ({short_id}). "
+                f"Заявка отклонена — выплаты нет.",
+            )
+        else:
+            ManualSearchClaim.objects.create(
+                user=request.user,
+                search_link=link,
+                raw_input=raw,
+                normalized_identifier=parsed["normalized_identifier"],
+                platform=parsed["platform"],
+                telegram_id=parsed.get("telegram_id"),
+                telegram_username=parsed.get("telegram_username") or "",
+                vk_user_id=parsed.get("vk_user_id"),
+                vk_screen_name=parsed.get("vk_screen_name") or "",
+                status=ManualSearchClaim.Status.PENDING,
+                paid_reward=0,
+            )
+            messages.success(
+                request,
+                f"Заявка на ручную привязку отправлена на проверку. "
+                f"При одобрении +{MANUAL_CLAIM_REWARD} ₽.",
+            )
 
-    return render(request, "core/manual_search_claim.html", {
-        "page_obj": page_obj,
-        "reward": MANUAL_CLAIM_REWARD,
-        "approved_count": approved_count,
-    })
+    return redirect("search_links_my")
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Админская модерация (role=admin / main_admin)
+# Админская модерация
 # ════════════════════════════════════════════════════════════════════════════
 
 def _is_admin_or_main(user) -> bool:
@@ -295,8 +268,8 @@ def admin_manual_claims_list(request: HttpRequest) -> HttpResponse:
 
     qs = (
         ManualSearchClaim.objects
-        .select_related("user", "matched_search_link", "matched_search_link__user",
-                        "matched_manual_claim__user", "reviewed_by")
+        .select_related("user", "search_link", "matched_search_link",
+                        "matched_search_link__user", "matched_manual_claim__user", "reviewed_by")
         .order_by("-created_at")
     )
     if tab == "pending":
@@ -320,7 +293,6 @@ def admin_manual_claims_list(request: HttpRequest) -> HttpResponse:
             status=ManualSearchClaim.Status.PENDING,
         ).count(),
     }
-
     return render(request, "core/admin_manual_claims.html", {
         "page_obj": page_obj,
         "tab": tab,
@@ -339,7 +311,7 @@ def admin_manual_claim_approve(request: HttpRequest, claim_id: int) -> HttpRespo
     with transaction.atomic():
         claim = (
             ManualSearchClaim.objects.select_for_update()
-            .select_related("user").filter(pk=claim_id).first()
+            .select_related("user", "search_link").filter(pk=claim_id).first()
         )
         if not claim:
             messages.error(request, "Заявка не найдена.")
@@ -348,32 +320,27 @@ def admin_manual_claim_approve(request: HttpRequest, claim_id: int) -> HttpRespo
             messages.info(request, f"Заявка #{claim_id} уже обработана.")
             return redirect("admin_manual_claims_list")
 
-        # Повторно проверяем — клиент мог быть привязан кем-то пока заявка
-        # лежала в pending.
-        from django.db.models import Q
-        sl_q = Q()
+        # Повторная проверка — клиент мог быть привязан кем-то пока claim
+        # лежал в pending.
+        from django.db.models import Q as _Q
+        sl_q = _Q()
         has_filter = False
         if claim.telegram_id:
-            sl_q |= Q(telegram_id=claim.telegram_id); has_filter = True
+            sl_q |= _Q(telegram_id=claim.telegram_id); has_filter = True
         if claim.telegram_username:
-            sl_q |= Q(telegram_username__iexact=claim.telegram_username); has_filter = True
+            sl_q |= _Q(telegram_username__iexact=claim.telegram_username); has_filter = True
         if claim.vk_user_id:
-            sl_q |= Q(vk_user_id=claim.vk_user_id); has_filter = True
+            sl_q |= _Q(vk_user_id=claim.vk_user_id); has_filter = True
         if claim.vk_screen_name:
-            sl_q |= Q(vk_screen_name__iexact=claim.vk_screen_name); has_filter = True
+            sl_q |= _Q(vk_screen_name__iexact=claim.vk_screen_name); has_filter = True
 
-        conflicting_sl = (
-            SearchLink.objects.filter(sl_q).select_related("user")
-            .exclude(user_id=claim.user_id).order_by("created_at").first()
-            if has_filter else None
-        )
+        conflicting_sl = None
+        if has_filter:
+            qs = SearchLink.objects.filter(sl_q).select_related("user")
+            if claim.search_link_id:
+                qs = qs.exclude(pk=claim.search_link_id)
+            conflicting_sl = qs.order_by("created_at").first()
         if conflicting_sl:
-            messages.warning(
-                request,
-                f"За время ожидания клиент привязался к @{conflicting_sl.user.username} "
-                f"(SearchLink #{conflicting_sl.display_id or conflicting_sl.id}). "
-                f"Заявку отклонил автоматически.",
-            )
             claim.status = ManualSearchClaim.Status.REJECTED
             claim.rejection_reason = (
                 f"Пока заявка ждала проверки, клиент привязался к "
@@ -386,6 +353,11 @@ def admin_manual_claim_approve(request: HttpRequest, claim_id: int) -> HttpRespo
                 "status", "rejection_reason", "matched_search_link",
                 "reviewed_by", "reviewed_at", "updated_at",
             ])
+            messages.warning(
+                request,
+                f"За время ожидания клиент привязался к @{conflicting_sl.user.username}. "
+                f"Заявка отклонена автоматически.",
+            )
             return redirect("admin_manual_claims_list")
 
         claim.status = ManualSearchClaim.Status.APPROVED
@@ -395,6 +367,30 @@ def admin_manual_claim_approve(request: HttpRequest, claim_id: int) -> HttpRespo
         claim.save(update_fields=[
             "status", "paid_reward", "reviewed_by", "reviewed_at", "updated_at",
         ])
+
+        # Записываем identifier'ы прямо на SearchLink — теперь дедуп SR
+        # будет находить эту ссылку для будущих менеджеров.
+        if claim.search_link_id:
+            link = SearchLink.objects.select_for_update().get(pk=claim.search_link_id)
+            link_fields = []
+            if claim.telegram_id and not link.telegram_id:
+                link.telegram_id = claim.telegram_id
+                link_fields.append("telegram_id")
+            if claim.telegram_username and not link.telegram_username:
+                link.telegram_username = claim.telegram_username
+                link_fields.append("telegram_username")
+            if claim.vk_user_id and not link.vk_user_id:
+                link.vk_user_id = claim.vk_user_id
+                link_fields.append("vk_user_id")
+            if claim.vk_screen_name and not link.vk_screen_name:
+                link.vk_screen_name = claim.vk_screen_name
+                link_fields.append("vk_screen_name")
+            if not link.bot_started:
+                link.bot_started = True
+                link_fields.append("bot_started")
+            if link_fields:
+                link_fields.append("updated_at")
+                link.save(update_fields=link_fields)
 
         manager = User.objects.select_for_update().get(pk=claim.user_id)
         _old = manager.balance or 0
@@ -427,24 +423,41 @@ def admin_manual_claim_reject(request: HttpRequest, claim_id: int) -> HttpRespon
     with transaction.atomic():
         claim = (
             ManualSearchClaim.objects.select_for_update()
-            .select_related("user").filter(pk=claim_id).first()
+            .select_related("user", "search_link").filter(pk=claim_id).first()
         )
         if not claim:
             messages.error(request, "Заявка не найдена.")
             return redirect("admin_manual_claims_list")
 
-        # Если был approved — откат начисления
-        if claim.status == ManualSearchClaim.Status.APPROVED and claim.paid_reward:
-            manager = User.objects.select_for_update().get(pk=claim.user_id)
-            _old = manager.balance or 0
-            manager.balance = _old - claim.paid_reward
-            manager.save(update_fields=["balance"])
-            log_balance_change(
-                manager, "balance", _old, manager.balance,
-                f"manual_claim_reject_rollback#{claim.id} -{claim.paid_reward}",
-                request.user,
-            )
-            claim.paid_reward = 0
+        # Откат начисления + identifier-полей на SearchLink, если был approved
+        if claim.status == ManualSearchClaim.Status.APPROVED:
+            if claim.paid_reward:
+                manager = User.objects.select_for_update().get(pk=claim.user_id)
+                _old = manager.balance or 0
+                manager.balance = _old - claim.paid_reward
+                manager.save(update_fields=["balance"])
+                log_balance_change(
+                    manager, "balance", _old, manager.balance,
+                    f"manual_claim_reject_rollback#{claim.id} -{claim.paid_reward}",
+                    request.user,
+                )
+                claim.paid_reward = 0
+            if claim.search_link_id:
+                link = SearchLink.objects.select_for_update().get(pk=claim.search_link_id)
+                rollback_fields = []
+                if claim.telegram_id and link.telegram_id == claim.telegram_id:
+                    link.telegram_id = None; rollback_fields.append("telegram_id")
+                if claim.telegram_username and link.telegram_username and link.telegram_username.lower() == claim.telegram_username.lower():
+                    link.telegram_username = ""; rollback_fields.append("telegram_username")
+                if claim.vk_user_id and link.vk_user_id == claim.vk_user_id:
+                    link.vk_user_id = None; rollback_fields.append("vk_user_id")
+                if claim.vk_screen_name and link.vk_screen_name and link.vk_screen_name.lower() == claim.vk_screen_name.lower():
+                    link.vk_screen_name = ""; rollback_fields.append("vk_screen_name")
+                if link.bot_started:
+                    link.bot_started = False; rollback_fields.append("bot_started")
+                if rollback_fields:
+                    rollback_fields.append("updated_at")
+                    link.save(update_fields=rollback_fields)
 
         claim.status = ManualSearchClaim.Status.REJECTED
         claim.rejection_reason = reason

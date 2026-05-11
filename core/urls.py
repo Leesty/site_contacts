@@ -355,8 +355,8 @@ urlpatterns = [
     # 301 на каноничный лендинг. Реф-код сохраняется, всё работает как надо.
     path("s/<str:code>/<path:junk>", views_search.search_link_fallback_redirect, name="search_link_fallback"),
     path("search/links/", views_search.search_links_my, name="search_links_my"),
-    # Ручная привязка клиента (когда клиент пришёл не по реф-ссылке)
-    path("search/manual-claim/", views_manual_claim.manual_search_claim, name="manual_search_claim"),
+    # Ручная привязка клиента — POST из карточки своей SearchLink
+    path("search/links/<str:code>/manual-claim/", views_manual_claim.search_link_manual_claim, name="search_link_manual_claim"),
     # Админская модерация ручных привязок (role=admin / main_admin)
     path("staff/manual-claims/", views_manual_claim.admin_manual_claims_list, name="admin_manual_claims_list"),
     path("staff/manual-claims/<int:claim_id>/approve/", views_manual_claim.admin_manual_claim_approve, name="admin_manual_claim_approve"),
