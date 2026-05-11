@@ -123,6 +123,24 @@ def _is_admin_or_main(user) -> bool:
     return user.is_authenticated and getattr(user, "role", None) in ("admin", "main_admin")
 
 
+def _redirect_back_to_list(request) -> HttpResponse:
+    """Редирект на список с сохранением page/tab/q.
+
+    Берёт `request.POST.get('next')`, иначе REFERER, иначе fallback URL.
+    Принимает только локальные URL (начинающиеся с '/').
+    """
+    nxt = (request.POST.get("next") or "").strip()
+    if not nxt:
+        nxt = (request.META.get("HTTP_REFERER") or "").strip()
+    if nxt:
+        # Only allow internal redirects, и игнорируем сами reject/rework URL'ы
+        if nxt.startswith("/") or nxt.startswith("https://") and "rupartnerka.ru" in nxt:
+            # Если REFERER указывает на reject/rework — не зацикливаемся, идём на список.
+            if "/reject/" not in nxt and "/rework/" not in nxt and "/approve/" not in nxt:
+                return redirect(nxt)
+    return redirect("admin_group_reports_list")
+
+
 def _is_manager_with_right(user) -> bool:
     return (
         user.is_authenticated
@@ -751,7 +769,7 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
                     action=GroupReportReviewLog.Action.REJECTED,
                 )
             messages.success(request, f"Отчёт #{report_id} отклонён.")
-            return redirect("admin_group_reports_list")
+            return _redirect_back_to_list(request)
     else:
         form = GroupReportRejectForm()
 
@@ -800,7 +818,7 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
                     action=GroupReportReviewLog.Action.REWORK,
                 )
             messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
-            return redirect("admin_group_reports_list")
+            return _redirect_back_to_list(request)
     else:
         form = GroupReportReworkForm()
 
