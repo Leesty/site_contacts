@@ -319,6 +319,25 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         )
         compress_lead_attachment(report)
 
+        # Сначала проверяем — не зафиксирован ли клиент ручной привязкой
+        # другого менеджера (ManualSearchClaim).
+        blocking_claim = _find_blocking_manual_claim(link=link)
+        if blocking_claim:
+            report.status = SearchReport.Status.REJECTED
+            report.rejection_reason = (
+                f"Автоотклонение: дубликат — клиент уже закреплён ручной "
+                f"привязкой за @{blocking_claim.user.username} "
+                f"(ManualClaim #{blocking_claim.id})."
+            )
+            report.reviewed_at = timezone.now()
+            report.save(update_fields=["status", "rejection_reason", "reviewed_at", "updated_at"])
+            messages.warning(
+                request,
+                f"Этот клиент уже закреплён ручной привязкой за "
+                f"@{blocking_claim.user.username}. Отчёт отклонён как дубликат.",
+            )
+            return redirect("search_links_my")
+
         # Дубликат по реальному идентификатору клиента (telegram_id / vk_id /
         # username из бота, либо client_phone для phone_callback) — НЕ по
         # raw_contact, который ввёл менеджер. См. _find_duplicate_search_report.
@@ -558,6 +577,41 @@ def _find_duplicate_search_report(*, exclude_report_id, link, client_phone=""):
     return (
         SearchReport.objects.filter(q)
         .exclude(pk=exclude_report_id)
+        .order_by("created_at")
+        .first()
+    )
+
+
+def _find_blocking_manual_claim(*, link):
+    """Ищет approved ManualSearchClaim на того же клиента (другого менеджера).
+
+    Возвращает первый найденный или None. Используется в search_report_create
+    чтобы заблокировать SR второго менеджера, если первый уже зафиксировал
+    клиента ручной привязкой.
+    """
+    from django.db.models import Q
+    from .models import ManualSearchClaim
+    q = Q()
+    has_filter = False
+    if link.telegram_id:
+        q |= Q(telegram_id=link.telegram_id)
+        has_filter = True
+    if link.telegram_username:
+        q |= Q(telegram_username__iexact=link.telegram_username)
+        has_filter = True
+    if link.vk_user_id:
+        q |= Q(vk_user_id=link.vk_user_id)
+        has_filter = True
+    if link.vk_screen_name:
+        q |= Q(vk_screen_name__iexact=link.vk_screen_name)
+        has_filter = True
+    if not has_filter:
+        return None
+    return (
+        ManualSearchClaim.objects
+        .filter(q, status=ManualSearchClaim.Status.APPROVED)
+        .exclude(user_id=link.user_id)
+        .select_related("user")
         .order_by("created_at")
         .first()
     )

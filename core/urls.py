@@ -3,6 +3,7 @@ from django.urls import path
 
 from . import views
 from . import views_group_reports
+from . import views_manual_claim
 from . import views_partner
 from . import views_search
 from . import views_support_admin
@@ -354,6 +355,8 @@ urlpatterns = [
     # 301 на каноничный лендинг. Реф-код сохраняется, всё работает как надо.
     path("s/<str:code>/<path:junk>", views_search.search_link_fallback_redirect, name="search_link_fallback"),
     path("search/links/", views_search.search_links_my, name="search_links_my"),
+    # Ручная привязка клиента (когда клиент пришёл не по реф-ссылке)
+    path("search/manual-claim/", views_manual_claim.manual_search_claim, name="manual_search_claim"),
     path("search/links/create/", views_search.search_link_create, name="search_link_create"),
     path("search/links/<str:code>/report/", views_search.search_report_create, name="search_report_create"),
     path("search/links/<str:code>/report/redo/", views_search.search_report_redo, name="search_report_redo"),

@@ -1739,3 +1739,75 @@ class GroupReportReviewLog(TimeStampedModel):
     def __str__(self) -> str:  # pragma: no cover
         return f"GR#{self.report_id}: {self.get_action_display()} ({self.created_at})"
 
+
+class ManualSearchClaim(TimeStampedModel):
+    """Ручная заявка менеджера: «вот этот клиент мой, он не пришёл по моей
+    реф-ссылке, но я хочу зафиксировать его за собой».
+
+    Авто-обрабатывается в момент сабмита:
+    - если клиент (по normalized_identifier) уже привязан к чьему-то
+      SearchLink или раньше был зафиксирован чьим-то ManualSearchClaim,
+      статус=REJECTED, выплат нет;
+    - иначе статус=APPROVED, менеджер получает 150 ₽.
+    """
+
+    class Status(models.TextChoices):
+        APPROVED = "approved", "Одобрено"
+        REJECTED = "rejected", "Отклонено"
+
+    class Platform(models.TextChoices):
+        TELEGRAM = "telegram", "Telegram"
+        VK = "vk", "VK"
+        OTHER = "other", "Other"
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="manual_search_claims",
+    )
+    raw_input = models.CharField(
+        max_length=255,
+        help_text="То, что менеджер ввёл (telegram_id, @username, vk.com/...).",
+    )
+    normalized_identifier = models.CharField(
+        max_length=255, db_index=True,
+        help_text="Нормализованный идентификатор (telegram:user, vk:idNNN и т.п.) — для дедупа.",
+    )
+    platform = models.CharField(
+        max_length=16, choices=Platform.choices, default=Platform.OTHER,
+    )
+    # Распарсенные значения для матча с SearchLink.* полями
+    telegram_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    telegram_username = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    vk_user_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    vk_screen_name = models.CharField(max_length=100, blank=True, default="", db_index=True)
+
+    status = models.CharField(
+        max_length=20, choices=Status.choices, db_index=True,
+    )
+    rejection_reason = models.TextField(blank=True, default="")
+    paid_reward = models.PositiveIntegerField(
+        default=0,
+        help_text="Сколько начислено менеджеру в момент сабмита (150 при approved, 0 при rejected).",
+    )
+    matched_search_link = models.ForeignKey(
+        "SearchLink", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="manual_claims_conflicting",
+        help_text="Существующая SearchLink с этим клиентом, из-за которой claim отклонён (если применимо).",
+    )
+    matched_manual_claim = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="conflicts",
+        help_text="Предыдущий ManualSearchClaim с тем же клиентом (если применимо).",
+    )
+
+    class Meta:
+        verbose_name = "Ручная привязка клиента (SearchLink)"
+        verbose_name_plural = "Ручные привязки клиентов (SearchLink)"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+            models.Index(fields=["normalized_identifier", "status"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"ManualClaim #{self.pk} @{self.user.username} {self.status}"
+
