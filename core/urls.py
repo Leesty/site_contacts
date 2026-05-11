@@ -357,6 +357,10 @@ urlpatterns = [
     path("search/links/", views_search.search_links_my, name="search_links_my"),
     # Ручная привязка клиента (когда клиент пришёл не по реф-ссылке)
     path("search/manual-claim/", views_manual_claim.manual_search_claim, name="manual_search_claim"),
+    # Админская модерация ручных привязок (role=admin / main_admin)
+    path("staff/manual-claims/", views_manual_claim.admin_manual_claims_list, name="admin_manual_claims_list"),
+    path("staff/manual-claims/<int:claim_id>/approve/", views_manual_claim.admin_manual_claim_approve, name="admin_manual_claim_approve"),
+    path("staff/manual-claims/<int:claim_id>/reject/", views_manual_claim.admin_manual_claim_reject, name="admin_manual_claim_reject"),
     path("search/links/create/", views_search.search_link_create, name="search_link_create"),
     path("search/links/<str:code>/report/", views_search.search_report_create, name="search_report_create"),
     path("search/links/<str:code>/report/redo/", views_search.search_report_redo, name="search_report_redo"),

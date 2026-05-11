@@ -93,6 +93,18 @@
       </div>
     </div>
     <div class="col">
+      <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.02) 100%); border: 1px solid rgba(14,165,233,0.25);">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">🔍 Ручные проверки</h2>
+            {% if pending_manual_claims_count %}<span class="badge bg-danger">{{ pending_manual_claims_count }}</span>{% endif %}
+          </div>
+          <p class="text-muted small mb-2">Менеджер вручную закрепляет клиента, который пришёл не по его реф-ссылке. Approve = +150 ₽.</p>
+          <a class="btn btn-outline-info btn-sm" href="{% url 'admin_manual_claims_list' %}">Открыть</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
           <div class="d-flex align-items-center justify-content-between mb-2">

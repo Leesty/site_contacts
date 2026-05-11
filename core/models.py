@@ -1752,6 +1752,7 @@ class ManualSearchClaim(TimeStampedModel):
     """
 
     class Status(models.TextChoices):
+        PENDING = "pending", "На проверке"
         APPROVED = "approved", "Одобрено"
         REJECTED = "rejected", "Отклонено"
 
@@ -1798,6 +1799,12 @@ class ManualSearchClaim(TimeStampedModel):
         related_name="conflicts",
         help_text="Предыдущий ManualSearchClaim с тем же клиентом (если применимо).",
     )
+    reviewed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="reviewed_manual_claims",
+        help_text="Админ, проверивший заявку (null если auto-reject из-за дубликата).",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Ручная привязка клиента (SearchLink)"

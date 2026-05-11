@@ -8,8 +8,9 @@
   <h1 class="h4 mb-1 mt-2">🔍 Ручная проверка лида</h1>
   <p class="text-muted small mb-0">
     Клиент пришёл не по вашей реф-ссылке? Введите его ID/username/ссылку —
-    если он ещё ни к кому не привязан, он закрепится за вами и вы получите
-    <strong>{{ reward }} ₽</strong>. Если уже занят — выплаты нет.
+    если он ещё ни к кому не привязан, заявка пойдёт на проверку
+    администратору. После одобрения вы получите <strong>{{ reward }} ₽</strong>.
+    Если клиент уже занят — выплаты нет.
   </p>
 </div>
 
@@ -70,7 +71,9 @@
               <td class="small"><code>{{ c.raw_input }}</code></td>
               <td class="small text-muted">{{ c.normalized_identifier }}</td>
               <td>
-                {% if c.status == 'approved' %}
+                {% if c.status == 'pending' %}
+                  <span class="badge bg-warning text-dark">На проверке</span>
+                {% elif c.status == 'approved' %}
                   <span class="badge bg-success">Одобрено</span>
                 {% else %}
                   <span class="badge bg-danger">Отклонено</span>
@@ -81,7 +84,9 @@
                 {% else %}—{% endif %}
               </td>
               <td class="small text-muted">
-                {% if c.status == 'approved' %}
+                {% if c.status == 'pending' %}
+                  Ждёт проверки администратором.
+                {% elif c.status == 'approved' %}
                   Клиент закреплён за вами.
                 {% else %}
                   {{ c.rejection_reason }}

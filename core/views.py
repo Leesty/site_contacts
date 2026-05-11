@@ -265,12 +265,15 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         smz_pending_count = User.objects.filter(smz_status="pending").count()
         unchecked_receipts_count = WithdrawalRequest.objects.filter(receipt_status="pending").count()
         # GroupReport (бета): счётчики для дашборда модератора
-        from .models import GroupReport
+        from .models import GroupReport, ManualSearchClaim
         pending_group_reports_count = GroupReport.objects.filter(
             status=GroupReport.Status.PENDING, is_complete=True,
         ).count()
         incomplete_group_reports_count = GroupReport.objects.filter(is_complete=False).count()
         granted_group_report_users_count = User.objects.filter(can_create_group_reports=True).count()
+        pending_manual_claims_count = ManualSearchClaim.objects.filter(
+            status=ManualSearchClaim.Status.PENDING,
+        ).count()
 
         ctx = {
             "user": user,
@@ -298,6 +301,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "pending_group_reports_count": pending_group_reports_count,
             "incomplete_group_reports_count": incomplete_group_reports_count,
             "granted_group_report_users_count": granted_group_report_users_count,
+            "pending_manual_claims_count": pending_manual_claims_count,
         }
 
         if _is_main_admin(user):
