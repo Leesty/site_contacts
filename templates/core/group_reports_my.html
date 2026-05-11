@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static support_extras %}
 
 {% block title %}Мои отчёты по группам — Партнёрка{% endblock %}
 
@@ -68,7 +69,15 @@
               </td>
               <td>
                 {% if r.screencast %}
-                  <a href="{% url 'manager_group_report_attachment' r.id %}" target="_blank" class="text-info small">📎 открыть</a>
+                  {% if r.screencast|lead_attachment_is_video %}
+                    <button type="button" class="btn btn-outline-primary btn-sm js-video-preview"
+                            data-video-url="{% url 'manager_group_report_attachment' r.id %}"
+                            data-s3-url="{{ r.screencast|attachment_s3_url }}"
+                            data-lead-id="GR{{ r.id }}">Видео</button>
+                  {% else %}
+                    <a href="{% url 'manager_group_report_attachment' r.id %}" target="_blank" rel="noopener"
+                       class="btn btn-outline-primary btn-sm">Открыть</a>
+                  {% endif %}
                 {% endif %}
               </td>
               <td class="small text-muted" style="max-width:280px">
@@ -96,4 +105,27 @@
 </ul></nav>
 {% endif %}
 {% endif %}
+
+{# Модалка предпросмотра видео #}
+<div class="modal fade" id="videoPreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content bg-dark">
+      <div class="modal-header border-secondary py-2">
+        <h6 class="modal-title">Скринкаст #<span id="videoLeadId"></span></h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body p-0">
+        <video id="videoPreviewPlayer" controls preload="none" style="width:100%; max-height:70vh;"
+               poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='225'%3E%3Crect fill='%23374151' width='400' height='225'/%3E%3Cpath fill='%239ca3af' d='M160 80v65l50-32.5z'/%3E%3C/svg%3E">
+          Ваш браузер не поддерживает видео.
+        </video>
+      </div>
+      <div class="modal-footer border-secondary py-2">
+        <a id="videoDownloadLink" href="#" target="_blank" class="btn btn-outline-primary btn-sm">Открыть в новой вкладке</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{% static 'js/video-preview.js' %}"></script>
 {% endblock %}
