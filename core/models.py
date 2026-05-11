@@ -1467,6 +1467,12 @@ class SearchReport(TimeStampedModel):
         default=0,
         help_text="Сколько реально начислено менеджеру на момент одобрения (без партнёрского cut). Для старых/не одобренных записей — 0.",
     )
+    manual_unverified = models.BooleanField(
+        default=False, db_index=True,
+        help_text=("Менеджер вписал ID клиента вручную, но клиента нет в БД "
+                   "бота (не запускал бота, написал в ЛС напрямую). Такие "
+                   "отчёты идут на отдельную модерацию главному админу."),
+    )
     # Phone-callback режим (альтернатива запуску бота): клиент оставил номер, робот обзванивает
     report_type = models.CharField(
         max_length=20,

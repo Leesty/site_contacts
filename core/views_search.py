@@ -320,6 +320,7 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
 
         # Все валидации прошли — для ручной привязки записываем идентификатор
         # прямо в SearchLink (теперь дедуп SR сработает для других менеджеров).
+        manual_unverified = False
         if manual_parsed:
             link_fields = []
             if manual_parsed.get("telegram_id") and not link.telegram_id:
@@ -340,6 +341,9 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
             if link_fields:
                 link_fields.append("updated_at")
                 link.save(update_fields=link_fields)
+            # Если клиента нет в БД бота — отправляем на отдельную модерацию
+            # главному админу (написал в ЛС, бота не запускал).
+            manual_unverified = not _client_in_windowgram(manual_parsed)
 
         # Для phone_callback валидируем номер клиента
         client_phone = ""
@@ -371,6 +375,7 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
                 SearchReport.Status.PENDING_CALLBACK if is_phone
                 else SearchReport.Status.PENDING
             ),
+            manual_unverified=manual_unverified,
         )
         compress_lead_attachment(report)
 
@@ -570,6 +575,11 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
             if link_fields:
                 link_fields.append("updated_at")
                 link.save(update_fields=link_fields)
+            # Если клиента нет в БД бота — отдельная модерация главным админом.
+            new_unverified = not _client_in_windowgram(manual_parsed)
+            if report.manual_unverified != new_unverified:
+                report.manual_unverified = new_unverified
+                report.save(update_fields=["manual_unverified", "updated_at"])
 
         if switch_to_phone:
             messages.success(request, f"Отчёт обновлён. Ждём звонок с {report.client_phone} на любой из наших номеров.")
@@ -700,6 +710,43 @@ def parse_manual_client_input(raw: str) -> dict:
     if re.match(r"^[a-zA-Z0-9_]{3,}$", s_stripped):
         return {"platform": "telegram", "telegram_username": s_stripped.lower()}
     return {}
+
+
+def _client_in_windowgram(parsed: dict) -> bool:
+    """Проверяем, есть ли клиент в БД бота (`windowgram.telegram_users`).
+
+    Возвращает True если найден telegram_user с таким telegram_id /
+    username / vk_id / vk_screen_name. False если нет (значит клиент
+    написал руководителю в ЛС, минуя бота — нужна ручная проверка
+    главного админа).
+    """
+    if not parsed:
+        return False
+    where: list[str] = []
+    params: list = []
+    if parsed.get("telegram_id"):
+        where.append("telegram_id = %s")
+        params.append(parsed["telegram_id"])
+    if parsed.get("telegram_username"):
+        where.append("LOWER(username) = LOWER(%s)")
+        params.append(parsed["telegram_username"])
+    if parsed.get("vk_user_id"):
+        where.append("vk_id = %s")
+        params.append(parsed["vk_user_id"])
+    # vk_screen_name в telegram_users нет — пропускаем (если только это поле
+    # задано, считаем «нет в боте»).
+    if not where:
+        return False
+    sql = f"SELECT 1 FROM telegram_users WHERE {' OR '.join(where)} LIMIT 1"
+    try:
+        from django.db import connections
+        with connections["windowgram"].cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchone() is not None
+    except Exception:
+        # Бот-сервер недоступен — на безопасность считаем «не нашли»
+        # (отчёт пойдёт главному админу на ручную проверку).
+        return False
 
 
 def _find_other_link_for_client(parsed: dict, *, exclude_link_id) -> "SearchLink | None":
@@ -1205,17 +1252,29 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
 
+    is_main_admin = getattr(request.user, "role", None) == "main_admin"
     tab = request.GET.get("tab", "pending")
+    # Вкладка «not_in_bot» — только для главного админа
+    if tab == "not_in_bot" and not is_main_admin:
+        tab = "pending"
+
     q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
     # Только отчёты где бот реально стартовал (вебхук подтвердил)
     reports_qs = SearchReport.objects.filter(search_link__bot_started=True).select_related("user", "search_link", "reviewed_by")
 
     if tab == "duplicate":
-        # Отдельная вкладка «Дубликаты» — показываем только дубликаты
         reports_qs = reports_qs.filter(search_link__duplicate_of__isnull=False)
+    elif tab == "not_in_bot":
+        # Ручные привязки, клиент не в БД бота — только pending + only main_admin.
+        reports_qs = (
+            reports_qs
+            .filter(search_link__duplicate_of__isnull=True)
+            .filter(manual_unverified=True, status=SearchReport.Status.PENDING)
+        )
     else:
-        # Все остальные вкладки исключают дубликаты
         reports_qs = reports_qs.filter(search_link__duplicate_of__isnull=True)
+        # Обычные вкладки скрывают «manual_unverified» — они для главного админа.
+        reports_qs = reports_qs.filter(manual_unverified=False)
         if tab == "approved":
             reports_qs = reports_qs.filter(status=SearchReport.Status.APPROVED)
         elif tab == "rejected":
@@ -1254,16 +1313,25 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     paginator = Paginator(reports_qs.order_by("-created_at"), 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
-    # Счётчики (без дублей в основных, и отдельный по дублям)
+    # Счётчики
     pending_count = SearchReport.objects.filter(
         search_link__bot_started=True,
         search_link__duplicate_of__isnull=True,
+        manual_unverified=False,
         status=SearchReport.Status.PENDING,
     ).count()
     duplicate_count = SearchReport.objects.filter(
         search_link__bot_started=True,
         search_link__duplicate_of__isnull=False,
     ).count()
+    not_in_bot_count = (
+        SearchReport.objects.filter(
+            search_link__bot_started=True,
+            search_link__duplicate_of__isnull=True,
+            manual_unverified=True,
+            status=SearchReport.Status.PENDING,
+        ).count() if is_main_admin else 0
+    )
 
     return render(request, "core/admin_search_reports.html", {
         "page_obj": page_obj,
@@ -1271,6 +1339,8 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
         "q": q,
         "pending_count": pending_count,
         "duplicate_count": duplicate_count,
+        "not_in_bot_count": not_in_bot_count,
+        "is_main_admin": is_main_admin,
     })
 
 
