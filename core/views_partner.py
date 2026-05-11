@@ -585,42 +585,92 @@ def _require_user_approved(request: HttpRequest) -> bool:
 
 @login_required
 def user_referrals(request: HttpRequest) -> HttpResponse:
-    """Дашборд реферальной системы менеджера: ссылки, ставки, заработок."""
+    """Реферальная система менеджера. Одна общая ссылка + общие ставки
+    (SearchLink + GroupReport) на всех рефералов."""
     if not _require_user_approved(request):
         return HttpResponseForbidden("Только для одобренных пользователей.")
 
     user = request.user
     total_earned = PartnerEarning.objects.filter(partner=user).aggregate(s=Sum("amount")).get("s") or 0
-    users_count = User.objects.filter(partner_owner=user).count()
     earnings = (
         PartnerEarning.objects.filter(partner=user)
-        .select_related("lead", "lead__user", "search_report", "search_report__user")
+        .select_related("lead", "lead__user", "search_report", "search_report__user",
+                        "group_report", "group_report__user")
         .order_by("-created_at")[:100]
     )
 
     from django.conf import settings as _settings
     SEARCH_TOTAL = getattr(_settings, "SEARCH_REPORT_REWARD", 150)
+    GR_TOTAL = 80
 
-    links_qs = (
-        PartnerLink.objects.filter(partner=user)
-        .annotate(ref_count=Count("registered_users"))
-        .order_by("-created_at")
+    # Одна реф-ссылка на всех. Если нет — создаём; если несколько (legacy) —
+    # отдаём самую раннюю активную.
+    link = (
+        PartnerLink.objects.filter(partner=user, is_active=True)
+        .order_by("created_at").first()
     )
-    GR_TOTAL = 80  # GROUP_REPORT_APPROVE_REWARD
-    links = list(links_qs)
-    for link in links:
-        link.ref_searchlink_share = max(0, SEARCH_TOTAL - link.ref_searchlink_cut)
-        link.ref_group_report_share = max(0, GR_TOTAL - link.ref_group_report_cut)
+    if not link:
+        link = PartnerLink.objects.filter(partner=user).order_by("created_at").first()
+    if not link:
+        link = PartnerLink.objects.create(partner=user, code=uuid4().hex[:24])
+
+    referrals = list(
+        User.objects.filter(partner_owner=user)
+        .order_by("-date_joined")
+        .values("id", "username", "first_name", "last_name", "status", "date_joined")[:200]
+    )
 
     return render(request, "core/user_referrals.html", {
         "user": user,
         "total_earned": total_earned,
-        "users_count": users_count,
+        "users_count": len(referrals),
         "earnings": earnings,
-        "links": links,
+        "link": link,
+        "referrals": referrals,
         "search_total_reward": SEARCH_TOTAL,
         "group_report_total_reward": GR_TOTAL,
+        "ref_searchlink_cut": user.ref_searchlink_cut,
+        "ref_searchlink_ref_share": max(0, SEARCH_TOTAL - user.ref_searchlink_cut),
+        "ref_group_report_cut": user.ref_group_report_cut,
+        "ref_group_report_ref_share": max(0, GR_TOTAL - user.ref_group_report_cut),
     })
+
+
+@login_required
+@require_http_methods(["POST"])
+def user_update_ref_rates(request: HttpRequest) -> HttpResponse:
+    """Менеджер меняет общие реф-ставки (SearchLink + GroupReport)."""
+    if not _require_user_approved(request):
+        return HttpResponseForbidden()
+
+    SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
+    GR_TOTAL = 80
+    update_fields: list[str] = []
+
+    raw_sl = request.POST.get("ref_searchlink_cut")
+    if raw_sl not in (None, ""):
+        try:
+            sl = max(0, min(SEARCH_TOTAL, int(raw_sl)))
+        except (TypeError, ValueError):
+            messages.error(request, "SearchLink ставка должна быть числом.")
+            return redirect("user_referrals")
+        request.user.ref_searchlink_cut = sl
+        update_fields.append("ref_searchlink_cut")
+
+    raw_gr = request.POST.get("ref_group_report_cut")
+    if raw_gr not in (None, ""):
+        try:
+            gr = max(0, min(GR_TOTAL, int(raw_gr)))
+        except (TypeError, ValueError):
+            messages.error(request, "GroupReport ставка должна быть числом.")
+            return redirect("user_referrals")
+        request.user.ref_group_report_cut = gr
+        update_fields.append("ref_group_report_cut")
+
+    if update_fields:
+        request.user.save(update_fields=update_fields)
+        messages.success(request, "Реф-ставки сохранены — применяются ко всем вашим рефералам.")
+    return redirect("user_referrals")
 
 
 @login_required
@@ -680,34 +730,21 @@ def user_referral_toggle_link(request: HttpRequest, link_id: int) -> HttpRespons
 
 @login_required
 def user_referral_list(request: HttpRequest) -> HttpResponse:
-    """Список рефералов менеджера."""
+    """Список рефералов менеджера (только просмотр).
+    Per-referral настройки удалены — все ставки задаются глобально на
+    `/referrals/` (общие для всех)."""
     if not _require_user_approved(request):
         return HttpResponseForbidden("Только для одобренных пользователей.")
 
     users_qs = (
         User.objects.filter(partner_owner=request.user)
-        .select_related("partner_link")
         .order_by("-date_joined")
     )
     paginator = Paginator(users_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
-    _search_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
-    for u in page_obj:
-        # Текущая ставка рефу за обычный лид (override → link → 20)
-        if u.ref_lead_reward is not None:
-            u.current_ref_reward = u.ref_lead_reward
-        elif u.partner_link:
-            u.current_ref_reward = u.partner_link.ref_reward
-        else:
-            u.current_ref_reward = 20
-        u.partner_cut = LEAD_APPROVE_REWARD - u.current_ref_reward
-        u.sl_ref_reward = _search_total - u.ref_searchlink_manager_cut if u.ref_searchlink_enabled else 0
-
     return render(request, "core/user_referral_list.html", {
         "page_obj": page_obj,
         "total": users_qs.count(),
-        "total_reward": LEAD_APPROVE_REWARD,
-        "search_reward": getattr(settings, "SEARCH_REPORT_REWARD", 100),
     })
 
 

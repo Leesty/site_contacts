@@ -126,11 +126,21 @@ class User(AbstractUser):
     )
     ref_searchlink_enabled = models.BooleanField(
         default=True,
-        help_text="Разрешён ли SearchLink для реферала. По умолчанию включено для всех новых рефералов.",
+        help_text="Разрешён ли SearchLink для реферала. По умолчанию включено для всех новых рефералов. (legacy, не используется в UI)",
     )
     ref_searchlink_manager_cut = models.PositiveIntegerField(
         default=50,
-        help_text="Доля менеджера-рефовладельца (руб.) с одобренного SearchLink-отчёта реферала. По умолчанию 50 (реферал получает SEARCH_REPORT_REWARD - 50).",
+        help_text="(legacy, не используется) Доля менеджера-рефовладельца с SearchLink-отчёта реферала.",
+    )
+    # Общие ставки рефовода (role=user) — применяются ко ВСЕМ рефералам сразу.
+    # Аналог partner_searchlink_cut/partner_group_report_cut у партнёров.
+    ref_searchlink_cut = models.PositiveIntegerField(
+        default=50,
+        help_text="Доля рефовода (₽) с одобренного SearchLink-отчёта реферала. Реф получает SEARCH_REPORT_REWARD - ref_searchlink_cut. По умолчанию 50.",
+    )
+    ref_group_report_cut = models.PositiveIntegerField(
+        default=50,
+        help_text="Доля рефовода (₽) с одобренного отчёта по группам реферала. Реф получает 80 - ref_group_report_cut. По умолчанию 50.",
     )
     ref_lead_reward = models.PositiveIntegerField(
         null=True,

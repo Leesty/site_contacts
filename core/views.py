@@ -124,6 +124,24 @@ def _is_balance_admin(user) -> bool:
     return getattr(user, "role", None) == "balance_admin"
 
 
+def _user_search_reward(user, search_total: int) -> int:
+    """Сколько реферал получит за одобренный SearchLink-отчёт.
+
+    Если у юзера есть рефовод — общая ставка с рефовода (role=partner или
+    role=user). Иначе — полный пул.
+    """
+    if not getattr(user, "partner_owner_id", None):
+        return search_total
+    owner = user.partner_owner
+    if not owner:
+        return search_total
+    owner_cut = (
+        owner.partner_searchlink_cut if owner.role == "partner"
+        else (owner.ref_searchlink_cut or 50)
+    )
+    return max(0, search_total - owner_cut)
+
+
 def _is_partner(user) -> bool:
     """Пользователь — партнёр (кабинет с реф-ссылками и начислениями)."""
     return getattr(user, "role", None) == "partner"
@@ -415,7 +433,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "rework_leads_count": rework_leads_count,
             "receiptless_withdrawals": receiptless_withdrawals,
             "last_rejected_withdrawal": last_rejected_wr,
-            "search_reward": (getattr(settings, "SEARCH_REPORT_REWARD", 100) - user.ref_searchlink_manager_cut) if (user.partner_owner_id and user.ref_searchlink_enabled) else getattr(settings, "SEARCH_REPORT_REWARD", 100),
+            "search_reward": _user_search_reward(user, getattr(settings, "SEARCH_REPORT_REWARD", 100)),
             "is_accredited_ref_owner": is_accredited_ref_owner,
             "ref_owner_pending_requests_count": ref_owner_pending_requests_count,
             "rework_group_reports_count": rework_group_reports_count,

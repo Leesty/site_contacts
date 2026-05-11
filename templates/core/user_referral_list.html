@@ -17,48 +17,21 @@
             <thead>
               <tr>
                 <th>Пользователь</th>
+                <th>Имя</th>
                 <th>Дата регистрации</th>
-                <th>Ставка рефу</th>
-                <th>Ваш доход</th>
                 <th>Статус</th>
-                <th>SearchLink</th>
-                <th>Ваша доля (SL)</th>
-                <th>Рефу (SL)</th>
               </tr>
             </thead>
             <tbody>
               {% for u in page_obj %}
                 <tr>
                   <td>@{{ u.username }}</td>
+                  <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
                   <td class="text-muted small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
-                  <td>
-                    <input type="number" class="form-control form-control-sm js-ref-reward"
-                           data-user-id="{{ u.id }}"
-                           value="{{ u.current_ref_reward }}"
-                           min="1" max="39" style="width: 70px;">
-                  </td>
-                  <td class="text-success js-partner-cut" data-user-id="{{ u.id }}">{{ u.partner_cut }} ₽</td>
                   <td>
                     {% if u.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
                     {% elif u.status == 'pending' %}<span class="badge bg-warning text-dark">На модерации</span>
                     {% else %}<span class="badge bg-secondary">{{ u.status }}</span>{% endif %}
-                  </td>
-                  <td>
-                    <div class="form-check form-switch mb-0">
-                      <input class="form-check-input js-sl-toggle" type="checkbox"
-                             data-user-id="{{ u.id }}"
-                             {% if u.ref_searchlink_enabled %}checked{% endif %}>
-                    </div>
-                  </td>
-                  <td>
-                    <input type="number" class="form-control form-control-sm js-sl-cut"
-                           data-user-id="{{ u.id }}"
-                           value="{{ u.ref_searchlink_manager_cut }}"
-                           min="1" max="99" style="width: 75px;"
-                           {% if not u.ref_searchlink_enabled %}disabled{% endif %}>
-                  </td>
-                  <td class="js-sl-ref-reward" data-user-id="{{ u.id }}">
-                    {% if u.ref_searchlink_enabled %}{{ u.sl_ref_reward }} ₽{% else %}—{% endif %}
                   </td>
                 </tr>
               {% endfor %}
@@ -82,99 +55,4 @@
     </div>
   </div>
 
-  <div id="sl-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index: 1100; display: none;" role="alert"></div>
-
-  <script>
-  (function() {
-    var SEARCH_REWARD = {{ search_reward }};
-    var toast = document.getElementById('sl-toast');
-
-    function getCsrf() {
-      var el = document.querySelector('[name=csrfmiddlewaretoken]');
-      if (el) return el.value;
-      var m = document.cookie.match(/csrftoken=([^;]+)/);
-      return m ? m[1] : '';
-    }
-
-    function showToast(msg, type) {
-      if (!toast) return;
-      toast.textContent = msg;
-      toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-' + (type || 'success') + ' py-2 px-3 mb-0 shadow-sm';
-      toast.style.display = 'block';
-      toast.style.zIndex = '1100';
-      setTimeout(function() { toast.style.display = 'none'; }, 3000);
-    }
-
-    function postSearchLink(userId, data, onSuccess) {
-      var body = new FormData();
-      body.append('csrfmiddlewaretoken', getCsrf());
-      for (var k in data) body.append(k, data[k]);
-
-      fetch('/referrals/' + userId + '/searchlink/', {
-        method: 'POST', body: body,
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        credentials: 'same-origin'
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(res) {
-        if (res.success) {
-          onSuccess(res);
-          showToast('Сохранено', 'success');
-        }
-      })
-      .catch(function() { showToast('Ошибка сети', 'danger'); });
-    }
-
-    // Edit ref lead reward (regular leads)
-    document.querySelectorAll('.js-ref-reward').forEach(function(input) {
-      var lastVal = input.value;
-      function save() {
-        if (input.value === lastVal) return;
-        lastVal = input.value;
-        var userId = input.getAttribute('data-user-id');
-        var cutCell = document.querySelector('.js-partner-cut[data-user-id="' + userId + '"]');
-
-        postSearchLink(userId, { ref_lead_reward: input.value }, function(res) {
-          if (cutCell) cutCell.textContent = res.partner_cut + ' ₽';
-        });
-      }
-      input.addEventListener('blur', save);
-      input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
-    });
-
-    // Toggle SearchLink
-    document.querySelectorAll('.js-sl-toggle').forEach(function(cb) {
-      cb.addEventListener('change', function() {
-        var userId = this.getAttribute('data-user-id');
-        var cutInput = document.querySelector('.js-sl-cut[data-user-id="' + userId + '"]');
-        var refCell = document.querySelector('.js-sl-ref-reward[data-user-id="' + userId + '"]');
-        var enabled = this.checked ? '1' : '0';
-        var data = { enabled: enabled };
-        if (cutInput) data.manager_cut = cutInput.value;
-
-        postSearchLink(userId, data, function(res) {
-          if (cutInput) cutInput.disabled = !res.enabled;
-          if (refCell) refCell.textContent = res.enabled ? res.sl_ref_reward + ' ₽' : '—';
-        });
-      });
-    });
-
-    // Edit manager cut (SearchLink)
-    document.querySelectorAll('.js-sl-cut').forEach(function(input) {
-      var lastVal = input.value;
-      function save() {
-        if (input.value === lastVal) return;
-        lastVal = input.value;
-        var userId = input.getAttribute('data-user-id');
-        var refCell = document.querySelector('.js-sl-ref-reward[data-user-id="' + userId + '"]');
-
-        postSearchLink(userId, { manager_cut: input.value }, function(res) {
-          if (refCell) refCell.textContent = res.enabled ? res.sl_ref_reward + ' ₽' : '—';
-        });
-      }
-      input.addEventListener('blur', save);
-      input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
-    });
-  })();
-  </script>
 {% endblock %}

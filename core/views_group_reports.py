@@ -612,9 +612,10 @@ def _split_group_report_payout(manager: "User") -> tuple[int, int, "User | None"
     Возвращает `(referral_reward, owner_cut, owner_user)`.
     Если у менеджера нет `partner_owner` — owner_user=None, owner_cut=0.
 
-    Для роли `partner` берётся общая ставка `User.partner_group_report_cut`.
-    Для обычного рефовода (role=user) — `PartnerLink.ref_group_report_cut`
-    из той ссылки, по которой реферал зарегистрировался.
+    Все рефоводы задают общую ставку на всех рефералов:
+    `User.partner_group_report_cut` (role=partner) или
+    `User.ref_group_report_cut` (role=user). Per-link настройки больше
+    не используются.
     """
     pool = GROUP_REPORT_APPROVE_REWARD
     owner = getattr(manager, "partner_owner", None)
@@ -623,8 +624,7 @@ def _split_group_report_payout(manager: "User") -> tuple[int, int, "User | None"
     if owner.role == "partner":
         cut = owner.partner_group_report_cut or 50
     else:
-        link = getattr(manager, "partner_link", None)
-        cut = link.ref_group_report_cut if link else 50
+        cut = owner.ref_group_report_cut or 50
     cut = max(0, min(pool, int(cut)))
     return pool - cut, cut, owner
 

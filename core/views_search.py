@@ -79,10 +79,6 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
     """Список SearchLink-ов менеджера с формой создания и вкладками по статусу."""
     if not _can_manage_searchlinks(request):
         return HttpResponseForbidden("Доступ запрещён.")
-    # Ref-SearchLink-гейт действует только на обычных юзеров, админы проходят мимо.
-    if getattr(request.user, "role", None) == "user" and request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
-        messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта. Обратитесь к менеджеру.")
-        return redirect("dashboard")
 
     tab = request.GET.get("tab", "all")
     q = (request.GET.get("q") or "").strip()
@@ -125,8 +121,14 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
             link.report_obj = None
 
     search_reward = SEARCH_REPORT_REWARD
-    if request.user.partner_owner_id and request.user.ref_searchlink_enabled:
-        search_reward = SEARCH_REPORT_REWARD - request.user.ref_searchlink_manager_cut
+    if request.user.partner_owner_id:
+        owner = request.user.partner_owner
+        if owner:
+            owner_cut = (
+                owner.partner_searchlink_cut if owner.role == "partner"
+                else owner.ref_searchlink_cut
+            )
+            search_reward = max(0, SEARCH_REPORT_REWARD - owner_cut)
 
     return render(request, "search/my_links.html", {
         "page_obj": page_obj,
@@ -150,9 +152,6 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
     """Создать новый SearchLink."""
     if not _can_manage_searchlinks(request):
         return HttpResponseForbidden("Доступ запрещён.")
-    if getattr(request.user, "role", None) == "user" and request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
-        messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта.")
-        return redirect("dashboard")
 
     lead_name = (request.POST.get("lead_name") or "").strip()[:200]
     if not lead_name:
@@ -258,9 +257,6 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
     """Отправить отчёт по SearchLink."""
     if not _require_approved_user(request):
         return HttpResponseForbidden("Доступ запрещён.")
-    if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
-        messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта.")
-        return redirect("dashboard")
 
     link = get_object_or_404(SearchLink, code=code, user=request.user)
 
@@ -442,9 +438,6 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     """
     if not _require_approved_user(request):
         return HttpResponseForbidden("Доступ запрещён.")
-    if request.user.partner_owner_id and not request.user.ref_searchlink_enabled:
-        messages.warning(request, "SearchLink ещё не активирован для вашего аккаунта.")
-        return redirect("dashboard")
 
     link = get_object_or_404(SearchLink, code=code, user=request.user)
     try:
@@ -1337,22 +1330,23 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         PHONE_REWARD = getattr(settings, "SEARCH_PHONE_REPORT_REWARD", 65)
         total_reward = PHONE_REWARD if is_phone_report else SEARCH_REPORT_REWARD
 
-        # Разделение награды для рефералов. Пропорция партнёрского cut'а сохраняется
-        # относительно SEARCH_REPORT_REWARD (обычного): phone_cut = cut * (total/150).
-        # Для рефов role=partner используется глобальная партнёрская ставка
-        # (partner_searchlink_cut), чтобы партнёр мог менять её сразу для всех рефералов.
-        # Для рефов обычного user-рефовода — per-ref ставка ref_searchlink_manager_cut.
-        if lead_owner.partner_owner_id and lead_owner.ref_searchlink_enabled:
+        # Разделение награды для рефералов. Все рефоводы теперь задают ОБЩУЮ
+        # ставку на всех рефералов: User.ref_searchlink_cut (role=user) или
+        # User.partner_searchlink_cut (role=partner). Per-link/per-referral
+        # ставки больше не используются (legacy).
+        if lead_owner.partner_owner_id:
             partner_owner = User.objects.filter(pk=lead_owner.partner_owner_id).first()
             if partner_owner and partner_owner.role == User.Role.PARTNER:
                 base_cut = partner_owner.partner_searchlink_cut
+            elif partner_owner:
+                base_cut = partner_owner.ref_searchlink_cut
             else:
-                base_cut = lead_owner.ref_searchlink_manager_cut
+                base_cut = 0
             if is_phone_report:
                 scaled_cut = round(base_cut * total_reward / SEARCH_REPORT_REWARD)
-                manager_cut = max(1, min(total_reward - 1, scaled_cut))
+                manager_cut = max(0, min(total_reward, scaled_cut))
             else:
-                manager_cut = max(1, min(total_reward - 1, base_cut))
+                manager_cut = max(0, min(total_reward, base_cut))
             ref_reward = total_reward - manager_cut
         else:
             manager_cut = 0
