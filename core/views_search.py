@@ -1,11 +1,13 @@
 """Вьюхи для SearchLink-системы: генерация лендингов с привязкой к ботам."""
 import json
 import logging
+import re
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -278,6 +280,40 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         report_type_raw = (request.POST.get("report_type") or "bot_start").strip()
         is_phone = report_type_raw == "phone_callback"
         client_phone_raw = (request.POST.get("client_phone") or "").strip()
+        manual_client_input = (request.POST.get("manual_client_input") or "").strip()
+
+        # Ручная привязка клиента: если ссылка ещё не подтверждена ботом
+        # (bot_started=False) и это не phone_callback, менеджер обязан
+        # указать ID клиента — мы его проставим прямо на SearchLink и
+        # отметим bot_started=True. Так стандартный дедуп SR будет работать
+        # для других менеджеров, а сам отчёт пойдёт на обычную модерацию.
+        manual_is_required = not link.bot_started and not is_phone
+        manual_parsed: dict = {}
+        if manual_is_required:
+            if not manual_client_input:
+                messages.error(
+                    request,
+                    "Переход по ссылке не зафиксирован — укажите ID/username/VK-ссылку "
+                    "клиента в поле «ID клиента» внизу формы.",
+                )
+                return render(request, "search/report_form.html", {"link": link})
+            manual_parsed = parse_manual_client_input(manual_client_input)
+            if not manual_parsed:
+                messages.error(
+                    request,
+                    "Не удалось распознать ID клиента. Используйте: 123456789, "
+                    "@username, https://t.me/username, https://vk.com/id123 или https://vk.com/screen_name.",
+                )
+                return render(request, "search/report_form.html", {"link": link})
+            other_link = _find_other_link_for_client(manual_parsed, exclude_link_id=link.id)
+            if other_link:
+                messages.warning(
+                    request,
+                    f"Этот клиент уже привязан к @{other_link.user.username} "
+                    f"(SearchLink #{other_link.display_id or other_link.id}). "
+                    f"Отчёт нельзя отправить.",
+                )
+                return render(request, "search/report_form.html", {"link": link})
 
         if not raw_contact and not is_phone:
             messages.error(request, "Укажите контакт или ссылку на клиента.")
@@ -285,6 +321,29 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         if not attachment:
             messages.error(request, "Приложите скриншот или видео.")
             return render(request, "search/report_form.html", {"link": link})
+
+        # Все валидации прошли — для ручной привязки записываем идентификатор
+        # прямо в SearchLink (теперь дедуп SR сработает для других менеджеров).
+        if manual_parsed:
+            link_fields = []
+            if manual_parsed.get("telegram_id") and not link.telegram_id:
+                link.telegram_id = manual_parsed["telegram_id"]
+                link_fields.append("telegram_id")
+            if manual_parsed.get("telegram_username") and not link.telegram_username:
+                link.telegram_username = manual_parsed["telegram_username"]
+                link_fields.append("telegram_username")
+            if manual_parsed.get("vk_user_id") and not link.vk_user_id:
+                link.vk_user_id = manual_parsed["vk_user_id"]
+                link_fields.append("vk_user_id")
+            if manual_parsed.get("vk_screen_name") and not link.vk_screen_name:
+                link.vk_screen_name = manual_parsed["vk_screen_name"]
+                link_fields.append("vk_screen_name")
+            if not link.bot_started:
+                link.bot_started = True
+                link_fields.append("bot_started")
+            if link_fields:
+                link_fields.append("updated_at")
+                link.save(update_fields=link_fields)
 
         # Для phone_callback валидируем номер клиента
         client_phone = ""
@@ -318,25 +377,6 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
             ),
         )
         compress_lead_attachment(report)
-
-        # Сначала проверяем — не зафиксирован ли клиент ручной привязкой
-        # другого менеджера (ManualSearchClaim).
-        blocking_claim = _find_blocking_manual_claim(link=link)
-        if blocking_claim:
-            report.status = SearchReport.Status.REJECTED
-            report.rejection_reason = (
-                f"Автоотклонение: дубликат — клиент уже закреплён ручной "
-                f"привязкой за @{blocking_claim.user.username} "
-                f"(ManualClaim #{blocking_claim.id})."
-            )
-            report.reviewed_at = timezone.now()
-            report.save(update_fields=["status", "rejection_reason", "reviewed_at", "updated_at"])
-            messages.warning(
-                request,
-                f"Этот клиент уже закреплён ручной привязкой за "
-                f"@{blocking_claim.user.username}. Отчёт отклонён как дубликат.",
-            )
-            return redirect("search_links_my")
 
         # Дубликат по реальному идентификатору клиента (telegram_id / vk_id /
         # username из бота, либо client_phone для phone_callback) — НЕ по
@@ -582,40 +622,66 @@ def _find_duplicate_search_report(*, exclude_report_id, link, client_phone=""):
     )
 
 
-def _find_blocking_manual_claim(*, link):
-    """Ищет approved ManualSearchClaim на того же клиента (другого менеджера).
+_MANUAL_CLAIM_VK_ID_RE = re.compile(r"vk\.(?:com|ru)/id(\d+)", re.IGNORECASE)
+_MANUAL_CLAIM_VK_NAME_RE = re.compile(r"vk\.(?:com|ru)/([a-z0-9_.]+)", re.IGNORECASE)
+_MANUAL_CLAIM_TME_RE = re.compile(r"t(?:elegram)?\.(?:me|dog)/([a-zA-Z0-9_+]+)", re.IGNORECASE)
 
-    Возвращает первый найденный или None. Используется в search_report_create
-    чтобы заблокировать SR второго менеджера, если первый уже зафиксировал
-    клиента ручной привязкой.
+
+def parse_manual_client_input(raw: str) -> dict:
+    """Парсит ввод менеджера (для ручной привязки клиента к SearchLink).
+
+    Возвращает dict с ключами {platform, telegram_id, telegram_username,
+    vk_user_id, vk_screen_name}. Пустой dict если не распознано.
     """
-    from django.db.models import Q
-    from .models import ManualSearchClaim
+    s = (raw or "").strip()
+    if not s:
+        return {}
+
+    m = _MANUAL_CLAIM_VK_ID_RE.search(s)
+    if m:
+        return {"platform": "vk", "vk_user_id": int(m.group(1))}
+    m = _MANUAL_CLAIM_VK_NAME_RE.search(s)
+    if m:
+        rest = m.group(1).lower()
+        if not rest.startswith("id"):
+            return {"platform": "vk", "vk_screen_name": rest}
+
+    m = _MANUAL_CLAIM_TME_RE.search(s)
+    if m:
+        rest = m.group(1).lstrip("@").lower()
+        if rest.startswith("+"):
+            return {}
+        if rest.isdigit():
+            return {"platform": "telegram", "telegram_id": int(rest)}
+        return {"platform": "telegram", "telegram_username": rest}
+
+    s_stripped = s.lstrip("@")
+    if s_stripped.isdigit():
+        return {"platform": "telegram", "telegram_id": int(s_stripped)}
+    if re.match(r"^[a-zA-Z0-9_]{3,}$", s_stripped):
+        return {"platform": "telegram", "telegram_username": s_stripped.lower()}
+    return {}
+
+
+def _find_other_link_for_client(parsed: dict, *, exclude_link_id) -> "SearchLink | None":
+    """Ищем SearchLink (не текущую) с тем же идентификатором клиента."""
+    if not parsed:
+        return None
     q = Q()
-    has_filter = False
-    if link.telegram_id:
-        q |= Q(telegram_id=link.telegram_id)
-        has_filter = True
-    if link.telegram_username:
-        q |= Q(telegram_username__iexact=link.telegram_username)
-        has_filter = True
-    if link.vk_user_id:
-        q |= Q(vk_user_id=link.vk_user_id)
-        has_filter = True
-    if link.vk_screen_name:
-        q |= Q(vk_screen_name__iexact=link.vk_screen_name)
-        has_filter = True
-    if not has_filter:
+    has = False
+    if parsed.get("telegram_id"):
+        q |= Q(telegram_id=parsed["telegram_id"]); has = True
+    if parsed.get("telegram_username"):
+        q |= Q(telegram_username__iexact=parsed["telegram_username"]); has = True
+    if parsed.get("vk_user_id"):
+        q |= Q(vk_user_id=parsed["vk_user_id"]); has = True
+    if parsed.get("vk_screen_name"):
+        q |= Q(vk_screen_name__iexact=parsed["vk_screen_name"]); has = True
+    if not has:
         return None
     return (
-        ManualSearchClaim.objects
-        .filter(q, status__in=[
-            ManualSearchClaim.Status.PENDING, ManualSearchClaim.Status.APPROVED,
-        ])
-        .exclude(user_id=link.user_id)
-        .select_related("user")
-        .order_by("created_at")
-        .first()
+        SearchLink.objects.filter(q).exclude(pk=exclude_link_id)
+        .select_related("user").order_by("created_at").first()
     )
 
 

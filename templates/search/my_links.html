@@ -168,26 +168,6 @@
                                 data-code="{{ link.code }}" style="font-size: 11px;"
                                 title="Отметить старт вручную (если webhook не сработал)">✓ Подтвердить</button>
                       {% endif %}
-                      {% with mc=link.manual_claim %}
-                        {% if mc %}
-                          {% if mc.status == 'pending' %}
-                            <span class="badge bg-warning text-dark ms-1" style="font-size: 10px;"
-                                  title="Ручная привязка отправлена на проверку администратору">📌 Ручная: на проверке</span>
-                          {% elif mc.status == 'approved' %}
-                            <span class="badge bg-success ms-1" style="font-size: 10px;">📌 Ручная: одобрена</span>
-                          {% elif mc.status == 'rejected' %}
-                            <span class="badge bg-danger ms-1" style="font-size: 10px;"
-                                  title="{{ mc.rejection_reason }}">📌 Ручная: отклонена</span>
-                          {% endif %}
-                        {% else %}
-                          <button type="button" class="btn btn-outline-info btn-sm py-0 px-2 ms-1"
-                                  data-bs-toggle="modal" data-bs-target="#manualClaimModal-{{ link.id }}"
-                                  style="font-size: 11px;"
-                                  title="Если клиент не перешёл по ссылке — привяжите вручную (на проверку администратору)">
-                            📌 Привязать вручную
-                          </button>
-                        {% endif %}
-                      {% endwith %}
                     {% endif %}
                   </td>
                   {% with report=link.report_obj %}
@@ -319,41 +299,4 @@
   });
   </script>
   {% csrf_token %}
-
-  {# ════ Модалки «Привязать клиента вручную» для каждой ссылки без bot_started и без manual_claim ════ #}
-  {% for link in page_obj %}{% if not link.bot_started and not link.duplicate_of_id and not link.manual_claim and link.report_obj.report_type != 'phone_callback' %}
-  <div class="modal fade" id="manualClaimModal-{{ link.id }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content bg-dark text-light">
-        <form method="post" action="{% url 'search_link_manual_claim' link.code %}">
-          {% csrf_token %}
-          <div class="modal-header border-secondary">
-            <h6 class="modal-title">📌 Привязать клиента вручную — #{{ link.display_id|default:link.id }}</h6>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <p class="small text-muted mb-2">
-              Если клиент не перешёл по реф-ссылке, но вы знаете его TG/VK —
-              укажите ID/username, и заявка отправится на проверку администратору.
-              При одобрении: <strong>+150 ₽</strong>. Если клиент уже привязан к
-              кому-то — заявка будет отклонена автоматически.
-            </p>
-            <label class="form-label small mb-1" for="manual_input_{{ link.id }}">ID / @username / ссылка</label>
-            <input type="text" class="form-control form-control-sm" id="manual_input_{{ link.id }}"
-                   name="client_input" required maxlength="255"
-                   placeholder="123456789, @ivanov или https://vk.com/ivanov">
-            <div class="form-text small text-muted">
-              Telegram: число (id), <code>@username</code>, <code>https://t.me/username</code>.<br>
-              VK: <code>https://vk.com/id123</code> или <code>https://vk.com/screen_name</code>.
-            </div>
-          </div>
-          <div class="modal-footer border-secondary">
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
-            <button type="submit" class="btn btn-info btn-sm">Отправить на проверку</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-  {% endif %}{% endfor %}
 {% endblock %}

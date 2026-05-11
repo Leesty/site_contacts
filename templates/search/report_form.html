@@ -21,6 +21,23 @@
           <form method="post" enctype="multipart/form-data" id="report-form">
             {% csrf_token %}
 
+            {% if not link.bot_started %}
+              <div class="alert alert-warning py-2 mb-3 small">
+                <strong>Переход по ссылке не зафиксирован.</strong> Если клиент пришёл
+                к вам без использования реф-ссылки — укажите его ID/username/VK-ссылку
+                в поле «ID клиента» внизу формы (отчёт пойдёт админу на проверку как обычно).
+              </div>
+              <div class="mb-3" id="fields-manual">
+                <label class="form-label" for="manual_client_input">ID клиента (Telegram/VK)</label>
+                <input type="text" class="form-control" id="manual_client_input" name="manual_client_input"
+                       placeholder="123456789, @ivanov или https://vk.com/ivanov" maxlength="255">
+                <div class="form-text text-muted">
+                  Telegram: число (id), <code>@username</code>, <code>https://t.me/username</code>.<br>
+                  VK: <code>https://vk.com/id123</code> или <code>https://vk.com/screen_name</code>.
+                </div>
+              </div>
+            {% endif %}
+
             <div class="mb-3">
               <label class="form-label">Тип отчёта</label>
               <div class="btn-group w-100" role="group">
@@ -97,6 +114,8 @@
             var rtPhone = document.getElementById('rt_phone');
             var fieldsBot = document.getElementById('fields-bot');
             var fieldsPhone = document.getElementById('fields-phone');
+            var fieldsManual = document.getElementById('fields-manual'); // null если bot_started
+            var manualInput = document.getElementById('manual_client_input');
             var rawContact = document.getElementById('raw_contact');
             var clientPhone = document.getElementById('client_phone');
 
@@ -106,11 +125,13 @@
                 fieldsPhone.style.display = 'block';
                 rawContact.required = false;
                 clientPhone.required = true;
+                if (fieldsManual) { fieldsManual.style.display = 'none'; if (manualInput) manualInput.required = false; }
               } else {
                 fieldsBot.style.display = 'block';
                 fieldsPhone.style.display = 'none';
                 rawContact.required = true;
                 clientPhone.required = false;
+                if (fieldsManual) { fieldsManual.style.display = 'block'; if (manualInput) manualInput.required = true; }
               }
             }
             rtBot.addEventListener('change', updateUI);
