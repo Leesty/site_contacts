@@ -276,40 +276,6 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         report_type_raw = (request.POST.get("report_type") or "bot_start").strip()
         is_phone = report_type_raw == "phone_callback"
         client_phone_raw = (request.POST.get("client_phone") or "").strip()
-        manual_client_input = (request.POST.get("manual_client_input") or "").strip()
-
-        # Ручная привязка клиента: если ссылка ещё не подтверждена ботом
-        # (bot_started=False) и это не phone_callback, менеджер обязан
-        # указать ID клиента — мы его проставим прямо на SearchLink и
-        # отметим bot_started=True. Так стандартный дедуп SR будет работать
-        # для других менеджеров, а сам отчёт пойдёт на обычную модерацию.
-        manual_is_required = not link.bot_started and not is_phone
-        manual_parsed: dict = {}
-        if manual_is_required:
-            if not manual_client_input:
-                messages.error(
-                    request,
-                    "Переход по ссылке не зафиксирован — укажите ID/username/VK-ссылку "
-                    "клиента в поле «ID клиента» внизу формы.",
-                )
-                return render(request, "search/report_form.html", {"link": link})
-            manual_parsed = parse_manual_client_input(manual_client_input)
-            if not manual_parsed:
-                messages.error(
-                    request,
-                    "Не удалось распознать ID клиента. Используйте: 123456789, "
-                    "@username, https://t.me/username, https://vk.com/id123 или https://vk.com/screen_name.",
-                )
-                return render(request, "search/report_form.html", {"link": link})
-            other_link = _find_other_link_for_client(manual_parsed, exclude_link_id=link.id)
-            if other_link:
-                messages.warning(
-                    request,
-                    f"Этот клиент уже привязан к @{other_link.user.username} "
-                    f"(SearchLink #{other_link.display_id or other_link.id}). "
-                    f"Отчёт нельзя отправить.",
-                )
-                return render(request, "search/report_form.html", {"link": link})
 
         if not raw_contact and not is_phone:
             messages.error(request, "Укажите контакт или ссылку на клиента.")
@@ -317,33 +283,6 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
         if not attachment:
             messages.error(request, "Приложите скриншот или видео.")
             return render(request, "search/report_form.html", {"link": link})
-
-        # Все валидации прошли — для ручной привязки записываем идентификатор
-        # прямо в SearchLink (теперь дедуп SR сработает для других менеджеров).
-        manual_unverified = False
-        if manual_parsed:
-            link_fields = []
-            if manual_parsed.get("telegram_id") and not link.telegram_id:
-                link.telegram_id = manual_parsed["telegram_id"]
-                link_fields.append("telegram_id")
-            if manual_parsed.get("telegram_username") and not link.telegram_username:
-                link.telegram_username = manual_parsed["telegram_username"]
-                link_fields.append("telegram_username")
-            if manual_parsed.get("vk_user_id") and not link.vk_user_id:
-                link.vk_user_id = manual_parsed["vk_user_id"]
-                link_fields.append("vk_user_id")
-            if manual_parsed.get("vk_screen_name") and not link.vk_screen_name:
-                link.vk_screen_name = manual_parsed["vk_screen_name"]
-                link_fields.append("vk_screen_name")
-            if not link.bot_started:
-                link.bot_started = True
-                link_fields.append("bot_started")
-            if link_fields:
-                link_fields.append("updated_at")
-                link.save(update_fields=link_fields)
-            # Если клиента нет в БД бота — отправляем на отдельную модерацию
-            # главному админу (написал в ЛС, бота не запускал).
-            manual_unverified = not _client_in_windowgram(manual_parsed)
 
         # Для phone_callback валидируем номер клиента
         client_phone = ""
@@ -375,7 +314,6 @@ def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
                 SearchReport.Status.PENDING_CALLBACK if is_phone
                 else SearchReport.Status.PENDING
             ),
-            manual_unverified=manual_unverified,
         )
         compress_lead_attachment(report)
 
