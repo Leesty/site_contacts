@@ -119,9 +119,9 @@ class User(AbstractUser):
         help_text="Реферальная ссылка, по которой зарегистрировался пользователь (для affiliate-ставки).",
     )
     partner_group_report_cut = models.PositiveIntegerField(
-        default=50,
+        default=20,
         help_text=("Доля партнёра (₽) с одобренного отчёта по группам реферала. "
-                   "Default 50 — реферал получает 80-50=30. Применяется ко всем "
+                   "Default 20 — реферал получает 80-20=60. Применяется ко всем "
                    "рефералам этого партнёра."),
     )
     ref_searchlink_enabled = models.BooleanField(
@@ -139,8 +139,8 @@ class User(AbstractUser):
         help_text="Доля рефовода (₽) с одобренного SearchLink-отчёта реферала. Реф получает SEARCH_REPORT_REWARD - ref_searchlink_cut. По умолчанию 50.",
     )
     ref_group_report_cut = models.PositiveIntegerField(
-        default=50,
-        help_text="Доля рефовода (₽) с одобренного отчёта по группам реферала. Реф получает 80 - ref_group_report_cut. По умолчанию 50.",
+        default=20,
+        help_text="Доля рефовода (₽) с одобренного отчёта по группам реферала. Реф получает 80 - ref_group_report_cut. По умолчанию 20 (реф 60, рефовод 20).",
     )
     ref_lead_reward = models.PositiveIntegerField(
         null=True,
