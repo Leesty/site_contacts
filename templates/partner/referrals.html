@@ -21,13 +21,12 @@
             <thead>
               <tr>
                 <th>Пользователь</th>
-                <th>Дата регистрации</th>
-                <th>Ставка рефу</th>
-                <th>Ваш доход</th>
+                <th>Дата</th>
                 <th>Статус</th>
-                <th>SearchLink</th>
-                <th>Ваша доля (SL)</th>
-                <th>Рефу (SL)</th>
+                <th class="text-center small">Lead<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                <th class="text-center small">SearchLink<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                <th class="text-center small">Группы<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                <th class="text-center">Доход</th>
               </tr>
             </thead>
             <tbody>
@@ -35,30 +34,15 @@
                 <tr>
                   <td>@{{ u.username }}</td>
                   <td class="text-muted small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
-                  <td class="text-muted">{{ u.current_ref_reward }} ₽</td>
-                  <td class="text-success">{{ u.partner_cut }} ₽</td>
                   <td>
                     {% if u.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
                     {% elif u.status == 'pending' %}<span class="badge bg-warning text-dark">На модерации</span>
                     {% else %}<span class="badge bg-secondary">{{ u.status }}</span>{% endif %}
                   </td>
-                  <td>
-                    <div class="form-check form-switch mb-0">
-                      <input class="form-check-input js-sl-toggle" type="checkbox"
-                             data-user-id="{{ u.id }}"
-                             {% if u.ref_searchlink_enabled %}checked{% endif %}>
-                    </div>
-                  </td>
-                  <td>
-                    <input type="number" class="form-control form-control-sm js-sl-cut"
-                           data-user-id="{{ u.id }}"
-                           value="{{ u.ref_searchlink_manager_cut }}"
-                           min="1" max="99" style="width: 75px;"
-                           {% if not u.ref_searchlink_enabled %}disabled{% endif %}>
-                  </td>
-                  <td class="js-sl-ref-reward" data-user-id="{{ u.id }}">
-                    {% if u.ref_searchlink_enabled %}{{ u.sl_ref_reward }} ₽{% else %}—{% endif %}
-                  </td>
+                  <td class="text-center small">{% if u.earn.lead_cnt %}{{ u.earn.lead_cnt }} / {{ u.earn.lead_amt }} ₽{% else %}—{% endif %}</td>
+                  <td class="text-center small">{% if u.earn.sr_cnt %}{{ u.earn.sr_cnt }} / {{ u.earn.sr_amt }} ₽{% else %}—{% endif %}</td>
+                  <td class="text-center small">{% if u.earn.gr_cnt %}{{ u.earn.gr_cnt }} / {{ u.earn.gr_amt }} ₽{% else %}—{% endif %}</td>
+                  <td class="text-center text-success fw-semibold">{% if u.earn.total %}{{ u.earn.total }} ₽{% else %}—{% endif %}</td>
                 </tr>
               {% endfor %}
             </tbody>

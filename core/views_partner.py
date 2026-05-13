@@ -30,6 +30,75 @@ def _require_partner(request: HttpRequest) -> bool:
     return getattr(user, "status", None) == "approved"
 
 
+def _referral_earnings_breakdown(partner_user) -> dict[int, dict]:
+    """Доход рефовода/партнёра в разрезе каждого реферала.
+
+    Возвращает `{referral_user_id: {lead_cnt, lead_amt, sr_cnt, sr_amt,
+    gr_cnt, gr_amt, total}}`. Считается по `PartnerEarning` — те же
+    записи, что суммируются в общем total_earned, только сгруппированы
+    по `report.user_id`.
+    """
+    from django.db.models import Count, Sum
+    out: dict[int, dict] = {}
+
+    def _slot(uid: int) -> dict:
+        if uid not in out:
+            out[uid] = {
+                "lead_cnt": 0, "lead_amt": 0,
+                "sr_cnt": 0, "sr_amt": 0,
+                "gr_cnt": 0, "gr_amt": 0,
+                "total": 0,
+            }
+        return out[uid]
+
+    lead_rows = (
+        PartnerEarning.objects
+        .filter(partner=partner_user, lead__isnull=False)
+        .values("lead__user_id")
+        .annotate(cnt=Count("id"), amt=Sum("amount"))
+    )
+    for row in lead_rows:
+        uid = row["lead__user_id"]
+        if uid is None:
+            continue
+        s = _slot(uid)
+        s["lead_cnt"] = row["cnt"]
+        s["lead_amt"] = row["amt"] or 0
+        s["total"] += row["amt"] or 0
+
+    sr_rows = (
+        PartnerEarning.objects
+        .filter(partner=partner_user, search_report__isnull=False)
+        .values("search_report__user_id")
+        .annotate(cnt=Count("id"), amt=Sum("amount"))
+    )
+    for row in sr_rows:
+        uid = row["search_report__user_id"]
+        if uid is None:
+            continue
+        s = _slot(uid)
+        s["sr_cnt"] = row["cnt"]
+        s["sr_amt"] = row["amt"] or 0
+        s["total"] += row["amt"] or 0
+
+    gr_rows = (
+        PartnerEarning.objects
+        .filter(partner=partner_user, group_report__isnull=False)
+        .values("group_report__user_id")
+        .annotate(cnt=Count("id"), amt=Sum("amount"))
+    )
+    for row in gr_rows:
+        uid = row["group_report__user_id"]
+        if uid is None:
+            continue
+        s = _slot(uid)
+        s["gr_cnt"] = row["cnt"]
+        s["gr_amt"] = row["amt"] or 0
+        s["total"] += row["amt"] or 0
+
+    return out
+
+
 # ─── Кабинет партнёра ──────────────────────────────────────────────────────────
 
 @login_required
@@ -346,10 +415,14 @@ def partner_referrals(request: HttpRequest) -> HttpResponse:
     # Реф получает LEAD_APPROVE_REWARD - partner_rate, партнёр — partner_rate.
     partner_rate = request.user.partner_rate or 10
     search_reward_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
+    breakdown = _referral_earnings_breakdown(request.user)
     for u in page_obj:
         u.current_ref_reward = max(0, LEAD_APPROVE_REWARD - partner_rate)
         u.partner_cut = partner_rate
         u.sl_ref_reward = search_reward_total - u.ref_searchlink_manager_cut if u.ref_searchlink_enabled else 0
+        u.earn = breakdown.get(u.id, {"lead_cnt": 0, "lead_amt": 0,
+                                      "sr_cnt": 0, "sr_amt": 0,
+                                      "gr_cnt": 0, "gr_amt": 0, "total": 0})
 
     return render(request, "partner/referrals.html", {
         "page_obj": page_obj,
@@ -616,9 +689,13 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
 
     referrals = list(
         User.objects.filter(partner_owner=user)
-        .order_by("-date_joined")
-        .values("id", "username", "first_name", "last_name", "status", "date_joined")[:200]
+        .order_by("-date_joined")[:200]
     )
+    breakdown = _referral_earnings_breakdown(user)
+    for r in referrals:
+        r.earn = breakdown.get(r.id, {"lead_cnt": 0, "lead_amt": 0,
+                                       "sr_cnt": 0, "sr_amt": 0,
+                                       "gr_cnt": 0, "gr_amt": 0, "total": 0})
 
     return render(request, "core/user_referrals.html", {
         "user": user,
@@ -730,9 +807,7 @@ def user_referral_toggle_link(request: HttpRequest, link_id: int) -> HttpRespons
 
 @login_required
 def user_referral_list(request: HttpRequest) -> HttpResponse:
-    """Список рефералов менеджера (только просмотр).
-    Per-referral настройки удалены — все ставки задаются глобально на
-    `/referrals/` (общие для всех)."""
+    """Список рефералов менеджера (только просмотр) с разбивкой дохода."""
     if not _require_user_approved(request):
         return HttpResponseForbidden("Только для одобренных пользователей.")
 
@@ -742,6 +817,11 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
     )
     paginator = Paginator(users_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
+    breakdown = _referral_earnings_breakdown(request.user)
+    for u in page_obj:
+        u.earn = breakdown.get(u.id, {"lead_cnt": 0, "lead_amt": 0,
+                                       "sr_cnt": 0, "sr_amt": 0,
+                                       "gr_cnt": 0, "gr_amt": 0, "total": 0})
     return render(request, "core/user_referral_list.html", {
         "page_obj": page_obj,
         "total": users_qs.count(),

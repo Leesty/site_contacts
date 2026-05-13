@@ -114,6 +114,10 @@
               <th>@username</th>
               <th>Имя</th>
               <th>Статус</th>
+              <th class="text-center small">Lead<br><span class="text-muted fw-normal">шт / ₽</span></th>
+              <th class="text-center small">SearchLink<br><span class="text-muted fw-normal">шт / ₽</span></th>
+              <th class="text-center small">Группы<br><span class="text-muted fw-normal">шт / ₽</span></th>
+              <th class="text-center">Доход</th>
               <th>Регистрация</th>
             </tr>
           </thead>
@@ -131,6 +135,10 @@
                     <span class="badge bg-secondary">{{ u.status }}</span>
                   {% endif %}
                 </td>
+                <td class="text-center small">{% if u.earn.lead_cnt %}{{ u.earn.lead_cnt }} / {{ u.earn.lead_amt }} ₽{% else %}—{% endif %}</td>
+                <td class="text-center small">{% if u.earn.sr_cnt %}{{ u.earn.sr_cnt }} / {{ u.earn.sr_amt }} ₽{% else %}—{% endif %}</td>
+                <td class="text-center small">{% if u.earn.gr_cnt %}{{ u.earn.gr_cnt }} / {{ u.earn.gr_amt }} ₽{% else %}—{% endif %}</td>
+                <td class="text-center text-success fw-semibold">{% if u.earn.total %}{{ u.earn.total }} ₽{% else %}—{% endif %}</td>
                 <td class="small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
               </tr>
             {% endfor %}
