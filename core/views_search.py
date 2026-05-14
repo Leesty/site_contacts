@@ -1203,16 +1203,20 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     if tab == "duplicate":
         reports_qs = reports_qs.filter(search_link__duplicate_of__isnull=False)
     elif tab == "not_in_bot":
-        # Ручные привязки, клиент не в БД бота — только pending + only main_admin.
+        # Сфокусированный фильтр для главного админа: только ручные привязки,
+        # клиент не в БД бота. Доступно только main_admin.
         reports_qs = (
             reports_qs
             .filter(search_link__duplicate_of__isnull=True)
             .filter(manual_unverified=True, status=SearchReport.Status.PENDING)
         )
     else:
+        # Обычные вкладки показывают ВСЕ отчёты (включая manual_unverified) —
+        # раньше manual_unverified=True прятались, из-за чего ~95% pending'ов
+        # за последнюю неделю были невидимы для обычных модераторов.
+        # Главный админ ещё может зайти во вкладку «Не в боте» для
+        # сфокусированного просмотра только этих случаев.
         reports_qs = reports_qs.filter(search_link__duplicate_of__isnull=True)
-        # Обычные вкладки скрывают «manual_unverified» — они для главного админа.
-        reports_qs = reports_qs.filter(manual_unverified=False)
         if tab == "approved":
             reports_qs = reports_qs.filter(status=SearchReport.Status.APPROVED)
         elif tab == "rejected":
@@ -1251,11 +1255,10 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     paginator = Paginator(reports_qs.order_by("-created_at"), 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
-    # Счётчики
+    # Счётчики — pending включает ВСЕ (включая manual_unverified, см. выше)
     pending_count = SearchReport.objects.filter(
         search_link__bot_started=True,
         search_link__duplicate_of__isnull=True,
-        manual_unverified=False,
         status=SearchReport.Status.PENDING,
     ).count()
     duplicate_count = SearchReport.objects.filter(
