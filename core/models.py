@@ -136,11 +136,21 @@ class User(AbstractUser):
     # Аналог partner_searchlink_cut/partner_group_report_cut у партнёров.
     ref_searchlink_cut = models.PositiveIntegerField(
         default=50,
-        help_text="Доля рефовода (₽) с одобренного SearchLink-отчёта реферала. Реф получает SEARCH_REPORT_REWARD - ref_searchlink_cut. По умолчанию 50.",
+        help_text="(legacy, не используется в новой логике) Доля рефовода (₽) с одобренного SearchLink-отчёта реферала.",
     )
     ref_group_report_cut = models.PositiveIntegerField(
         default=20,
-        help_text="Доля рефовода (₽) с одобренного отчёта по группам реферала. Реф получает 80 - ref_group_report_cut. По умолчанию 20 (реф 60, рефовод 20).",
+        help_text="(legacy, не используется в новой логике) Доля рефовода (₽) с одобренного отчёта по группам реферала.",
+    )
+    # Новая модель для обычных рефоводов (role=user): реферал получает свою
+    # ПОЛНУЮ ставку, рефовод дополнительно получает % от той же ставки.
+    ref_bonus_percent = models.PositiveIntegerField(
+        default=30,
+        help_text=("Процент бонуса рефовода с каждого одобренного отчёта реферала "
+                   "(Lead/SearchLink/Группы). Реферал получает ПОЛНУЮ ставку, рефовод "
+                   "дополнительно — pool × процент. По умолчанию 30. Применяется ко "
+                   "всем рефералам этого рефовода. Только role=user; у partner — "
+                   "своя фикс-логика."),
     )
     ref_lead_reward = models.PositiveIntegerField(
         null=True,

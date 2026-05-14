@@ -61,39 +61,35 @@
       </div>
     </div>
 
-    {# Ставки #}
+    {# Бонус с рефералов #}
     <div class="col-lg-6">
       <div class="card shadow-sm h-100">
         <div class="card-header bg-transparent border-secondary py-2">
-          <strong>Реф-ставки</strong>
+          <strong>Бонус с рефералов</strong>
         </div>
         <div class="card-body">
-          <p class="small text-muted mb-3">Применяются ко всем рефералам сразу.</p>
+          <p class="small text-muted mb-3">
+            Реферал получает <strong>свою полную ставку</strong> за каждый одобренный отчёт.
+            Вы дополнительно получаете указанный процент от той же ставки —
+            применяется ко всем вашим рефералам сразу.
+          </p>
           <form method="post" action="{% url 'user_update_ref_rates' %}">
             {% csrf_token %}
             <div class="mb-3">
-              <label class="form-label small mb-1" for="ref_searchlink_cut">
-                SearchLink ({{ search_total_reward }} ₽)
-              </label>
+              <label class="form-label small mb-1" for="ref_bonus_percent">Ваш бонус, % от ставки реферала</label>
               <div class="input-group input-group-sm">
-                <span class="input-group-text">Вам</span>
-                <input type="number" class="form-control" id="ref_searchlink_cut" name="ref_searchlink_cut"
-                       min="0" max="{{ search_total_reward }}" value="{{ ref_searchlink_cut }}" required>
-                <span class="input-group-text">₽ · рефу <strong>{{ ref_searchlink_ref_share }} ₽</strong></span>
+                <input type="number" class="form-control" id="ref_bonus_percent" name="ref_bonus_percent"
+                       min="0" max="100" value="{{ ref_bonus_percent }}" required>
+                <span class="input-group-text">%</span>
+              </div>
+              <div class="form-text small text-muted mt-1">
+                Примеры при текущем {{ ref_bonus_percent }}%:
+                Lead {{ lead_total_reward }} ₽ → +<strong>{{ bonus_example_lead }} ₽</strong> вам,
+                SearchLink {{ search_total_reward }} ₽ → +<strong>{{ bonus_example_sl }} ₽</strong>,
+                Группа {{ group_report_total_reward }} ₽ → +<strong>{{ bonus_example_gr }} ₽</strong>.
               </div>
             </div>
-            <div class="mb-3">
-              <label class="form-label small mb-1" for="ref_group_report_cut">
-                Отчёт по группам ({{ group_report_total_reward }} ₽)
-              </label>
-              <div class="input-group input-group-sm">
-                <span class="input-group-text">Вам</span>
-                <input type="number" class="form-control" id="ref_group_report_cut" name="ref_group_report_cut"
-                       min="0" max="{{ group_report_total_reward }}" value="{{ ref_group_report_cut }}" required>
-                <span class="input-group-text">₽ · рефу <strong>{{ ref_group_report_ref_share }} ₽</strong></span>
-              </div>
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить ставки</button>
+            <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить</button>
           </form>
         </div>
       </div>

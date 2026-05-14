@@ -652,17 +652,15 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
                 from .models import PartnerEarning
                 partner = User.objects.select_for_update().get(pk=partner_owner_id)
                 if partner.role == User.Role.PARTNER:
-                    # Старая система (role=partner, Настя — фикс ставка)
+                    # Партнёры: фикс ставка партнёра, реф получает остаток.
                     partner_earning = partner.partner_rate or 10
+                    reward = LEAD_APPROVE_REWARD - partner_earning  # реф получит остаток
                 else:
-                    # Реферальная система: per-user override → ставка с ссылки → 20 по умолчанию
-                    if lead.user.ref_lead_reward is not None:
-                        ref_reward = max(1, min(LEAD_APPROVE_REWARD - 1, lead.user.ref_lead_reward))
-                    else:
-                        link = lead.user.partner_link
-                        ref_reward = max(1, min(LEAD_APPROVE_REWARD - 1, link.ref_reward if link else 20))
-                    reward = ref_reward  # реф получит ref_reward вместо стандартных 40
-                    partner_earning = LEAD_APPROVE_REWARD - ref_reward
+                    # Обычные рефоводы (role=user): реф получает ПОЛНУЮ ставку,
+                    # рефовод дополнительно — pool × bonus%.
+                    pct = partner.ref_bonus_percent or 30
+                    partner_earning = round(LEAD_APPROVE_REWARD * pct / 100)
+                    # reward = LEAD_APPROVE_REWARD — оставляем как было (полная ставка реферала)
                 PartnerEarning.objects.create(partner=partner, lead=lead, amount=partner_earning)
                 from .models import log_balance_change
                 _old_pb = partner.balance or 0
