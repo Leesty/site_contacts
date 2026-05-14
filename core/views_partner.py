@@ -687,10 +687,34 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     if not link:
         link = PartnerLink.objects.create(partner=user, code=uuid4().hex[:24])
 
-    referrals = list(
-        User.objects.filter(partner_owner=user)
-        .order_by("-date_joined")[:200]
+    # Фильтр: по умолчанию показываем только «активных» рефералов
+    # (с >=1 одобренным отчётом Lead/SR/GR). Чтобы вернуть всех — `?show=all`.
+    show_param = (request.GET.get("show") or "active").lower()
+    show_all = show_param == "all"
+
+    from .models import Lead, SearchReport, GroupReport
+    from django.db.models import Count
+    # Множество user_id рефералов с хотя бы одним approved-отчётом
+    active_ref_ids: set[int] = set(
+        Lead.objects.filter(user__partner_owner=user, status=Lead.Status.APPROVED)
+        .values_list("user_id", flat=True).distinct()
     )
+    active_ref_ids.update(
+        SearchReport.objects.filter(user__partner_owner=user, status=SearchReport.Status.APPROVED)
+        .values_list("user_id", flat=True).distinct()
+    )
+    active_ref_ids.update(
+        GroupReport.objects.filter(user__partner_owner=user, status=GroupReport.Status.APPROVED)
+        .values_list("user_id", flat=True).distinct()
+    )
+    total_referrals_count = User.objects.filter(partner_owner=user).count()
+    active_count = len(active_ref_ids)
+    inactive_count = max(0, total_referrals_count - active_count)
+
+    referrals_qs = User.objects.filter(partner_owner=user)
+    if not show_all:
+        referrals_qs = referrals_qs.filter(id__in=active_ref_ids)
+    referrals = list(referrals_qs.order_by("-date_joined")[:200])
     breakdown = _referral_earnings_breakdown(user)
     for r in referrals:
         r.earn = breakdown.get(r.id, {"lead_cnt": 0, "lead_amt": 0,
@@ -703,8 +727,6 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     from .lead_utils import is_subreferrer, SUBREF_MILESTONE, SUBREF_BONUS
     is_sub = is_subreferrer(user)
     if is_sub:
-        from .models import Lead, SearchReport, GroupReport
-        from django.db.models import Count, Q
         ref_ids = [r.id for r in referrals]
         # Считаем approved-отчёты для каждого реферала (Lead + SR + GR)
         lead_cnt = dict(
@@ -729,7 +751,12 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     return render(request, "core/user_referrals.html", {
         "user": user,
         "total_earned": total_earned,
-        "users_count": len(referrals),
+        # users_count — общее число рефералов (для шапки), не зависит от фильтра
+        "users_count": total_referrals_count,
+        "active_count": active_count,
+        "inactive_count": inactive_count,
+        "show_all": show_all,
+        "shown_count": len(referrals),
         "earnings": earnings,
         "link": link,
         "referrals": referrals,
@@ -839,14 +866,38 @@ def user_referral_toggle_link(request: HttpRequest, link_id: int) -> HttpRespons
 
 @login_required
 def user_referral_list(request: HttpRequest) -> HttpResponse:
-    """Список рефералов менеджера (только просмотр) с разбивкой дохода."""
+    """Список рефералов менеджера (только просмотр) с разбивкой дохода.
+
+    По умолчанию показываем только «активных» рефералов (>=1 одобренный
+    отчёт). `?show=all` — все, включая неактивных.
+    """
     if not _require_user_approved(request):
         return HttpResponseForbidden("Только для одобренных пользователей.")
 
-    users_qs = (
-        User.objects.filter(partner_owner=request.user)
-        .order_by("-date_joined")
+    show_param = (request.GET.get("show") or "active").lower()
+    show_all = show_param == "all"
+
+    from .models import Lead, SearchReport, GroupReport
+    active_ref_ids: set[int] = set(
+        Lead.objects.filter(user__partner_owner=request.user, status=Lead.Status.APPROVED)
+        .values_list("user_id", flat=True).distinct()
     )
+    active_ref_ids.update(
+        SearchReport.objects.filter(user__partner_owner=request.user, status=SearchReport.Status.APPROVED)
+        .values_list("user_id", flat=True).distinct()
+    )
+    active_ref_ids.update(
+        GroupReport.objects.filter(user__partner_owner=request.user, status=GroupReport.Status.APPROVED)
+        .values_list("user_id", flat=True).distinct()
+    )
+    total_referrals_count = User.objects.filter(partner_owner=request.user).count()
+    active_count = len(active_ref_ids)
+    inactive_count = max(0, total_referrals_count - active_count)
+
+    users_qs = User.objects.filter(partner_owner=request.user)
+    if not show_all:
+        users_qs = users_qs.filter(id__in=active_ref_ids)
+    users_qs = users_qs.order_by("-date_joined")
     paginator = Paginator(users_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
     breakdown = _referral_earnings_breakdown(request.user)
@@ -883,7 +934,11 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
 
     return render(request, "core/user_referral_list.html", {
         "page_obj": page_obj,
-        "total": users_qs.count(),
+        # total — общее число рефералов (не зависит от фильтра)
+        "total": total_referrals_count,
+        "active_count": active_count,
+        "inactive_count": inactive_count,
+        "show_all": show_all,
         "is_subreferrer": is_sub,
         "subref_milestone": SUBREF_MILESTONE,
         "subref_bonus": SUBREF_BONUS,

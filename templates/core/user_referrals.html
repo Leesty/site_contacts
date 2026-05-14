@@ -119,12 +119,40 @@
   </div>
 
   {# Список рефералов (просмотр, без редактирования) #}
-  {% if referrals %}
+  {% if users_count %}
   <div class="card shadow-sm mt-3">
-    <div class="card-header bg-transparent border-secondary py-2">
-      <strong>Мои рефералы</strong> <span class="text-muted small">· {{ users_count }}</span>
+    <div class="card-header bg-transparent border-secondary py-2 d-flex flex-wrap align-items-center gap-2">
+      <strong class="me-auto">
+        Мои рефералы
+        {% if show_all %}
+          <span class="text-muted small fw-normal">· все {{ users_count }}</span>
+        {% else %}
+          <span class="text-muted small fw-normal">· активных {{ active_count }} из {{ users_count }}</span>
+        {% endif %}
+      </strong>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Фильтр рефералов">
+        <a href="?show=active"
+           class="btn btn-{% if not show_all %}primary{% else %}outline-secondary{% endif %}">
+          Активные{% if not show_all %} ✓{% endif %}
+        </a>
+        <a href="?show=all"
+           class="btn btn-{% if show_all %}primary{% else %}outline-secondary{% endif %}"
+           title="Показать всех, включая неактивных ({{ inactive_count }})">
+          Все ({{ users_count }})
+        </a>
+      </div>
     </div>
     <div class="card-body p-0">
+      {% if not referrals %}
+        <p class="text-muted small p-3 mb-0">
+          {% if show_all %}
+            Пока никто не зарегистрировался по вашим ссылкам.
+          {% else %}
+            Нет активных рефералов (с одобренными отчётами). Всего рефералов: {{ users_count }}.
+            <a href="?show=all">Показать всех →</a>
+          {% endif %}
+        </p>
+      {% else %}
       <div class="table-responsive">
         {% if is_subreferrer %}
           {# Sub-режим: показываем прогресс milestone (10 отчётов = 500₽), без процентов #}
@@ -214,6 +242,7 @@
           </table>
         {% endif %}
       </div>
+      {% endif %}
     </div>
   </div>
   {% endif %}
