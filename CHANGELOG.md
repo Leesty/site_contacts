@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-05-14 — Sub-рефовод milestone: 500 ₽ за 10 одобренных отчётов реферала
+
+### Новая модель мотивации для рефералов главных рефоводов
+- Для пользователей `role=user`, у которых есть свой `partner_owner` (т.е. они сами пришли по чьей-то реф-ссылке), вместо общей % схемы вводится **одноразовый бонус 500 ₽** за каждого реферала, который сдал **10 одобренных отчётов** (Lead + SearchLink + GroupReport суммарно).
+- Регулярная % схема (cut от пула за каждый отчёт) у таких sub-рефоводов **отключена** — реф получает полную ставку за каждый отчёт.
+- Главных рефоводов (`partner_owner IS NULL`) и партнёров (`role=partner`) изменения не затрагивают.
+
+### Реализация
+- `User.subref_bonus_paid_at` (DateTimeField, nullable) — флаг идемпотентности выплаты.
+- `core/lead_utils.py`: `is_subreferrer()`, `check_and_pay_subref_milestone()` — вызывается из всех трёх approve-вьюх (Lead, SearchReport, GroupReport) после стандартного начисления.
+- Lead/SR/GR approve: при `is_subreferrer(owner)` пропускают создание `PartnerEarning` и оставляют полную ставку рефу; затем вызывают milestone-helper.
+- Reject/rework existing-логика без изменений: для sub-рефовода `PartnerEarning` не создавался — откатывать нечего. Сам milestone-бонус не клавбачится (one-time дизайн).
+- Миграции: 0077 — stub после revert (поле `ref_bonus_percent` уже применилось на проде), 0078 — `RemoveField(ref_bonus_percent) + AddField(subref_bonus_paid_at)`.
+
+### UI
+- `/referrals/` и `/referrals/list/`: для sub-рефоводов вместо разбивки «Lead / SearchLink / Группы» показывается **прогресс-бар X/10** по каждому рефералу + бейдж «+500 ₽ выплачено» когда milestone достигнут.
+- Форма редактирования общих ставок (SearchLink cut, GroupReport cut) для sub-рефоводов скрыта — заменена на info-блок с описанием «Приведи 10 друзей».
+
 ## 2026-05-06 (ночь) — GroupReport (бета): отчёты менеджеров по группам
 
 ### Новый поток отчётов
