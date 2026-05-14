@@ -405,3 +405,61 @@ def compress_lead_attachment(lead) -> bool:
         return True
     except Exception:
         return False
+
+
+# ─── Sub-referrer milestone ──────────────────────────────────────────────────
+
+SUBREF_MILESTONE = 10  # одобренных отчётов
+SUBREF_BONUS = 500     # ₽ рефоводу-приглашателю
+
+
+def is_subreferrer(owner) -> bool:
+    """True, если этот рефовод сам — реферал главного рефовода (role=user)
+    и тоже имеет рефовода. Для таких рефоводов обычные % бонусы за отчёты
+    рефералов не работают — только milestone 500 ₽ за 10 отчётов."""
+    if not owner:
+        return False
+    return owner.role == "user" and bool(getattr(owner, "partner_owner_id", None))
+
+
+def check_and_pay_subref_milestone(user, actor=None) -> bool:
+    """Если `user` — реферал sub-рефовода и сдал >=10 одобренных отчётов,
+    выплачивает 500 ₽ его рефоводу. Идемпотентно (по флагу
+    `user.subref_bonus_paid_at`). Возвращает True если выплата произошла.
+
+    Считаются Lead + SearchReport + GroupReport со статусом approved.
+    """
+    if not user or not user.partner_owner_id:
+        return False
+    if user.subref_bonus_paid_at is not None:
+        return False
+
+    from .models import (
+        Lead, SearchReport, GroupReport, User, log_balance_change,
+    )
+    from django.utils import timezone
+
+    owner = User.objects.filter(pk=user.partner_owner_id).first()
+    if not is_subreferrer(owner):
+        return False
+
+    total = (
+        Lead.objects.filter(user=user, status=Lead.Status.APPROVED).count()
+        + SearchReport.objects.filter(user=user, status=SearchReport.Status.APPROVED).count()
+        + GroupReport.objects.filter(user=user, status=GroupReport.Status.APPROVED).count()
+    )
+    if total < SUBREF_MILESTONE:
+        return False
+
+    owner_locked = User.objects.select_for_update().get(pk=owner.id)
+    _old = owner_locked.balance or 0
+    owner_locked.balance = _old + SUBREF_BONUS
+    owner_locked.save(update_fields=["balance"])
+    log_balance_change(
+        owner_locked, "balance", _old, owner_locked.balance,
+        f"subref_milestone#{user.id}: +{SUBREF_BONUS} (10 approved reports)",
+        actor,
+    )
+    user.subref_bonus_paid_at = timezone.now()
+    user.save(update_fields=["subref_bonus_paid_at"])
+    return True

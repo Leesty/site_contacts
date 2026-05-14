@@ -634,11 +634,20 @@ def _split_group_report_payout(manager: "User") -> tuple[int, int, "User | None"
     `User.partner_group_report_cut` (role=partner) или
     `User.ref_group_report_cut` (role=user). Per-link настройки больше
     не используются.
+
+    Для sub-рефовода (реферал главного рефовода, role=user с
+    partner_owner_id) % cut НЕ применяется — реф получает полный pool, а
+    sub-рефовод получает только milestone 500 ₽ за 10 отчётов
+    (см. check_and_pay_subref_milestone в approve-вьюхе).
     """
+    from .lead_utils import is_subreferrer
     pool = GROUP_REPORT_APPROVE_REWARD
     owner = getattr(manager, "partner_owner", None)
     if not owner:
         return pool, 0, None
+    if is_subreferrer(owner):
+        # Sub-рефовод: pool полностью рефу, owner получает только milestone
+        return pool, 0, owner
     if owner.role == "partner":
         cut = owner.partner_group_report_cut or 50
     else:
@@ -713,6 +722,11 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
             PartnerEarning.objects.create(
                 partner=owner_user, group_report=report, amount=owner_cut,
             )
+
+        # Sub-рефовод-milestone: 500 ₽ когда у реферала набралось 10 одобренных
+        # отчётов (Lead + SR + GR). Идемпотентно по subref_bonus_paid_at.
+        from .lead_utils import check_and_pay_subref_milestone
+        check_and_pay_subref_milestone(manager, request.user)
 
         GroupReportReviewLog.objects.create(
             report=report, admin=request.user,

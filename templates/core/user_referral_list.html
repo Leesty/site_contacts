@@ -13,38 +13,83 @@
     <div class="card-body p-0">
       {% if page_obj %}
         <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
-              <tr>
-                <th>Пользователь</th>
-                <th>Имя</th>
-                <th>Дата</th>
-                <th>Статус</th>
-                <th class="text-center small">Lead<br><span class="text-muted fw-normal">шт / ₽</span></th>
-                <th class="text-center small">SearchLink<br><span class="text-muted fw-normal">шт / ₽</span></th>
-                <th class="text-center small">Группы<br><span class="text-muted fw-normal">шт / ₽</span></th>
-                <th class="text-center">Доход</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for u in page_obj %}
+          {% if is_subreferrer %}
+            <table class="table table-sm mb-0 align-middle table-dark-site">
+              <thead>
                 <tr>
-                  <td>@{{ u.username }}</td>
-                  <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
-                  <td class="text-muted small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
-                  <td>
-                    {% if u.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
-                    {% elif u.status == 'pending' %}<span class="badge bg-warning text-dark">На модерации</span>
-                    {% else %}<span class="badge bg-secondary">{{ u.status }}</span>{% endif %}
-                  </td>
-                  <td class="text-center small">{% if u.earn.lead_cnt %}{{ u.earn.lead_cnt }} / {{ u.earn.lead_amt }} ₽{% else %}—{% endif %}</td>
-                  <td class="text-center small">{% if u.earn.sr_cnt %}{{ u.earn.sr_cnt }} / {{ u.earn.sr_amt }} ₽{% else %}—{% endif %}</td>
-                  <td class="text-center small">{% if u.earn.gr_cnt %}{{ u.earn.gr_cnt }} / {{ u.earn.gr_amt }} ₽{% else %}—{% endif %}</td>
-                  <td class="text-center text-success fw-semibold">{% if u.earn.total %}{{ u.earn.total }} ₽{% else %}—{% endif %}</td>
+                  <th>Пользователь</th>
+                  <th>Имя</th>
+                  <th>Дата</th>
+                  <th>Статус</th>
+                  <th class="text-center" style="min-width:180px;">Прогресс до {{ subref_bonus }} ₽</th>
+                  <th class="text-center">Награда</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {% for u in page_obj %}
+                  <tr>
+                    <td>@{{ u.username }}</td>
+                    <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
+                    <td class="text-muted small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
+                    <td>
+                      {% if u.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                      {% elif u.status == 'pending' %}<span class="badge bg-warning text-dark">На модерации</span>
+                      {% else %}<span class="badge bg-secondary">{{ u.status }}</span>{% endif %}
+                    </td>
+                    <td class="text-center small">
+                      <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-1" style="height: 8px;">
+                          <div class="progress-bar bg-{% if u.subref_paid %}success{% else %}info{% endif %}"
+                               role="progressbar" style="width: {{ u.subref_progress_pct }}%;"></div>
+                        </div>
+                        <span class="text-nowrap">{{ u.subref_done }} / {{ u.subref_target }}</span>
+                      </div>
+                    </td>
+                    <td class="text-center small">
+                      {% if u.subref_paid %}
+                        <span class="badge bg-success">+{{ subref_bonus }} ₽ выплачено</span>
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <table class="table table-sm mb-0 align-middle table-dark-site">
+              <thead>
+                <tr>
+                  <th>Пользователь</th>
+                  <th>Имя</th>
+                  <th>Дата</th>
+                  <th>Статус</th>
+                  <th class="text-center small">Lead<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                  <th class="text-center small">SearchLink<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                  <th class="text-center small">Группы<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                  <th class="text-center">Доход</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for u in page_obj %}
+                  <tr>
+                    <td>@{{ u.username }}</td>
+                    <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
+                    <td class="text-muted small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
+                    <td>
+                      {% if u.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                      {% elif u.status == 'pending' %}<span class="badge bg-warning text-dark">На модерации</span>
+                      {% else %}<span class="badge bg-secondary">{{ u.status }}</span>{% endif %}
+                    </td>
+                    <td class="text-center small">{% if u.earn.lead_cnt %}{{ u.earn.lead_cnt }} / {{ u.earn.lead_amt }} ₽{% else %}—{% endif %}</td>
+                    <td class="text-center small">{% if u.earn.sr_cnt %}{{ u.earn.sr_cnt }} / {{ u.earn.sr_amt }} ₽{% else %}—{% endif %}</td>
+                    <td class="text-center small">{% if u.earn.gr_cnt %}{{ u.earn.gr_cnt }} / {{ u.earn.gr_amt }} ₽{% else %}—{% endif %}</td>
+                    <td class="text-center text-success fw-semibold">{% if u.earn.total %}{{ u.earn.total }} ₽{% else %}—{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
         </div>
         {% if page_obj.paginator.num_pages > 1 %}
           <div class="card-footer border-secondary d-flex justify-content-center py-2">

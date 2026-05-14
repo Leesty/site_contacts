@@ -697,6 +697,35 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
                                        "sr_cnt": 0, "sr_amt": 0,
                                        "gr_cnt": 0, "gr_amt": 0, "total": 0})
 
+    # Sub-рефовод? Если у `user` есть свой partner_owner — он реферал главного
+    # рефовода, и для него работает не % система, а milestone «приведи 10
+    # отчётов от реферала → +500 ₽». Считаем прогресс по каждому рефералу.
+    from .lead_utils import is_subreferrer, SUBREF_MILESTONE, SUBREF_BONUS
+    is_sub = is_subreferrer(user)
+    if is_sub:
+        from .models import Lead, SearchReport, GroupReport
+        from django.db.models import Count, Q
+        ref_ids = [r.id for r in referrals]
+        # Считаем approved-отчёты для каждого реферала (Lead + SR + GR)
+        lead_cnt = dict(
+            Lead.objects.filter(user_id__in=ref_ids, status=Lead.Status.APPROVED)
+            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
+        )
+        sr_cnt = dict(
+            SearchReport.objects.filter(user_id__in=ref_ids, status=SearchReport.Status.APPROVED)
+            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
+        )
+        gr_cnt = dict(
+            GroupReport.objects.filter(user_id__in=ref_ids, status=GroupReport.Status.APPROVED)
+            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
+        )
+        for r in referrals:
+            done = lead_cnt.get(r.id, 0) + sr_cnt.get(r.id, 0) + gr_cnt.get(r.id, 0)
+            r.subref_done = done
+            r.subref_target = SUBREF_MILESTONE
+            r.subref_paid = bool(r.subref_bonus_paid_at)
+            r.subref_progress_pct = min(100, int(100 * done / SUBREF_MILESTONE)) if SUBREF_MILESTONE else 0
+
     return render(request, "core/user_referrals.html", {
         "user": user,
         "total_earned": total_earned,
@@ -710,6 +739,9 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         "ref_searchlink_ref_share": max(0, SEARCH_TOTAL - user.ref_searchlink_cut),
         "ref_group_report_cut": user.ref_group_report_cut,
         "ref_group_report_ref_share": max(0, GR_TOTAL - user.ref_group_report_cut),
+        "is_subreferrer": is_sub,
+        "subref_milestone": SUBREF_MILESTONE,
+        "subref_bonus": SUBREF_BONUS,
     })
 
 
@@ -822,9 +854,39 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
         u.earn = breakdown.get(u.id, {"lead_cnt": 0, "lead_amt": 0,
                                        "sr_cnt": 0, "sr_amt": 0,
                                        "gr_cnt": 0, "gr_amt": 0, "total": 0})
+
+    # Sub-рефовод? Если да — догружаем прогресс milestone для отображения.
+    from .lead_utils import is_subreferrer, SUBREF_MILESTONE, SUBREF_BONUS
+    is_sub = is_subreferrer(request.user)
+    if is_sub:
+        from .models import Lead, SearchReport, GroupReport
+        from django.db.models import Count
+        ref_ids = [u.id for u in page_obj]
+        lead_cnt = dict(
+            Lead.objects.filter(user_id__in=ref_ids, status=Lead.Status.APPROVED)
+            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
+        )
+        sr_cnt = dict(
+            SearchReport.objects.filter(user_id__in=ref_ids, status=SearchReport.Status.APPROVED)
+            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
+        )
+        gr_cnt = dict(
+            GroupReport.objects.filter(user_id__in=ref_ids, status=GroupReport.Status.APPROVED)
+            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
+        )
+        for u in page_obj:
+            done = lead_cnt.get(u.id, 0) + sr_cnt.get(u.id, 0) + gr_cnt.get(u.id, 0)
+            u.subref_done = done
+            u.subref_target = SUBREF_MILESTONE
+            u.subref_paid = bool(u.subref_bonus_paid_at)
+            u.subref_progress_pct = min(100, int(100 * done / SUBREF_MILESTONE)) if SUBREF_MILESTONE else 0
+
     return render(request, "core/user_referral_list.html", {
         "page_obj": page_obj,
         "total": users_qs.count(),
+        "is_subreferrer": is_sub,
+        "subref_milestone": SUBREF_MILESTONE,
+        "subref_bonus": SUBREF_BONUS,
     })
 
 

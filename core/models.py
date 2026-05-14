@@ -160,6 +160,18 @@ class User(AbstractUser):
     smz_submitted_at = models.DateTimeField(null=True, blank=True, help_text="Дата подачи заявки на СМЗ.")
     smz_reject_reason = models.TextField(blank=True, help_text="Причина отклонения СМЗ.")
 
+    # «Sub-referrer milestone»: для рефералов главных рефоводов (т.е. юзеров,
+    # у которых partner_owner.partner_owner_id IS NULL и роль=user). Когда
+    # этот юзер сдаёт 10-й одобренный отчёт (Lead+SR+GR), рефовод-приглашатель
+    # получает разовый бонус 500 ₽ на свой balance. Обычные % бонусы для
+    # таких рефералов не работают — только этот milestone.
+    subref_bonus_paid_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text=("Время, когда рефовод-приглашатель получил 500 ₽ за этого "
+                   "реферала (после 10-го одобренного отчёта). NULL — ещё не "
+                   "выплачено."),
+    )
+
     # Право создавать GroupReport (бета). Выдаётся главным админом точечно.
     # При наличии — у пользователя в дашборде появляется «Отчёты по группам»;
     # при approved-статусе ещё и «Свободные слоты» (урезанный календарь).

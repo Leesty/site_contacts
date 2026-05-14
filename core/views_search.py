@@ -1342,9 +1342,16 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         # ставку на всех рефералов: User.ref_searchlink_cut (role=user) или
         # User.partner_searchlink_cut (role=partner). Per-link/per-referral
         # ставки больше не используются (legacy).
+        # Для sub-рефовода (реферал главного рефовода, role=user с
+        # partner_owner_id) % бонус НЕ применяется — реф получает полную
+        # ставку, а sub-рефовод получает только milestone 500 ₽ за 10 отчётов
+        # (см. check_and_pay_subref_milestone ниже).
+        from .lead_utils import is_subreferrer
         if lead_owner.partner_owner_id:
             partner_owner = User.objects.filter(pk=lead_owner.partner_owner_id).first()
-            if partner_owner and partner_owner.role == User.Role.PARTNER:
+            if is_subreferrer(partner_owner):
+                base_cut = 0
+            elif partner_owner and partner_owner.role == User.Role.PARTNER:
                 base_cut = partner_owner.partner_searchlink_cut
             elif partner_owner:
                 base_cut = partner_owner.ref_searchlink_cut
@@ -1386,6 +1393,11 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
             if not partner.is_accredited and _old_pb < 0 and partner.balance >= 0:
                 partner.is_accredited = True
                 partner.save(update_fields=["is_accredited"])
+
+        # Sub-рефовод-milestone: 500 ₽ когда у реферала набралось 10 одобренных
+        # отчётов (Lead + SR + GR). Идемпотентно по subref_bonus_paid_at.
+        from .lead_utils import check_and_pay_subref_milestone
+        check_and_pay_subref_milestone(lead_owner, request.user)
 
         # Лог модерации (для earnings админа, +10 ₽)
         from .models import SearchReportReviewLog

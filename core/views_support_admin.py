@@ -650,8 +650,15 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
             partner_owner_id = lead.user.partner_owner_id
             if partner_owner_id:
                 from .models import PartnerEarning
+                from .lead_utils import is_subreferrer
                 partner = User.objects.select_for_update().get(pk=partner_owner_id)
-                if partner.role == User.Role.PARTNER:
+                # Sub-рефовод (реферал главного рефовода, role=user с
+                # partner_owner_id) НЕ получает % за отчёты своих рефералов —
+                # для него работает только milestone (500 ₽ за 10 отчётов).
+                # Реф получает полную ставку, PartnerEarning не создаётся.
+                if is_subreferrer(partner):
+                    pass  # reward = LEAD_APPROVE_REWARD, partner_earning = 0
+                elif partner.role == User.Role.PARTNER:
                     # Старая система (role=partner, Настя — фикс ставка)
                     partner_earning = partner.partner_rate or 10
                 else:
@@ -663,16 +670,17 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
                         ref_reward = max(1, min(LEAD_APPROVE_REWARD - 1, link.ref_reward if link else 20))
                     reward = ref_reward  # реф получит ref_reward вместо стандартных 40
                     partner_earning = LEAD_APPROVE_REWARD - ref_reward
-                PartnerEarning.objects.create(partner=partner, lead=lead, amount=partner_earning)
-                from .models import log_balance_change
-                _old_pb = partner.balance or 0
-                partner.balance = _old_pb + partner_earning
-                partner.save(update_fields=["balance"])
-                log_balance_change(partner, "balance", _old_pb, partner.balance, f"partner_earning lead#{lead_id}", request.user)
-                # Авто-аккредитация для партнёра: баланс был в минусе и перешёл в плюс
-                if not partner.is_accredited and _old_pb < 0 and partner.balance >= 0:
-                    partner.is_accredited = True
-                    partner.save(update_fields=["is_accredited"])
+                if partner_earning > 0:
+                    PartnerEarning.objects.create(partner=partner, lead=lead, amount=partner_earning)
+                    from .models import log_balance_change
+                    _old_pb = partner.balance or 0
+                    partner.balance = _old_pb + partner_earning
+                    partner.save(update_fields=["balance"])
+                    log_balance_change(partner, "balance", _old_pb, partner.balance, f"partner_earning lead#{lead_id}", request.user)
+                    # Авто-аккредитация для партнёра: баланс был в минусе и перешёл в плюс
+                    if not partner.is_accredited and _old_pb < 0 and partner.balance >= 0:
+                        partner.is_accredited = True
+                        partner.save(update_fields=["is_accredited"])
         lead_owner = User.objects.select_for_update().get(pk=lead.user_id)
         from .models import log_balance_change
         if is_dozhim:
@@ -689,6 +697,12 @@ def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> Http
         if not lead_owner.is_accredited and _old < 0 and (lead_owner.balance if not is_dozhim else lead_owner.dozhim_balance) >= 0:
             lead_owner.is_accredited = True
             lead_owner.save(update_fields=["is_accredited"])
+        # Sub-рефовод-milestone: если рефовод этого пользователя — sub-рефовод,
+        # начисляем ему 500 ₽ когда у реферала набралось 10 одобренных отчётов
+        # (Lead + SR + GR). Идемпотентно по subref_bonus_paid_at.
+        if not is_dozhim:
+            from .lead_utils import check_and_pay_subref_milestone
+            check_and_pay_subref_milestone(lead_owner, request.user)
         # Сохраняем текущую ставку баланс-админа в логе
         _ba_rate = None
         _ba_user = User.objects.filter(role=User.Role.BALANCE_ADMIN).first()
