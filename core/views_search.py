@@ -123,10 +123,12 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
     search_reward = SEARCH_REPORT_REWARD
     if request.user.partner_owner_id:
         owner = request.user.partner_owner
-        # Только для partner-роли реф получает остаток после cut; для role=user
-        # реф получает полную ставку (рефовод получает % сверху).
-        if owner and owner.role == "partner":
-            search_reward = max(0, SEARCH_REPORT_REWARD - owner.partner_searchlink_cut)
+        if owner:
+            owner_cut = (
+                owner.partner_searchlink_cut if owner.role == "partner"
+                else owner.ref_searchlink_cut
+            )
+            search_reward = max(0, SEARCH_REPORT_REWARD - owner_cut)
 
     return render(request, "search/my_links.html", {
         "page_obj": page_obj,
@@ -1336,27 +1338,24 @@ def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpRes
         PHONE_REWARD = getattr(settings, "SEARCH_PHONE_REPORT_REWARD", 65)
         total_reward = PHONE_REWARD if is_phone_report else SEARCH_REPORT_REWARD
 
-        # Разделение награды:
-        # - role=partner — старая логика: фикс cut, реф получает остаток пула.
-        # - role=user — новая логика: реф получает ПОЛНУЮ ставку, рефовод
-        #   получает bonus_percent от пула дополнительно (не вычитается из реф).
+        # Разделение награды для рефералов. Все рефоводы теперь задают ОБЩУЮ
+        # ставку на всех рефералов: User.ref_searchlink_cut (role=user) или
+        # User.partner_searchlink_cut (role=partner). Per-link/per-referral
+        # ставки больше не используются (legacy).
         if lead_owner.partner_owner_id:
             partner_owner = User.objects.filter(pk=lead_owner.partner_owner_id).first()
             if partner_owner and partner_owner.role == User.Role.PARTNER:
                 base_cut = partner_owner.partner_searchlink_cut
-                if is_phone_report:
-                    scaled_cut = round(base_cut * total_reward / SEARCH_REPORT_REWARD)
-                    manager_cut = max(0, min(total_reward, scaled_cut))
-                else:
-                    manager_cut = max(0, min(total_reward, base_cut))
-                ref_reward = total_reward - manager_cut
             elif partner_owner:
-                pct = partner_owner.ref_bonus_percent or 30
-                manager_cut = round(total_reward * pct / 100)
-                ref_reward = total_reward  # реферал получает 100%
+                base_cut = partner_owner.ref_searchlink_cut
             else:
-                manager_cut = 0
-                ref_reward = total_reward
+                base_cut = 0
+            if is_phone_report:
+                scaled_cut = round(base_cut * total_reward / SEARCH_REPORT_REWARD)
+                manager_cut = max(0, min(total_reward, scaled_cut))
+            else:
+                manager_cut = max(0, min(total_reward, base_cut))
+            ref_reward = total_reward - manager_cut
         else:
             manager_cut = 0
             ref_reward = total_reward

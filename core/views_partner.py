@@ -697,8 +697,6 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
                                        "sr_cnt": 0, "sr_amt": 0,
                                        "gr_cnt": 0, "gr_amt": 0, "total": 0})
 
-    lead_total = LEAD_APPROVE_REWARD
-    pct = user.ref_bonus_percent or 30
     return render(request, "core/user_referrals.html", {
         "user": user,
         "total_earned": total_earned,
@@ -708,33 +706,47 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         "referrals": referrals,
         "search_total_reward": SEARCH_TOTAL,
         "group_report_total_reward": GR_TOTAL,
-        "lead_total_reward": lead_total,
-        "ref_bonus_percent": pct,
-        # Примерные суммы бонуса при текущем проценте — для UI
-        "bonus_example_sl": round(SEARCH_TOTAL * pct / 100),
-        "bonus_example_gr": round(GR_TOTAL * pct / 100),
-        "bonus_example_lead": round(lead_total * pct / 100),
+        "ref_searchlink_cut": user.ref_searchlink_cut,
+        "ref_searchlink_ref_share": max(0, SEARCH_TOTAL - user.ref_searchlink_cut),
+        "ref_group_report_cut": user.ref_group_report_cut,
+        "ref_group_report_ref_share": max(0, GR_TOTAL - user.ref_group_report_cut),
     })
 
 
 @login_required
 @require_http_methods(["POST"])
 def user_update_ref_rates(request: HttpRequest) -> HttpResponse:
-    """Менеджер меняет общий процент бонуса с рефералов."""
+    """Менеджер меняет общие реф-ставки (SearchLink + GroupReport)."""
     if not _require_user_approved(request):
         return HttpResponseForbidden()
 
-    raw_pct = request.POST.get("ref_bonus_percent")
-    if raw_pct in (None, ""):
-        return redirect("user_referrals")
-    try:
-        pct = max(0, min(100, int(raw_pct)))
-    except (TypeError, ValueError):
-        messages.error(request, "Процент должен быть числом от 0 до 100.")
-        return redirect("user_referrals")
-    request.user.ref_bonus_percent = pct
-    request.user.save(update_fields=["ref_bonus_percent"])
-    messages.success(request, f"Бонус с рефералов: {pct}%. Применяется ко всем вашим рефералам.")
+    SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
+    GR_TOTAL = 80
+    update_fields: list[str] = []
+
+    raw_sl = request.POST.get("ref_searchlink_cut")
+    if raw_sl not in (None, ""):
+        try:
+            sl = max(0, min(SEARCH_TOTAL, int(raw_sl)))
+        except (TypeError, ValueError):
+            messages.error(request, "SearchLink ставка должна быть числом.")
+            return redirect("user_referrals")
+        request.user.ref_searchlink_cut = sl
+        update_fields.append("ref_searchlink_cut")
+
+    raw_gr = request.POST.get("ref_group_report_cut")
+    if raw_gr not in (None, ""):
+        try:
+            gr = max(0, min(GR_TOTAL, int(raw_gr)))
+        except (TypeError, ValueError):
+            messages.error(request, "GroupReport ставка должна быть числом.")
+            return redirect("user_referrals")
+        request.user.ref_group_report_cut = gr
+        update_fields.append("ref_group_report_cut")
+
+    if update_fields:
+        request.user.save(update_fields=update_fields)
+        messages.success(request, "Реф-ставки сохранены — применяются ко всем вашим рефералам.")
     return redirect("user_referrals")
 
 

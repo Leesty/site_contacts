@@ -127,19 +127,19 @@ def _is_balance_admin(user) -> bool:
 def _user_search_reward(user, search_total: int) -> int:
     """Сколько реферал получит за одобренный SearchLink-отчёт.
 
-    - Без рефовода — полный пул.
-    - role=partner — остаток после фикс-cut партнёра.
-    - role=user — ПОЛНЫЙ пул (рефовод получает % сверху, реф не теряет).
+    Если у юзера есть рефовод — общая ставка с рефовода (role=partner или
+    role=user). Иначе — полный пул.
     """
     if not getattr(user, "partner_owner_id", None):
         return search_total
     owner = user.partner_owner
     if not owner:
         return search_total
-    if owner.role == "partner":
-        return max(0, search_total - (owner.partner_searchlink_cut or 0))
-    # role=user — реф получает полную ставку
-    return search_total
+    owner_cut = (
+        owner.partner_searchlink_cut if owner.role == "partner"
+        else (owner.ref_searchlink_cut or 50)
+    )
+    return max(0, search_total - owner_cut)
 
 
 def _is_partner(user) -> bool:

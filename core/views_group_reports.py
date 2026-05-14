@@ -624,26 +624,27 @@ def admin_group_report_attachment(request: HttpRequest, report_id: int) -> HttpR
 
 
 def _split_group_report_payout(manager: "User") -> tuple[int, int, "User | None"]:
-    """Считает выплату рефералу и рефоводу/партнёру за одобренный GR.
+    """Считает разделение `GROUP_REPORT_APPROVE_REWARD` между рефералом
+    (менеджером) и его рефоводом/партнёром.
 
     Возвращает `(referral_reward, owner_cut, owner_user)`.
     Если у менеджера нет `partner_owner` — owner_user=None, owner_cut=0.
 
-    - role=partner — старая логика: фикс cut, реф получает (pool - cut).
-    - role=user — новая логика: реф получает ПОЛНЫЙ пул, рефовод
-      получает pool × ref_bonus_percent / 100 дополнительно сверху.
+    Все рефоводы задают общую ставку на всех рефералов:
+    `User.partner_group_report_cut` (role=partner) или
+    `User.ref_group_report_cut` (role=user). Per-link настройки больше
+    не используются.
     """
     pool = GROUP_REPORT_APPROVE_REWARD
     owner = getattr(manager, "partner_owner", None)
     if not owner:
         return pool, 0, None
     if owner.role == "partner":
-        cut = max(0, min(pool, int(owner.partner_group_report_cut or 50)))
-        return pool - cut, cut, owner
-    # role=user — реф полная ставка, рефовод бонус %.
-    pct = max(0, min(100, int(owner.ref_bonus_percent or 30)))
-    bonus = round(pool * pct / 100)
-    return pool, bonus, owner
+        cut = owner.partner_group_report_cut or 50
+    else:
+        cut = owner.ref_group_report_cut or 50
+    cut = max(0, min(pool, int(cut)))
+    return pool - cut, cut, owner
 
 
 @login_required
