@@ -719,9 +719,25 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
 
         # Рефовод/партнёр (если есть)
         if owner_user and owner_cut > 0:
-            PartnerEarning.objects.create(
-                partner=owner_user, group_report=report, amount=owner_cut,
+            # Берём актуальную блокировку на owner-а (запись о PartnerEarning
+            # должна быть отражена в баланс-логе и в balance — раньше тут
+            # создавалась только PE без проводки, что приводило к расхождению).
+            owner_locked = User.objects.select_for_update().get(pk=owner_user.id)
+            _old_ob = owner_locked.balance or 0
+            owner_locked.balance = _old_ob + owner_cut
+            owner_locked.save(update_fields=["balance"])
+            log_balance_change(
+                owner_locked, "balance", _old_ob, owner_locked.balance,
+                f"group_report_partner_earning#{report_id} +{owner_cut}",
+                request.user,
             )
+            PartnerEarning.objects.create(
+                partner=owner_locked, group_report=report, amount=owner_cut,
+            )
+            # Авто-аккредитация партнёра: баланс был в минусе → перешёл в плюс
+            if not owner_locked.is_accredited and _old_ob < 0 and owner_locked.balance >= 0:
+                owner_locked.is_accredited = True
+                owner_locked.save(update_fields=["is_accredited"])
 
         # Sub-рефовод-milestone: 500 ₽ когда у реферала набралось 10 одобренных
         # отчётов (Lead + SR + GR). Идемпотентно по subref_bonus_paid_at.
@@ -768,8 +784,19 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
                         request.user,
                     )
                     report.paid_reward = 0
-                # Откат начисления рефоводу
-                PartnerEarning.objects.filter(group_report=report).delete()
+                # Откат начисления рефоводу/партнёру (баланс + log + удаление PE)
+                pe = PartnerEarning.objects.filter(group_report=report).select_related("partner").first()
+                if pe:
+                    partner_locked = User.objects.select_for_update().get(pk=pe.partner_id)
+                    _old_pb = partner_locked.balance or 0
+                    partner_locked.balance = _old_pb - pe.amount
+                    partner_locked.save(update_fields=["balance"])
+                    log_balance_change(
+                        partner_locked, "balance", _old_pb, partner_locked.balance,
+                        f"group_report_reject_partner_rollback#{report_id} -{pe.amount}",
+                        request.user,
+                    )
+                    pe.delete()
                 report.status = GroupReport.Status.REJECTED
                 report.rejection_reason = form.cleaned_data["rejection_reason"]
                 report.reviewed_at = timezone.now()
@@ -816,8 +843,19 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
                         request.user,
                     )
                     report.paid_reward = 0
-                # Откат начисления рефоводу
-                PartnerEarning.objects.filter(group_report=report).delete()
+                # Откат начисления рефоводу/партнёру (баланс + log + удаление PE)
+                pe = PartnerEarning.objects.filter(group_report=report).select_related("partner").first()
+                if pe:
+                    partner_locked = User.objects.select_for_update().get(pk=pe.partner_id)
+                    _old_pb = partner_locked.balance or 0
+                    partner_locked.balance = _old_pb - pe.amount
+                    partner_locked.save(update_fields=["balance"])
+                    log_balance_change(
+                        partner_locked, "balance", _old_pb, partner_locked.balance,
+                        f"group_report_rework_partner_rollback#{report_id} -{pe.amount}",
+                        request.user,
+                    )
+                    pe.delete()
                 report.status = GroupReport.Status.REWORK
                 report.rework_comment = form.cleaned_data.get("rework_comment", "")
                 report.rejection_reason = ""
