@@ -427,11 +427,21 @@ def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
         if not switch_to_phone and not link.bot_started and manual_client_input:
             manual_parsed = parse_manual_client_input(manual_client_input)
             if not manual_parsed:
-                messages.error(
-                    request,
-                    "Не удалось распознать ID клиента. Используйте: 123456789, "
-                    "@username, https://t.me/username, https://vk.com/id123 или https://vk.com/screen_name.",
-                )
+                # Подсказка: вдруг ввели телефон вместо ID
+                _digits = manual_client_input.lstrip("+").replace(" ", "").replace("-", "")
+                if _looks_like_phone_number(_digits):
+                    messages.error(
+                        request,
+                        f"Похоже, вы ввели номер телефона ({manual_client_input}), а не Telegram ID. "
+                        f"Если клиент оставил номер — переключите тип отчёта на «Звонок (phone_callback)» "
+                        f"и впишите номер туда. Если клиент в TG — нужен числовой ID (5–10 цифр) или @username.",
+                    )
+                else:
+                    messages.error(
+                        request,
+                        "Не удалось распознать ID клиента. Используйте: 123456789, "
+                        "@username, https://t.me/username, https://vk.com/id123 или https://vk.com/screen_name.",
+                    )
                 return render(request, "search/report_redo.html", {"link": link, "report": report})
             other_link = _find_other_link_for_client(manual_parsed, exclude_link_id=link.id)
             if other_link:
@@ -614,11 +624,38 @@ _MANUAL_CLAIM_VK_NAME_RE = re.compile(r"vk\.(?:com|ru)/([a-z0-9_.]+)", re.IGNORE
 _MANUAL_CLAIM_TME_RE = re.compile(r"t(?:elegram)?\.(?:me|dog)/([a-zA-Z0-9_+]+)", re.IGNORECASE)
 
 
+def _looks_like_phone_number(digits: str) -> bool:
+    """Эвристика: похоже ли на российский телефонный номер, а не на telegram_id.
+
+    Telegram_id у живых юзеров — до ~10 цифр (новые ~7B+ ID = 10 цифр).
+    Российский мобильный: 11 цифр начинается с 7/8 (`8 9XX XXX XX XX`)
+    или 10 цифр без префикса (`9XX XXX XX XX`).
+    Чтобы не отрезать редкий случай 10-значного telegram_id, проверяем:
+      - 11 цифр с префиксом 7/8 → точно телефон
+      - 10 цифр с первой цифрой 9 → почти наверняка телефон (a `9XX...` TG-ID
+        — это юзер с ID > 9 млрд, что бывает только у супер-новых аккаунтов
+        2026+ года, и таких пока мало — false-negative редкий)
+      - 12+ цифр → точно не telegram_id
+    """
+    if not digits.isdigit():
+        return False
+    n = len(digits)
+    if n >= 12:
+        return True
+    if n == 11 and digits[0] in ("7", "8"):
+        return True
+    if n == 10 and digits[0] == "9":
+        return True
+    return False
+
+
 def parse_manual_client_input(raw: str) -> dict:
     """Парсит ввод менеджера (для ручной привязки клиента к SearchLink).
 
     Возвращает dict с ключами {platform, telegram_id, telegram_username,
     vk_user_id, vk_screen_name}. Пустой dict если не распознано.
+    Если строка похожа на телефон — не парсим как telegram_id (менеджер
+    должен переключиться на phone_callback вместо ручной привязки).
     """
     s = (raw or "").strip()
     if not s:
@@ -639,11 +676,15 @@ def parse_manual_client_input(raw: str) -> dict:
         if rest.startswith("+"):
             return {}
         if rest.isdigit():
+            if _looks_like_phone_number(rest):
+                return {}
             return {"platform": "telegram", "telegram_id": int(rest)}
         return {"platform": "telegram", "telegram_username": rest}
 
     s_stripped = s.lstrip("@")
     if s_stripped.isdigit():
+        if _looks_like_phone_number(s_stripped):
+            return {}
         return {"platform": "telegram", "telegram_id": int(s_stripped)}
     if re.match(r"^[a-zA-Z0-9_]{3,}$", s_stripped):
         return {"platform": "telegram", "telegram_username": s_stripped.lower()}
