@@ -5,7 +5,14 @@
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="h4 mb-0">Заявки на вывод</h1>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-success btn-sm"
+         href="{% url 'admin_withdrawal_requests_export' %}"
+         title="Скачать текущие pending заявки списком (xlsx)">
+        📊 Excel
+      </a>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+    </div>
   </div>
 
   <p class="text-muted small mb-3">

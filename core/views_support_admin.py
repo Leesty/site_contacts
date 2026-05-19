@@ -1363,6 +1363,82 @@ def balance_admin_contact_requests(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
+    """Экспорт текущих заявок на вывод (status=pending) в Excel.
+
+    Только main_admin. Один лист со всеми pending: ID, username, ФИО,
+    аккредитация, сумма, реквизиты, тип баланса (обычный/дожим),
+    рефовод (если есть), дата подачи.
+    """
+    if getattr(request.user, "role", None) != "main_admin":
+        return HttpResponseForbidden("Только для главного админа.")
+
+    qs = (
+        WithdrawalRequest.objects
+        .filter(status="pending")
+        .select_related("user", "user__partner_owner")
+        .order_by("created_at")
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Заявки на вывод"
+    ws.append([
+        "ID заявки",
+        "@username",
+        "ФИО (СМЗ)",
+        "Аккредитован",
+        "Сумма (₽)",
+        "Тип баланса",
+        "Реквизиты",
+        "Рефовод",
+        "Telegram ID",
+        "Дата подачи",
+    ])
+
+    total_amount = 0
+    for req in qs:
+        is_dozhim = bool(req.payout_details and req.payout_details.startswith("[Дожим]"))
+        owner = getattr(req.user, "partner_owner", None)
+        owner_str = f"@{owner.username}" if owner else ""
+        tg_id = req.user.telegram_id or ""
+        ws.append([
+            req.pk,
+            req.user.username,
+            req.user.smz_fio or "",
+            "да" if req.user.is_accredited else "нет",
+            req.amount,
+            "Дожим" if is_dozhim else "Обычный",
+            req.payout_details or "",
+            owner_str,
+            tg_id,
+            timezone.localtime(req.created_at).strftime("%d.%m.%Y %H:%M"),
+        ])
+        total_amount += req.amount
+
+    # Итоговая строка
+    if qs:
+        ws.append([])
+        ws.append(["", "", "", "ИТОГО:", total_amount])
+
+    # Ширина колонок
+    widths = [10, 22, 28, 13, 11, 14, 50, 16, 16, 17]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    today = timezone.localtime(timezone.now()).strftime("%Y-%m-%d")
+    response["Content-Disposition"] = f'attachment; filename="withdrawals_pending_{today}.xlsx"'
+    return response
+
+
+@login_required
 def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
     """Список заявок на вывод. Только main_admin."""
     if getattr(request.user, "role", None) != "main_admin":

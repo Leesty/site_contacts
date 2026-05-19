@@ -106,6 +106,11 @@ urlpatterns = [
         views_support_admin.admin_withdrawal_requests,
         name="admin_withdrawal_requests",
     ),
+    path(
+        "staff/withdrawal-requests/export/",
+        views_support_admin.admin_withdrawal_requests_export,
+        name="admin_withdrawal_requests_export",
+    ),
     path("staff/smz-requests/", views_support_admin.admin_smz_requests, name="admin_smz_requests"),
     path("staff/receipts/", views_support_admin.admin_receipts, name="admin_receipts"),
     path(
