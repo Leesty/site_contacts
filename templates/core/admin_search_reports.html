@@ -31,14 +31,12 @@
         Дубликаты {% if duplicate_count %}<span class="badge bg-secondary ms-1">{{ duplicate_count }}</span>{% endif %}
       </a>
     </li>
-    {% if is_main_admin %}
     <li class="nav-item">
       <a class="nav-link {% if tab == 'not_in_bot' %}active{% endif %}" href="?tab=not_in_bot{% if q %}&q={{ q|urlencode }}{% endif %}"
-         title="Ручные привязки, где клиент не запускал бота (написал в ЛС руководителю). Только главный админ.">
+         title="Ручные привязки, где клиент не запускал бота (написал в ЛС руководителю). Проверь скриншот переписки внимательнее.">
         🔍 Не в боте {% if not_in_bot_count %}<span class="badge bg-danger ms-1">{{ not_in_bot_count }}</span>{% endif %}
       </a>
     </li>
-    {% endif %}
   </ul>
 
   <form method="get" class="mb-3 d-flex flex-wrap gap-2 align-items-center">

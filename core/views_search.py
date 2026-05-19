@@ -1233,9 +1233,6 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
 
     is_main_admin = getattr(request.user, "role", None) == "main_admin"
     tab = request.GET.get("tab", "pending")
-    # Вкладка «not_in_bot» — только для главного админа
-    if tab == "not_in_bot" and not is_main_admin:
-        tab = "pending"
 
     q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
     # Только отчёты где бот реально стартовал (вебхук подтвердил)
@@ -1244,8 +1241,9 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     if tab == "duplicate":
         reports_qs = reports_qs.filter(search_link__duplicate_of__isnull=False)
     elif tab == "not_in_bot":
-        # Сфокусированный фильтр для главного админа: только ручные привязки,
-        # клиент не в БД бота. Доступно только main_admin.
+        # Сфокусированный фильтр: только ручные привязки, клиент не в БД бота.
+        # Доступен и обычным модераторам — раньше был только у main_admin,
+        # но это удобный фильтр для проверки именно «ручных» случаев.
         reports_qs = (
             reports_qs
             .filter(search_link__duplicate_of__isnull=True)
@@ -1306,14 +1304,12 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
         search_link__bot_started=True,
         search_link__duplicate_of__isnull=False,
     ).count()
-    not_in_bot_count = (
-        SearchReport.objects.filter(
-            search_link__bot_started=True,
-            search_link__duplicate_of__isnull=True,
-            manual_unverified=True,
-            status=SearchReport.Status.PENDING,
-        ).count() if is_main_admin else 0
-    )
+    not_in_bot_count = SearchReport.objects.filter(
+        search_link__bot_started=True,
+        search_link__duplicate_of__isnull=True,
+        manual_unverified=True,
+        status=SearchReport.Status.PENDING,
+    ).count()
 
     return render(request, "core/admin_search_reports.html", {
         "page_obj": page_obj,
