@@ -3239,6 +3239,9 @@ def admin_calendar(request: HttpRequest) -> HttpResponse:
 
     show_status_events = request.GET.get("all") == "1"
 
+    # `conversations.last_profile` различает календарь Артёма vs Владимира
+    # (фича бота с 2026-05-18). Сюда тянем только Артёма + null (legacy до
+    # появления профилей). Календарь Владимира — у него отдельный.
     sql = """
         SELECT
             ce.id, ce.event_date, ce.event_time, ce.user_name, ce.user_username,
@@ -3252,6 +3255,7 @@ def admin_calendar(request: HttpRequest) -> HttpResponse:
         LEFT JOIN telegram_users tu ON tu.id = c.telegram_user_id
         LEFT JOIN bots b ON b.id = c.bot_id
         WHERE ce.event_date BETWEEN %s AND %s
+          AND (c.last_profile IS NULL OR c.last_profile <> 'vladimir')
         ORDER BY ce.event_date, ce.event_time NULLS LAST, ce.created_at
     """
 
