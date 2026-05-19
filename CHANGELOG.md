@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-05-19 (вечер) — `[feat]` Экспорт pending заявок на вывод в Excel
+
+На странице `/staff/withdrawal-requests/` появилась кнопка **📊 Excel** — выгрузка всех текущих pending-заявок одним файлом.
+
+Колонки: ID заявки, @username, ФИО (СМЗ), Аккредитован, Сумма (₽), Тип баланса (обычный/дожим), Реквизиты, Рефовод, Telegram ID, Дата подачи. Последней строкой — ИТОГО по сумме.
+
+URL: `/staff/withdrawal-requests/export/`. Только `main_admin`. Имя файла: `withdrawals_pending_YYYY-MM-DD.xlsx`.
+
 ## 2026-05-19 — `[feat]` Календарь /staff/calendar/ исключает события Владимира
 
 На windowgram появился второй профиль для Владимира — таблица `conversations` теперь хранит `last_profile = 'artem' / 'vladimir' / NULL`. У него отдельный календарь, а наш `/staff/calendar/` показывает только Артёма.
