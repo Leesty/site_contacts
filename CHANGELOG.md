@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-05-20 (день) — `[perf]` Дашборд главного админа: ~5× меньше запросов
+
+Жалоба «у главного админа лагает сайт, у меня нет». Профилировал — нашёл узкое место в `admin_stats_list` блоке дашборда:
+
+- Цикл по 8 staff юзерам.
+- На каждого `admin/main_admin` вызывались `total_actions()` + `total_earned()`, каждая делала 3 COUNT (Lead+SR+GR review logs). 6 одинаковых COUNT на юзера, 18 на 3 админов.
+- Для balance_admin внутри цикла **повторно** гонялся expensive JOIN-count `LeadReviewLog.filter(action=approved, lead__user__partner_owner__isnull=True)` на 53 695 строках.
+- Итого ~40 COUNT'ов на одну загрузку.
+
+Фикс:
+- Новая функция `actions_earned_for_admins(ids)` в `admin_earnings.py` — один `GROUP BY admin_id` на каждую review-log таблицу = 3 запроса на ВСЕХ админов сразу.
+- `withdrawn_by_user`, `pe_by_partner`, `refs_by_owner` — bulk-агрегаты, по 1 запросу.
+- `ba_total/ba_sr` для balance_admin'а вычисляются один раз перед циклом.
+
+Стало ~8 запросов вместо ~40. На 53к LeadReviewLog ускорение заметное.
+
+Совместимость: `total_actions/total_earned/count_lead_actions/...` остались — их используют другие места (context_processors, earnings stats). Проверил численно: bulk возвращает идентичные значения per-user функциям.
+
 ## 2026-05-20 — `[fix]` 1-я выплата без чека = `waived` навсегда
 
 Симптом: менеджер сделал свой 1-й вывод (по правилу «первый без чека»), его одобрили, а при попытке 2-го вывода получил блок «загрузите чек по предыдущей выплате». То есть «1-й без чека» работало только на момент СОЗДАНИЯ заявки, но не освобождало от чека НАВСЕГДА.
