@@ -44,128 +44,126 @@
 
   {# ═══ Обычные пользователи ═══ #}
   <h6 class="text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Обычные пользователи {% if pending_regular %}({{ pending_regular|length }}){% endif %}</h6>
-  <form method="post" id="bulkFormRegular">
-    {% csrf_token %}
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
+  {# Bulk-форма вынесена ИЗ карточки — иначе вложение её с per-row формами #}
+  {# даёт невалидный HTML и ломает все кнопки. Связь по атрибуту form="...". #}
+  <form method="post" id="bulkFormRegular" hidden>{% csrf_token %}</form>
+  <div class="card shadow-sm mb-4">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th style="width:36px;"><input type="checkbox" class="select-all-reg" title="Выбрать все" style="cursor:pointer;"></th>
+              <th>Пользователь</th>
+              <th>Аккр.</th>
+              <th>Сумма</th>
+              <th>Реквизиты</th>
+              <th>Дата</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for req in pending_regular %}
               <tr>
-                <th style="width:36px;"><input type="checkbox" class="select-all-reg" title="Выбрать все" style="cursor:pointer;"></th>
-                <th>Пользователь</th>
-                <th>Аккр.</th>
-                <th>Сумма</th>
-                <th>Реквизиты</th>
-                <th>Дата</th>
-                <th>Действия</th>
+                <td><input type="checkbox" name="bulk_ids" value="{{ req.pk }}" form="bulkFormRegular" class="row-check-reg" style="cursor:pointer;"></td>
+                <td>
+                  <a href="{% url 'admin_user_leads_list' req.user.pk %}">@{{ req.user.username }}</a>
+                  <a href="{% url 'admin_user_lead_stats' req.user.pk %}" class="small text-muted ms-1">стат.</a>
+                </td>
+                <td>
+                  {% if req.user.is_accredited %}<span class="badge bg-success" style="font-size:10px;">✓</span>
+                  {% else %}<span class="badge bg-secondary" style="font-size:10px;">—</span>{% endif %}
+                </td>
+                <td>{{ req.amount }} ₽</td>
+                <td style="max-width: 220px; white-space: pre-wrap; font-size: 12px;">{{ req.payout_details|default:"—" }}</td>
+                <td class="text-muted small">{{ req.created_at|date:"d.m.Y H:i" }}</td>
+                <td>
+                  <form method="post" class="d-inline" onsubmit="return confirm('Одобрить {{ req.amount }}₽ @{{ req.user.username }}?');">
+                    {% csrf_token %}<input type="hidden" name="request_id" value="{{ req.pk }}"><input type="hidden" name="action" value="approve">
+                    <button type="submit" class="btn btn-outline-success btn-sm py-0">Одобрить</button>
+                  </form>
+                  <form method="post" class="d-inline" onsubmit="return confirm('Отклонить @{{ req.user.username }}?');">
+                    {% csrf_token %}<input type="hidden" name="request_id" value="{{ req.pk }}"><input type="hidden" name="action" value="reject">
+                    <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
+                  </form>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {% for req in pending_regular %}
-                <tr>
-                  <td><input type="checkbox" name="bulk_ids" value="{{ req.pk }}" class="row-check-reg" style="cursor:pointer;"></td>
-                  <td>
-                    <a href="{% url 'admin_user_leads_list' req.user.pk %}">@{{ req.user.username }}</a>
-                    <a href="{% url 'admin_user_lead_stats' req.user.pk %}" class="small text-muted ms-1">стат.</a>
-                  </td>
-                  <td>
-                    {% if req.user.is_accredited %}<span class="badge bg-success" style="font-size:10px;">✓</span>
-                    {% else %}<span class="badge bg-secondary" style="font-size:10px;">—</span>{% endif %}
-                  </td>
-                  <td>{{ req.amount }} ₽</td>
-                  <td style="max-width: 220px; white-space: pre-wrap; font-size: 12px;">{{ req.payout_details|default:"—" }}</td>
-                  <td class="text-muted small">{{ req.created_at|date:"d.m.Y H:i" }}</td>
-                  <td>
-                    <form method="post" class="d-inline" onsubmit="return confirm('Одобрить {{ req.amount }}₽ @{{ req.user.username }}?');">
-                      {% csrf_token %}<input type="hidden" name="request_id" value="{{ req.pk }}"><input type="hidden" name="action" value="approve">
-                      <button type="submit" class="btn btn-outline-success btn-sm py-0">Одобрить</button>
-                    </form>
-                    <form method="post" class="d-inline" onsubmit="return confirm('Отклонить @{{ req.user.username }}?');">
-                      {% csrf_token %}<input type="hidden" name="request_id" value="{{ req.pk }}"><input type="hidden" name="action" value="reject">
-                      <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
-                    </form>
-                  </td>
-                </tr>
-              {% empty %}
-                <tr><td colspan="7" class="text-muted py-3 text-center">Нет заявок.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+            {% empty %}
+              <tr><td colspan="7" class="text-muted py-3 text-center">Нет заявок.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      {% if pending_regular %}
-        <div class="card-footer border-secondary d-flex align-items-center gap-2 py-2">
-          <span class="text-muted small" id="countReg">Выбрано: 0</span>
-          <button type="submit" name="action" value="bulk_approve" class="btn btn-success btn-sm" id="btnApproveReg" disabled onclick="return confirm('Одобрить выбранные?');">✓ Одобрить</button>
-          <button type="submit" name="action" value="bulk_reject" class="btn btn-danger btn-sm" id="btnRejectReg" disabled onclick="return confirm('Отклонить выбранные?');">✗ Отклонить</button>
-        </div>
-      {% endif %}
     </div>
-  </form>
+    {% if pending_regular %}
+      <div class="card-footer border-secondary d-flex align-items-center gap-2 py-2">
+        <span class="text-muted small" id="countReg">Выбрано: 0</span>
+        <button type="submit" form="bulkFormRegular" name="action" value="bulk_approve" class="btn btn-success btn-sm" id="btnApproveReg" disabled onclick="return confirm('Одобрить выбранные?');">✓ Одобрить</button>
+        <button type="submit" form="bulkFormRegular" name="action" value="bulk_reject" class="btn btn-danger btn-sm" id="btnRejectReg" disabled onclick="return confirm('Отклонить выбранные?');">✗ Отклонить</button>
+      </div>
+    {% endif %}
+  </div>
 
   {# ═══ Рефералы ═══ #}
   <h6 class="text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Рефералы {% if pending_referrals %}({{ pending_referrals|length }}){% endif %}</h6>
-  <form method="post" id="bulkFormRef">
-    {% csrf_token %}
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
+  <form method="post" id="bulkFormRef" hidden>{% csrf_token %}</form>
+  <div class="card shadow-sm mb-4">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th style="width:36px;"><input type="checkbox" class="select-all-ref" title="Выбрать все" style="cursor:pointer;"></th>
+              <th>Пользователь</th>
+              <th>Рефовод</th>
+              <th>Аккр.</th>
+              <th>Сумма</th>
+              <th>Реквизиты</th>
+              <th>Дата</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for req in pending_referrals %}
               <tr>
-                <th style="width:36px;"><input type="checkbox" class="select-all-ref" title="Выбрать все" style="cursor:pointer;"></th>
-                <th>Пользователь</th>
-                <th>Рефовод</th>
-                <th>Аккр.</th>
-                <th>Сумма</th>
-                <th>Реквизиты</th>
-                <th>Дата</th>
-                <th>Действия</th>
+                <td><input type="checkbox" name="bulk_ids" value="{{ req.pk }}" form="bulkFormRef" class="row-check-ref" style="cursor:pointer;"></td>
+                <td>
+                  <a href="{% url 'admin_user_leads_list' req.user.pk %}">@{{ req.user.username }}</a>
+                </td>
+                <td class="small">@{{ req.user.partner_owner.username }}</td>
+                <td>
+                  {% if req.user.is_accredited %}<span class="badge bg-success" style="font-size:10px;">✓</span>
+                  {% else %}<span class="badge bg-secondary" style="font-size:10px;">—</span>{% endif %}
+                </td>
+                <td>{{ req.amount }} ₽</td>
+                <td style="max-width: 220px; white-space: pre-wrap; font-size: 12px;">{{ req.payout_details|default:"—" }}</td>
+                <td class="text-muted small">{{ req.created_at|date:"d.m.Y H:i" }}</td>
+                <td>
+                  <form method="post" class="d-inline" onsubmit="return confirm('Одобрить {{ req.amount }}₽ @{{ req.user.username }}?');">
+                    {% csrf_token %}<input type="hidden" name="request_id" value="{{ req.pk }}"><input type="hidden" name="action" value="approve">
+                    <button type="submit" class="btn btn-outline-success btn-sm py-0">Одобрить</button>
+                  </form>
+                  <form method="post" class="d-inline" onsubmit="return confirm('Отклонить @{{ req.user.username }}?');">
+                    {% csrf_token %}<input type="hidden" name="request_id" value="{{ req.pk }}"><input type="hidden" name="action" value="reject">
+                    <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
+                  </form>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {% for req in pending_referrals %}
-                <tr>
-                  <td><input type="checkbox" name="bulk_ids" value="{{ req.pk }}" class="row-check-ref" style="cursor:pointer;"></td>
-                  <td>
-                    <a href="{% url 'admin_user_leads_list' req.user.pk %}">@{{ req.user.username }}</a>
-                  </td>
-                  <td class="small">@{{ req.user.partner_owner.username }}</td>
-                  <td>
-                    {% if req.user.is_accredited %}<span class="badge bg-success" style="font-size:10px;">✓</span>
-                    {% else %}<span class="badge bg-secondary" style="font-size:10px;">—</span>{% endif %}
-                  </td>
-                  <td>{{ req.amount }} ₽</td>
-                  <td style="max-width: 220px; white-space: pre-wrap; font-size: 12px;">{{ req.payout_details|default:"—" }}</td>
-                  <td class="text-muted small">{{ req.created_at|date:"d.m.Y H:i" }}</td>
-                  <td>
-                    <form method="post" class="d-inline" onsubmit="return confirm('Одобрить {{ req.amount }}₽ @{{ req.user.username }}?');">
-                      {% csrf_token %}<input type="hidden" name="request_id" value="{{ req.pk }}"><input type="hidden" name="action" value="approve">
-                      <button type="submit" class="btn btn-outline-success btn-sm py-0">Одобрить</button>
-                    </form>
-                    <form method="post" class="d-inline" onsubmit="return confirm('Отклонить @{{ req.user.username }}?');">
-                      {% csrf_token %}<input type="hidden" name="request_id" value="{{ req.pk }}"><input type="hidden" name="action" value="reject">
-                      <button type="submit" class="btn btn-outline-danger btn-sm py-0">Откл.</button>
-                    </form>
-                  </td>
-                </tr>
-              {% empty %}
-                <tr><td colspan="8" class="text-muted py-3 text-center">Нет заявок от рефералов.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+            {% empty %}
+              <tr><td colspan="8" class="text-muted py-3 text-center">Нет заявок от рефералов.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      {% if pending_referrals %}
-        <div class="card-footer border-secondary d-flex align-items-center gap-2 py-2">
-          <span class="text-muted small" id="countRef">Выбрано: 0</span>
-          <button type="submit" name="action" value="bulk_approve" class="btn btn-success btn-sm" id="btnApproveRef" disabled onclick="return confirm('Одобрить выбранные?');">✓ Одобрить</button>
-          <button type="submit" name="action" value="bulk_reject" class="btn btn-danger btn-sm" id="btnRejectRef" disabled onclick="return confirm('Отклонить выбранные?');">✗ Отклонить</button>
-        </div>
-      {% endif %}
     </div>
-  </form>
+    {% if pending_referrals %}
+      <div class="card-footer border-secondary d-flex align-items-center gap-2 py-2">
+        <span class="text-muted small" id="countRef">Выбрано: 0</span>
+        <button type="submit" form="bulkFormRef" name="action" value="bulk_approve" class="btn btn-success btn-sm" id="btnApproveRef" disabled onclick="return confirm('Одобрить выбранные?');">✓ Одобрить</button>
+        <button type="submit" form="bulkFormRef" name="action" value="bulk_reject" class="btn btn-danger btn-sm" id="btnRejectRef" disabled onclick="return confirm('Отклонить выбранные?');">✗ Отклонить</button>
+      </div>
+    {% endif %}
+  </div>
 
   {# ═══ История ═══ #}
   <h6 class="text-uppercase mt-3 mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">История заявок</h6>
