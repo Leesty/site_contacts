@@ -550,20 +550,13 @@ def admin_group_reports_list(request: HttpRequest) -> HttpResponse:
     tab = request.GET.get("tab", "pending")
     if tab not in VALID_TABS:
         tab = "pending"
-    # Вкладка «Не полные» — только для главного админа
-    if tab == "incomplete" and not is_main:
-        tab = "pending"
 
     qs = GroupReport.objects.select_related("user", "reviewed_by").order_by("-created_at")
 
-    # Обычный админ ВООБЩЕ не видит is_complete=False
-    if not is_main:
-        qs = qs.filter(is_complete=True)
-
     if tab == "pending":
-        qs = qs.filter(status=GroupReport.Status.PENDING)
-        if is_main:
-            qs = qs.filter(is_complete=True)  # на проверке у админа — только полные
+        # Вкладка «Новые» — только is_complete=True (для фокуса). Не полные
+        # отчёты теперь идут в свою вкладку «Не полные» (доступна всем админам).
+        qs = qs.filter(status=GroupReport.Status.PENDING, is_complete=True)
     elif tab == "rework":
         qs = qs.filter(status=GroupReport.Status.REWORK)
     elif tab == "approved":
@@ -595,9 +588,13 @@ def admin_group_reports_list(request: HttpRequest) -> HttpResponse:
             is_complete=True,
         ).count(),
         "rework": GroupReport.objects.filter(status=GroupReport.Status.REWORK).count(),
+        # «Не полные» — pending+rework с is_complete=False, доступно ВСЕМ админам
+        # (ставка та же что и у обычных GroupReport approve).
+        "incomplete": GroupReport.objects.filter(
+            is_complete=False,
+            status__in=[GroupReport.Status.PENDING, GroupReport.Status.REWORK],
+        ).count(),
     }
-    if is_main:
-        counts["incomplete"] = GroupReport.objects.filter(is_complete=False).count()
 
     return render(request, "core/admin_group_reports.html", {
         "page_obj": page_obj,
@@ -614,9 +611,6 @@ def admin_group_report_attachment(request: HttpRequest, report_id: int) -> HttpR
     if not _is_admin_or_main(request.user):
         return HttpResponseForbidden("Недостаточно прав.")
     report = get_object_or_404(GroupReport, pk=report_id)
-    # Обычный админ не видит вложения incomplete-отчётов
-    if not _is_main_admin(request.user) and not report.is_complete:
-        return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
     if not report.screencast:
         return HttpResponseForbidden("Файл не приложен.")
     return FileResponse(report.screencast.open("rb"), as_attachment=False,
@@ -686,10 +680,6 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
         )
         if not report:
             return _resp_or_redirect(False, "Отчёт не найден.")
-        if not _is_main_admin(request.user) and not report.is_complete:
-            if is_ajax:
-                return JsonResponse({"success": False, "message": "Этот отчёт не прошёл авто-валидацию."}, status=403)
-            return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
         if report.status == GroupReport.Status.APPROVED:
             return _resp_or_redirect(False, f"Отчёт #{report_id} уже одобрен.")
 
@@ -764,8 +754,6 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
     if not _is_admin_or_main(request.user):
         return HttpResponseForbidden("Недостаточно прав.")
     report = get_object_or_404(GroupReport, pk=report_id)
-    if not _is_main_admin(request.user) and not report.is_complete:
-        return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
 
     if request.method == "POST":
         form = GroupReportRejectForm(request.POST)
@@ -824,8 +812,6 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
     if not _is_admin_or_main(request.user):
         return HttpResponseForbidden("Недостаточно прав.")
     report = get_object_or_404(GroupReport, pk=report_id)
-    if not _is_main_admin(request.user) and not report.is_complete:
-        return HttpResponseForbidden("Этот отчёт не прошёл авто-валидацию.")
 
     if request.method == "POST":
         form = GroupReportReworkForm(request.POST)

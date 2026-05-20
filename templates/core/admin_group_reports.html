@@ -12,7 +12,8 @@
     </h1>
     <p class="text-muted small mb-0">
       Approve начисляет менеджеру <strong>{{ reward }} ₽</strong>.
-      {% if is_main %}<span class="text-warning">Вам видны и «не полные» отчёты — у админов их нет.</span>{% endif %}
+      Во вкладке «⚠ Не полные» — отчёты, которые не прошли авто-валидацию;
+      ставка та же, проверять надо вручнее (читай <code>validation_note</code>).
     </p>
   </div>
   {% if is_main %}
@@ -29,11 +30,10 @@
   </a></li>
   <li class="nav-item"><a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a></li>
   <li class="nav-item"><a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые</a></li>
-  {% if is_main %}
-    <li class="nav-item"><a class="nav-link {% if tab == 'incomplete' %}active{% endif %}" href="?tab=incomplete">
-      ⚠ Не полные {% if counts.incomplete %}<span class="badge bg-secondary ms-1">{{ counts.incomplete }}</span>{% endif %}
-    </a></li>
-  {% endif %}
+  <li class="nav-item"><a class="nav-link {% if tab == 'incomplete' %}active{% endif %}" href="?tab=incomplete"
+       title="Отчёты не прошедшие авто-валидацию (artem_invited/link/offer/sozvon). Проверяй вручную по скринкасту.">
+    ⚠ Не полные {% if counts.incomplete %}<span class="badge bg-warning text-dark ms-1">{{ counts.incomplete }}</span>{% endif %}
+  </a></li>
 </ul>
 
 <form method="get" class="mb-3 d-flex gap-2">
@@ -104,14 +104,10 @@
               </td>
               {% if tab == 'pending' or tab == 'rework' or tab == 'incomplete' %}
               <td class="text-nowrap" data-row-id="{{ r.id }}">
-                {% if r.is_complete or is_main %}
-                  <button type="button" class="btn btn-success btn-sm py-0 js-gr-approve"
-                          data-report-id="{{ r.id }}" title="Одобрить">✓</button>
-                  <a href="{% url 'admin_group_report_rework' r.id %}" class="btn btn-warning btn-sm py-0">✎</a>
-                  <a href="{% url 'admin_group_report_reject' r.id %}" class="btn btn-danger btn-sm py-0">✗</a>
-                {% else %}
-                  <span class="text-muted small">только главный админ</span>
-                {% endif %}
+                <button type="button" class="btn btn-success btn-sm py-0 js-gr-approve"
+                        data-report-id="{{ r.id }}" title="Одобрить">✓</button>
+                <a href="{% url 'admin_group_report_rework' r.id %}" class="btn btn-warning btn-sm py-0">✎</a>
+                <a href="{% url 'admin_group_report_reject' r.id %}" class="btn btn-danger btn-sm py-0">✗</a>
               </td>
               {% endif %}
               {% if tab == 'rework' %}<td class="small text-muted">{{ r.rework_comment|truncatewords:12 }}</td>{% endif %}
