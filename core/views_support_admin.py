@@ -1528,6 +1528,15 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                 now = timezone.now()
                 if action == "approve":
                     wreq.status = "approved"
+                    # «1-й вывод — без чека навсегда»: если у юзера это первая
+                    # одобренная выплата — помечаем receipt_status='waived',
+                    # иначе при попытке 2-го вывода юзер был бы заблокирован
+                    # гейтом «загрузите чек по предыдущей выплате».
+                    _other_approved = WithdrawalRequest.objects.filter(
+                        user=wreq.user, status="approved",
+                    ).exclude(pk=wreq.pk).exists()
+                    if not _other_approved:
+                        wreq.receipt_status = "waived"
                     messages.success(
                         request,
                         f"Вывод @{wreq.user.username} на {wreq.amount} руб. одобрен.",
@@ -1548,7 +1557,7 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                     messages.info(request, f"Заявка от @{wreq.user.username} отклонена. Баланс восстановлен.")
                 wreq.processed_at = now
                 wreq.processed_by = request.user
-                wreq.save(update_fields=["status", "processed_at", "processed_by"])
+                wreq.save(update_fields=["status", "receipt_status", "processed_at", "processed_by"])
             return redirect("admin_withdrawal_requests")
         # ── массовое действие ───────────────────────────────────────────
         bulk_ids = request.POST.getlist("bulk_ids")
@@ -1565,6 +1574,12 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                 for wreq in wreqs:
                     if action == "bulk_approve":
                         wreq.status = "approved"
+                        # 1-й вывод — без чека навсегда (см. комментарий в одиночном approve)
+                        _other_approved = WithdrawalRequest.objects.filter(
+                            user=wreq.user, status="approved",
+                        ).exclude(pk=wreq.pk).exists()
+                        if not _other_approved:
+                            wreq.receipt_status = "waived"
                         approved_count += 1
                     else:
                         _is_dozhim_wr = wreq.payout_details and wreq.payout_details.startswith("[Дожим]")
@@ -1578,7 +1593,7 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                         rejected_count += 1
                     wreq.processed_at = now
                     wreq.processed_by = request.user
-                    wreq.save(update_fields=["status", "processed_at", "processed_by"])
+                    wreq.save(update_fields=["status", "receipt_status", "processed_at", "processed_by"])
             if approved_count:
                 messages.success(request, f"Одобрено заявок: {approved_count}.")
             if rejected_count:
