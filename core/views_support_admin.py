@@ -1366,9 +1366,13 @@ def balance_admin_contact_requests(request: HttpRequest) -> HttpResponse:
 def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
     """Экспорт ОДОБРЕННЫХ заявок на вывод за период в Excel.
 
-    Только main_admin. Период через `?period=today|yesterday|7days`
-    (по умолчанию `today`). Фильтр по `processed_at` (момент одобрения),
-    статус=approved.
+    Только main_admin. Период:
+      - `?period=today|yesterday|7days` — быстрые пресеты
+      - `?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — точный диапазон
+        (включительно, по local MSK день)
+    Если не указано — today.
+
+    Фильтр по `processed_at` (момент одобрения), статус=approved.
 
     Колонки: ID, @username, ФИО, аккредитация, сумма, реквизиты, тип
     баланса (обычный/дожим), рефовод, Telegram ID, дата подачи, дата
@@ -1377,19 +1381,43 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
 
-    from datetime import timedelta
+    from datetime import timedelta, datetime as _dt
 
-    period = (request.GET.get("period") or "today").lower()
     now_local = timezone.localtime(timezone.now())
     today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    tz = now_local.tzinfo
 
-    if period == "yesterday":
+    date_from_raw = (request.GET.get("date_from") or "").strip()
+    date_to_raw = (request.GET.get("date_to") or "").strip()
+    period = (request.GET.get("period") or "").lower()
+
+    def _parse_date(s: str):
+        try:
+            return _dt.strptime(s, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    custom_from = _parse_date(date_from_raw)
+    custom_to = _parse_date(date_to_raw)
+
+    if custom_from and custom_to:
+        # Точный диапазон. Включительно: date_to + 1 день для end.
+        if custom_to < custom_from:
+            custom_from, custom_to = custom_to, custom_from  # swap
+        period_start = _dt.combine(custom_from, _dt.min.time()).replace(tzinfo=tz)
+        period_end = _dt.combine(custom_to + timedelta(days=1), _dt.min.time()).replace(tzinfo=tz)
+        period_label = f"{custom_from.strftime('%Y-%m-%d')}_{custom_to.strftime('%Y-%m-%d')}"
+        if custom_from == custom_to:
+            period_title = f"за {custom_from.strftime('%d.%m.%Y')}"
+        else:
+            period_title = f"за {custom_from.strftime('%d.%m.%Y')}—{custom_to.strftime('%d.%m.%Y')}"
+    elif period == "yesterday":
         period_start = today_start - timedelta(days=1)
         period_end = today_start
         period_label = "yesterday"
         period_title = f"за вчера ({(today_start - timedelta(days=1)).strftime('%d.%m.%Y')})"
     elif period == "7days":
-        period_start = today_start - timedelta(days=6)  # 7 дней включая сегодня
+        period_start = today_start - timedelta(days=6)
         period_end = today_start + timedelta(days=1)
         period_label = "7days"
         period_title = f"за 7 дней ({period_start.strftime('%d.%m')}—{now_local.strftime('%d.%m.%Y')})"

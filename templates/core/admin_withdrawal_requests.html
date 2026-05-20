@@ -9,18 +9,31 @@
   </div>
 
   <div class="card shadow-sm mb-3">
-    <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-      <strong class="me-2 small">📊 Экспорт одобренных выводов:</strong>
-      <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=today">
-        Сегодня
-      </a>
-      <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=yesterday">
-        Вчера
-      </a>
-      <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=7days">
-        Последние 7 дней
-      </a>
-      <span class="text-muted small ms-2">— xlsx со всеми approved за период</span>
+    <div class="card-body py-2">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <strong class="me-2 small">📊 Экспорт одобренных выводов:</strong>
+        <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=today">
+          Сегодня
+        </a>
+        <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=yesterday">
+          Вчера
+        </a>
+        <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=7days">
+          7 дней
+        </a>
+        <span class="text-muted small ms-2 d-none d-md-inline">или укажи диапазон вручную →</span>
+      </div>
+      <form method="get" action="{% url 'admin_withdrawal_requests_export' %}"
+            class="d-flex flex-wrap align-items-center gap-2 mt-2">
+        <label class="small text-muted mb-0">С:</label>
+        <input type="date" name="date_from" class="form-control form-control-sm" style="max-width:160px;" required>
+        <label class="small text-muted mb-0">по:</label>
+        <input type="date" name="date_to" class="form-control form-control-sm" style="max-width:160px;" required>
+        <button type="submit" class="btn btn-success btn-sm">
+          📅 Скачать за диапазон
+        </button>
+        <span class="text-muted small">включительно, MSK</span>
+      </form>
     </div>
   </div>
 
