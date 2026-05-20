@@ -5,13 +5,22 @@
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="h4 mb-0">Заявки на вывод</h1>
-    <div class="d-flex gap-2">
-      <a class="btn btn-outline-success btn-sm"
-         href="{% url 'admin_withdrawal_requests_export' %}"
-         title="Скачать текущие pending заявки списком (xlsx)">
-        📊 Excel
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+      <strong class="me-2 small">📊 Экспорт одобренных выводов:</strong>
+      <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=today">
+        Сегодня
       </a>
-      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+      <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=yesterday">
+        Вчера
+      </a>
+      <a class="btn btn-outline-success btn-sm" href="{% url 'admin_withdrawal_requests_export' %}?period=7days">
+        Последние 7 дней
+      </a>
+      <span class="text-muted small ms-2">— xlsx со всеми approved за период</span>
     </div>
   </div>
 

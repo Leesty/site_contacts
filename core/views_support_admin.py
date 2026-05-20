@@ -1364,25 +1364,57 @@ def balance_admin_contact_requests(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
-    """Экспорт текущих заявок на вывод (status=pending) в Excel.
+    """Экспорт ОДОБРЕННЫХ заявок на вывод за период в Excel.
 
-    Только main_admin. Один лист со всеми pending: ID, username, ФИО,
-    аккредитация, сумма, реквизиты, тип баланса (обычный/дожим),
-    рефовод (если есть), дата подачи.
+    Только main_admin. Период через `?period=today|yesterday|7days`
+    (по умолчанию `today`). Фильтр по `processed_at` (момент одобрения),
+    статус=approved.
+
+    Колонки: ID, @username, ФИО, аккредитация, сумма, реквизиты, тип
+    баланса (обычный/дожим), рефовод, Telegram ID, дата подачи, дата
+    одобрения, кто одобрил.
     """
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
 
+    from datetime import timedelta
+
+    period = (request.GET.get("period") or "today").lower()
+    now_local = timezone.localtime(timezone.now())
+    today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period == "yesterday":
+        period_start = today_start - timedelta(days=1)
+        period_end = today_start
+        period_label = "yesterday"
+        period_title = f"за вчера ({(today_start - timedelta(days=1)).strftime('%d.%m.%Y')})"
+    elif period == "7days":
+        period_start = today_start - timedelta(days=6)  # 7 дней включая сегодня
+        period_end = today_start + timedelta(days=1)
+        period_label = "7days"
+        period_title = f"за 7 дней ({period_start.strftime('%d.%m')}—{now_local.strftime('%d.%m.%Y')})"
+    else:  # today (default)
+        period_start = today_start
+        period_end = today_start + timedelta(days=1)
+        period_label = "today"
+        period_title = f"за сегодня ({now_local.strftime('%d.%m.%Y')})"
+
     qs = (
         WithdrawalRequest.objects
-        .filter(status="pending")
-        .select_related("user", "user__partner_owner")
-        .order_by("created_at")
+        .filter(
+            status="approved",
+            processed_at__gte=period_start,
+            processed_at__lt=period_end,
+        )
+        .select_related("user", "user__partner_owner", "processed_by")
+        .order_by("processed_at")
     )
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Заявки на вывод"
+    ws.title = f"Выводы {period_label}"
+    ws.append([f"Одобренные выводы {period_title}"])
+    ws.append([])
     ws.append([
         "ID заявки",
         "@username",
@@ -1394,6 +1426,8 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
         "Рефовод",
         "Telegram ID",
         "Дата подачи",
+        "Дата одобрения",
+        "Кто одобрил",
     ])
 
     total_amount = 0
@@ -1402,6 +1436,8 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
         owner = getattr(req.user, "partner_owner", None)
         owner_str = f"@{owner.username}" if owner else ""
         tg_id = req.user.telegram_id or ""
+        approver = req.processed_by.username if req.processed_by else ""
+        processed_str = timezone.localtime(req.processed_at).strftime("%d.%m.%Y %H:%M") if req.processed_at else ""
         ws.append([
             req.pk,
             req.user.username,
@@ -1413,16 +1449,19 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
             owner_str,
             tg_id,
             timezone.localtime(req.created_at).strftime("%d.%m.%Y %H:%M"),
+            processed_str,
+            approver,
         ])
         total_amount += req.amount
 
-    # Итоговая строка
     if qs:
         ws.append([])
         ws.append(["", "", "", "ИТОГО:", total_amount])
+    else:
+        ws.append([])
+        ws.append(["Нет одобренных выводов за выбранный период."])
 
-    # Ширина колонок
-    widths = [10, 22, 28, 13, 11, 14, 50, 16, 16, 17]
+    widths = [10, 22, 28, 13, 11, 14, 50, 16, 16, 17, 17, 18]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[chr(64 + i)].width = w
 
@@ -1433,8 +1472,8 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
         buffer.getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    today = timezone.localtime(timezone.now()).strftime("%Y-%m-%d")
-    response["Content-Disposition"] = f'attachment; filename="withdrawals_pending_{today}.xlsx"'
+    today_str = now_local.strftime("%Y-%m-%d")
+    response["Content-Disposition"] = f'attachment; filename="withdrawals_approved_{period_label}_{today_str}.xlsx"'
     return response
 
 
