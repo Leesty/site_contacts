@@ -36,8 +36,6 @@
         {% endif %}
         {% endwith %}
 
-        {# Форма загрузки видна всегда (кроме approved/waived — они не попадают в receiptless_withdrawals).
-           Можно докидывать чеки и при pending, и при rejected, и если ничего не загружено. #}
         <form method="post" action="{% url 'receipt_upload' wr.pk %}" enctype="multipart/form-data"
               class="d-flex flex-wrap gap-1 mt-2 align-items-center">
           {% csrf_token %}
