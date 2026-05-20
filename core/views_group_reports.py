@@ -564,8 +564,14 @@ def admin_group_reports_list(request: HttpRequest) -> HttpResponse:
     elif tab == "rejected":
         qs = qs.filter(status=GroupReport.Status.REJECTED)
     elif tab == "incomplete":
-        # «Не полные» — только если is_complete=False, любой статус
-        qs = qs.filter(is_complete=False)
+        # «Не полные» — is_complete=False + только то что РЕАЛЬНО на проверке
+        # (pending или rework). Approved/rejected — уже разобраны и не должны
+        # висеть в этой вкладке, иначе админ их «одобряет повторно» и ловит
+        # «Отчёт #N уже одобрен».
+        qs = qs.filter(
+            is_complete=False,
+            status__in=[GroupReport.Status.PENDING, GroupReport.Status.REWORK],
+        )
 
     q = (request.GET.get("q") or "").strip()
     if q:
