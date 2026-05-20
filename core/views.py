@@ -319,31 +319,87 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         }
 
         if _is_main_admin(user):
-            # Статистика всех админов для main_admin
+            # Статистика всех админов для main_admin.
+            # Оптимизация: один agg-запрос на каждую сущность вместо 6+
+            # запросов на каждого юзера в цикле (раньше дашборд делал
+            # ~40 COUNT'ов, сейчас ~8).
             from .models import PartnerEarning
-            all_staff = User.objects.filter(role__in=("admin", "partner", "balance_admin")).exclude(pk=3).order_by("role", "username")
+            from .admin_earnings import actions_earned_for_admins
+            all_staff = list(
+                User.objects.filter(role__in=("admin", "partner", "balance_admin"))
+                .exclude(pk=3).order_by("role", "username")
+            )
+            staff_ids = [u.id for u in all_staff]
+
+            # Сумма выводов по всем staff одним запросом
+            withdrawn_by_user: dict[int, int] = dict(
+                WithdrawalRequest.objects
+                .filter(user_id__in=staff_ids, status__in=("pending", "approved"))
+                .values("user_id").annotate(s=Sum("amount"))
+                .values_list("user_id", "s")
+            )
+
+            # Для админских ролей: actions/earned bulk
+            admin_role_ids = [u.id for u in all_staff if u.role in ("admin", "main_admin")]
+            admin_ae = actions_earned_for_admins(admin_role_ids)
+
+            # Для партнёров: bulk PartnerEarning sums + bulk referral counts
+            partner_ids = [u.id for u in all_staff if u.role == "partner"]
+            pe_by_partner: dict[int, int] = dict(
+                PartnerEarning.objects.filter(partner_id__in=partner_ids)
+                .values("partner_id").annotate(s=Sum("amount"))
+                .values_list("partner_id", "s")
+            ) if partner_ids else {}
+            refs_by_owner: dict[int, int] = dict(
+                User.objects.filter(partner_owner_id__in=partner_ids)
+                .values("partner_owner_id").annotate(c=Count("id"))
+                .values_list("partner_owner_id", "c")
+            ) if partner_ids else {}
+
+            # Для баланс-админа: общие counts одинаковые для всех balance_admin'ов,
+            # считаем ОДИН раз (раньше — для каждого balance_admin'а заново).
+            ba_total = ba_sr = 0
+            if any(u.role == "balance_admin" for u in all_staff):
+                from .models import SearchReport as _SR
+                ba_total = LeadReviewLog.objects.filter(
+                    action=LeadReviewLog.Action.APPROVED,
+                    lead__user__partner_owner__isnull=True,
+                ).count()
+                ba_sr = _SR.objects.filter(
+                    status=_SR.Status.APPROVED,
+                    user__partner_owner__isnull=True,
+                ).count()
+
             admin_stats_list = []
             for a in all_staff:
+                a_withdrawn = withdrawn_by_user.get(a.id, 0) or 0
                 if a.role in ("admin", "main_admin"):
-                    a_actions = _ae_actions(a)
-                    a_earned = _ae_earned(a)
-                    a_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
-                    admin_stats_list.append({"user": a, "role_label": "Админ", "actions": a_actions, "earned": a_earned, "available": max(0, a_earned - a_withdrawn)})
+                    ae = admin_ae.get(a.id, {"actions": 0, "earned": 0})
+                    a_actions = ae["actions"]
+                    a_earned = ae["earned"]
+                    admin_stats_list.append({
+                        "user": a, "role_label": "Админ",
+                        "actions": a_actions, "earned": a_earned,
+                        "available": max(0, a_earned - a_withdrawn),
+                    })
                 elif a.role == "partner":
-                    p_earned = PartnerEarning.objects.filter(partner=a).aggregate(s=Sum("amount")).get("s") or 0
-                    p_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
-                    p_referrals = User.objects.filter(partner_owner=a).count()
-                    admin_stats_list.append({"user": a, "role_label": f"Партнёр ({a.partner_rate}₽)", "actions": p_referrals, "earned": p_earned, "available": max(0, (a.balance or 0))})
+                    p_earned = pe_by_partner.get(a.id, 0) or 0
+                    p_referrals = refs_by_owner.get(a.id, 0) or 0
+                    admin_stats_list.append({
+                        "user": a, "role_label": f"Партнёр ({a.partner_rate}₽)",
+                        "actions": p_referrals, "earned": p_earned,
+                        "available": max(0, (a.balance or 0)),
+                    })
                 elif a.role == "balance_admin":
-                    from .models import SearchReport as _SR
-                    ba_total = LeadReviewLog.objects.filter(action=LeadReviewLog.Action.APPROVED, lead__user__partner_owner__isnull=True).count()
-                    ba_sr = _SR.objects.filter(status=_SR.Status.APPROVED, user__partner_owner__isnull=True).count()
                     ba_rate = a.balance_admin_rate or Decimal("5")
                     ba_sl_rate = a.balance_admin_searchlink_rate or Decimal("15")
                     ba_offset = a.balance_admin_earnings_offset or Decimal("0")
                     ba_earned = int(ba_total * ba_rate + ba_sr * ba_sl_rate + ba_offset)
-                    ba_withdrawn = WithdrawalRequest.objects.filter(user=a, status__in=("pending", "approved")).aggregate(s=Sum("amount")).get("s") or 0
-                    admin_stats_list.append({"user": a, "role_label": f"Баланс-админ ({ba_rate}₽ + SL {ba_sl_rate}₽)", "actions": "—", "earned": ba_earned, "available": max(0, ba_earned - ba_withdrawn)})
+                    admin_stats_list.append({
+                        "user": a, "role_label": f"Баланс-админ ({ba_rate}₽ + SL {ba_sl_rate}₽)",
+                        "actions": "—", "earned": ba_earned,
+                        "available": max(0, ba_earned - a_withdrawn),
+                    })
             ctx["admin_stats_list"] = admin_stats_list
             # Счётчик созвонов на сегодня (для карточки «Календарь»). Soft-fail если БД бота недоступна.
             try:
