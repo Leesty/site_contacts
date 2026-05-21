@@ -27,11 +27,6 @@
       <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected{% if q %}&q={{ q|urlencode }}{% endif %}">Отклонённые</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'duplicate' %}active{% endif %}" href="?tab=duplicate{% if q %}&q={{ q|urlencode }}{% endif %}">
-        Дубликаты {% if duplicate_count %}<span class="badge bg-secondary ms-1">{{ duplicate_count }}</span>{% endif %}
-      </a>
-    </li>
-    <li class="nav-item">
       <a class="nav-link {% if tab == 'not_in_bot' %}active{% endif %}" href="?tab=not_in_bot{% if q %}&q={{ q|urlencode }}{% endif %}"
          title="Ручные привязки, где клиент не запускал бота (написал в ЛС руководителю). Проверь скриншот переписки внимательнее.">
         🔍 Не в боте {% if not_in_bot_count %}<span class="badge bg-danger ms-1">{{ not_in_bot_count }}</span>{% endif %}
@@ -96,7 +91,6 @@
                     {{ report.search_link.lead_name|truncatechars:20 }}
                   {% endif %}
                   {% if report.search_link.self_click %}<span class="badge bg-danger ms-1" title="Накрутка — IP менеджера = IP посетителя">НК</span>{% endif %}
-                  {% if report.search_link.duplicate_of_id %}<span class="badge bg-danger ms-1" title="Дубликат — клиент уже был привлечён">DUP</span>{% endif %}
                   {% if report.manual_unverified %}<span class="badge bg-warning text-dark ms-1" title="Ручная привязка — менеджер сам вписал ID клиента, в БД бота клиент не найден. Проверь скриншот внимательно.">🔍 Ручная</span>{% endif %}
                 </td>
                 <td class="small text-muted">{{ report.lead_date|date:"d.m" }}</td>

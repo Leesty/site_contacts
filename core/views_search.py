@@ -1238,12 +1238,12 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     # Только отчёты где бот реально стартовал (вебхук подтвердил)
     reports_qs = SearchReport.objects.filter(search_link__bot_started=True).select_related("user", "search_link", "reviewed_by")
 
-    if tab == "duplicate":
-        reports_qs = reports_qs.filter(search_link__duplicate_of__isnull=False)
-    elif tab == "not_in_bot":
+    # Дубликаты вообще не показываем — они авто-rejected при создании.
+    # Раньше была отдельная вкладка «Дубликаты», убрали (см. комментарий
+    # в views).
+    if tab == "not_in_bot":
         # Сфокусированный фильтр: только ручные привязки, клиент не в БД бота.
-        # Доступен и обычным модераторам — раньше был только у main_admin,
-        # но это удобный фильтр для проверки именно «ручных» случаев.
+        # Доступен всем модераторам.
         reports_qs = (
             reports_qs
             .filter(search_link__duplicate_of__isnull=True)
@@ -1300,10 +1300,6 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
         search_link__duplicate_of__isnull=True,
         status=SearchReport.Status.PENDING,
     ).count()
-    duplicate_count = SearchReport.objects.filter(
-        search_link__bot_started=True,
-        search_link__duplicate_of__isnull=False,
-    ).count()
     not_in_bot_count = SearchReport.objects.filter(
         search_link__bot_started=True,
         search_link__duplicate_of__isnull=True,
@@ -1316,7 +1312,6 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
         "tab": tab,
         "q": q,
         "pending_count": pending_count,
-        "duplicate_count": duplicate_count,
         "not_in_bot_count": not_in_bot_count,
         "is_main_admin": is_main_admin,
     })
