@@ -1,22 +1,42 @@
 from __future__ import annotations
 
+import re
+
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 
 from .models import BaseType, GroupReport, Lead, LeadType, User, WorkerSelfLead
 
 
+# Telegram username rules (упрощённая версия — то что точно валидно):
+#  - 5–32 символа
+#  - только латиница, цифры, _
+#  - не начинается с цифры и не начинается с _
+#  - не оканчивается на _
+#  - без подряд идущих __
+# Это правила TG для @username (https://core.telegram.org/method/account.checkUsername).
+_TG_USERNAME_RE = re.compile(r"^(?!.*__)[a-zA-Z][a-zA-Z0-9_]{3,30}[a-zA-Z0-9]$")
+
+
 class UserRegistrationForm(UserCreationForm):
     """Форма регистрации нового пользователя.
 
-    Пользователь создаётся со статусом `pending` (по умолчанию в модели),
-    далее его можно одобрить через админку/интерфейс поддержки.
+    Логин = @username в Telegram (обязательно). Это нужно чтобы команда
+    могла связаться с исполнителем напрямую в TG. Пользователь создаётся
+    со статусом `pending`, дальше его одобряет админ/поддержка.
     """
 
     username = forms.CharField(
-        label="Логин",
-        help_text="Укажите свой Telegram @ник (можно без символа @).",
-        widget=forms.TextInput(attrs={"autocomplete": "username"}),
+        label="Ваш @ник в Telegram",
+        help_text=(
+            "Обязательно укажите ваш Telegram @username — это ваш логин на сайте "
+            "и единственный способ связи с командой. Без него заявку не примут."
+        ),
+        widget=forms.TextInput(attrs={
+            "autocomplete": "username",
+            "placeholder": "@your_nickname",
+            "inputmode": "text",
+        }),
     )
     password1 = forms.CharField(
         label="Пароль",
@@ -36,10 +56,31 @@ class UserRegistrationForm(UserCreationForm):
         fields = ("username",)
 
     def clean_username(self) -> str:
-        username = self.cleaned_data.get("username", "").strip()
-        if username.startswith("@"):
-            username = username[1:]
-        return username
+        raw = (self.cleaned_data.get("username") or "").strip()
+        # Снимаем @, t.me/, https://t.me/, пробелы — частые варианты ввода
+        cleaned = raw.lstrip("@")
+        for prefix in ("https://t.me/", "http://t.me/", "t.me/", "telegram.me/"):
+            if cleaned.lower().startswith(prefix):
+                cleaned = cleaned[len(prefix):]
+                break
+        cleaned = cleaned.strip().rstrip("/")
+        if not cleaned:
+            raise forms.ValidationError(
+                "Укажите ваш @ник в Telegram — без него заявку не примут."
+            )
+        if not _TG_USERNAME_RE.match(cleaned):
+            raise forms.ValidationError(
+                "Это не похоже на валидный Telegram @ник. Правила: 5–32 символа, "
+                "латиница/цифры/подчёркивание, не начинается с цифры или _, не "
+                "оканчивается на _. Пример: @ivan_petrov"
+            )
+        # Проверяем уникальность case-insensitive (Django по умолчанию case-sensitive).
+        if User.objects.filter(username__iexact=cleaned).exists():
+            raise forms.ValidationError(
+                "Пользователь с таким @ником уже зарегистрирован. "
+                "Если это вы — войдите через форму логина."
+            )
+        return cleaned
 
 
 class BaseRequestForm(forms.Form):
