@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-05-21 (утро) — `[feat]` Админы получают реф-ссылку + расширенный API кураторов
+
+**Task 1: Реф-ссылка для админов.** Раньше реф-система была доступна только `role=user` (approved). Расширил `_require_user_approved` — теперь `admin` и `main_admin` тоже могут приглашать рефералов и получать % с одобренных отчётов. На дашбордах админа и главного админа появилась карточка **«🤝 Реф-ссылка»** → переход на `/referrals/`.
+
+Approve-логика Lead/SR/GR не требовала правок: ELSE-ветка (после `is_subreferrer` и `role=partner`) уже корректно начисляет `PartnerEarning` любой роли через стандартные поля `User.ref_lead_reward / ref_searchlink_cut / ref_group_report_cut`. Админ настраивает ставки в `/referrals/` как и обычный user-рефовод.
+
+**Task 2: API кураторов с заработком.** В `GET /api/curators/` добавил два поля по каждому куратору:
+- `referrals_count` — сколько рефералов у привязанного site-аккаунта куратора
+- `earned_total_rub` — суммарный заработок куратора с этих рефералов (`Sum PartnerEarning where partner=account`)
+
+Bulk-агрегаты, без N+1.
+
+Новый эндпоинт `GET /api/curators/<id>/referrals/` — детально про каждого реферала конкретного куратора: `username, days_on_platform, leads_total (approved Lead+SR+GR), earned_for_curator_rub`. Для CRM-карточки куратора.
+
+Все эндпоинты на Bearer `SEARCH_BOT_WEBHOOK_SECRET`.
+
 ## 2026-05-21 (под утро) — `[fix]` GroupReport approve/reject/rework — идемпотентны
 
 Жалоба: «одобряем отчёт в "Не полные", не пропадает из списка». Повторно — «уже одобрен».
