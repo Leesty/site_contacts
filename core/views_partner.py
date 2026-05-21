@@ -653,10 +653,11 @@ def partner_dozhim_lead_attachment(request: HttpRequest, lead_id: int) -> HttpRe
 
 
 def _require_user_approved(request: HttpRequest) -> bool:
-    """Допуск к реф-системе: одобренный обычный юзер ИЛИ админ/гл.админ.
+    """Допуск к реф-системе: одобренный обычный юзер ИЛИ обычный админ.
 
-    Раньше только role=user могли заводить рефералов. Теперь админы тоже
-    могут — у них своя реф-ссылка и процент с приглашённых.
+    Раньше только role=user могли заводить рефералов. Теперь обычные
+    админы (role=admin) тоже могут. Главный админ (main_admin) — нет,
+    ему реф-система не нужна.
     """
     user = request.user
     if not getattr(user, "is_authenticated", False):
@@ -664,7 +665,7 @@ def _require_user_approved(request: HttpRequest) -> bool:
     role = getattr(user, "role", None)
     if role == "user":
         return getattr(user, "status", None) == "approved"
-    return role in ("admin", "main_admin")
+    return role == "admin"
 
 
 @login_required
