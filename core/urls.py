@@ -388,6 +388,8 @@ urlpatterns = [
     path("staff/calendar/", views_support_admin.admin_calendar, name="admin_calendar"),
     path("staff/curators/", views_support_admin.admin_curators_list, name="admin_curators_list"),
     path("staff/curators/<int:curator_id>/", views_support_admin.admin_curator_detail, name="admin_curator_detail"),
+    # API для CRM (windowgram). Bearer SEARCH_BOT_WEBHOOK_SECRET.
+    path("api/curators/", views_support_admin.api_curators_list, name="api_curators_list"),
     # ═══ GroupReport (бета) ═══
     # Менеджер
     path("reports/groups/", views_group_reports.manager_group_reports_list, name="manager_group_reports_list"),

@@ -3697,3 +3697,47 @@ def admin_curator_detail(request: HttpRequest, curator_id: int) -> HttpResponse:
         "search_results": search_results,
     })
 
+
+# ─── API для бот-сервера: список кураторов ────────────────────────────────
+
+from django.views.decorators.csrf import csrf_exempt as _csrf_exempt
+from django.views.decorators.http import require_GET as _require_GET
+
+
+@_csrf_exempt
+@_require_GET
+def api_curators_list(request: HttpRequest) -> HttpResponse:
+    """JSON API: список кураторов для CRM (windowgram).
+
+    Аутентификация: Bearer <SEARCH_BOT_WEBHOOK_SECRET> — тот же ключ что
+    используется для search-bot-start webhook'а и /api/admins/external.
+
+    Параметры:
+      ?active=1 — только активные (по умолчанию: все)
+    """
+    expected_secret = getattr(settings, "SEARCH_BOT_WEBHOOK_SECRET", "")
+    auth = request.headers.get("Authorization", "")
+    if not expected_secret or auth != f"Bearer {expected_secret}":
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
+
+    from .models import Curator
+    from django.db.models import Count
+
+    qs = Curator.objects.annotate(users_count=Count("users"))
+    if request.GET.get("active") == "1":
+        qs = qs.filter(is_active=True)
+    qs = qs.order_by("tg_username")
+
+    data = [
+        {
+            "id": c.id,
+            "tg_username": c.tg_username,
+            "display_name": c.display_name or "",
+            "is_active": c.is_active,
+            "users_count": c.users_count,
+            "created_at": c.created_at.isoformat(),
+        }
+        for c in qs
+    ]
+    return JsonResponse({"ok": True, "count": len(data), "curators": data})
+
