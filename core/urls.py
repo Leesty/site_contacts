@@ -390,6 +390,7 @@ urlpatterns = [
     path("staff/curators/<int:curator_id>/", views_support_admin.admin_curator_detail, name="admin_curator_detail"),
     # API для CRM (windowgram). Bearer SEARCH_BOT_WEBHOOK_SECRET.
     path("api/curators/", views_support_admin.api_curators_list, name="api_curators_list"),
+    path("api/curators/<int:curator_id>/referrals/", views_support_admin.api_curator_referrals, name="api_curator_referrals"),
     path("api/users-stats/", views_support_admin.api_users_with_stats, name="api_users_with_stats"),
     # ═══ GroupReport (бета) ═══
     # Менеджер

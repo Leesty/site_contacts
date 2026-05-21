@@ -3848,6 +3848,103 @@ def api_users_with_stats(request: HttpRequest) -> HttpResponse:
 
 @_csrf_exempt
 @_require_GET
+def api_curator_referrals(request: HttpRequest, curator_id: int) -> HttpResponse:
+    """JSON API: рефералы конкретного куратора + сколько каждый принёс.
+
+    Аутентификация: Bearer <SEARCH_BOT_WEBHOOK_SECRET>.
+
+    Возвращает:
+      - curator: {id, tg_username, display_name, account_username}
+      - referrals: список с {id, username, days_on_platform,
+        leads_total (approved Lead+SR+GR), earned_for_curator_rub (сумма
+        PartnerEarning конкретно от этого реферала к куратору)}
+    """
+    expected_secret = getattr(settings, "SEARCH_BOT_WEBHOOK_SECRET", "")
+    auth = request.headers.get("Authorization", "")
+    if not expected_secret or auth != f"Bearer {expected_secret}":
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
+
+    from datetime import timedelta as _td
+    from .models import Curator, PartnerEarning, Lead, SearchReport
+    try:
+        from .models import GroupReport
+    except ImportError:
+        GroupReport = None
+
+    curator = Curator.objects.select_related("account").filter(pk=curator_id).first()
+    if not curator:
+        return JsonResponse({"ok": False, "error": "curator_not_found"}, status=404)
+    if not curator.account_id:
+        return JsonResponse({
+            "ok": True,
+            "curator": {
+                "id": curator.id, "tg_username": curator.tg_username,
+                "display_name": curator.display_name or "",
+                "account_username": None,
+            },
+            "referrals": [],
+            "note": "Куратор не имеет привязанного аккаунта на сайте.",
+        })
+
+    refs = list(
+        User.objects.filter(partner_owner_id=curator.account_id)
+        .order_by("-date_joined")
+    )
+    ref_ids = [u.id for u in refs]
+
+    # Bulk: approved-отчёты на каждый user_id
+    def _bulk_counts(qs):
+        return dict(
+            qs.values("user_id").annotate(c=Count("id")).values_list("user_id", "c")
+        )
+
+    lead_cnt = _bulk_counts(Lead.objects.filter(user_id__in=ref_ids, status="approved")) if ref_ids else {}
+    sr_cnt = _bulk_counts(SearchReport.objects.filter(user_id__in=ref_ids, status="approved")) if ref_ids else {}
+    gr_cnt: dict[int, int] = {}
+    if ref_ids and GroupReport is not None:
+        gr_cnt = _bulk_counts(GroupReport.objects.filter(user_id__in=ref_ids, status="approved"))
+
+    # Bulk: сколько каждый реферал принёс куратору (сумма PartnerEarning
+    # этому partner-у через все 3 типа отчётов).
+    earned_by_ref: dict[int, int] = {}
+    if ref_ids:
+        pe_qs = PartnerEarning.objects.filter(partner_id=curator.account_id)
+        for row in pe_qs.select_related("lead", "search_report", "group_report"):
+            for child in (row.lead, row.search_report, row.group_report):
+                if child and child.user_id in ref_ids:
+                    earned_by_ref[child.user_id] = earned_by_ref.get(child.user_id, 0) + int(row.amount or 0)
+                    break
+
+    today_d = timezone.localtime(timezone.now()).date()
+    data = []
+    for u in refs:
+        days = (today_d - u.date_joined.date()).days if u.date_joined else 0
+        data.append({
+            "id": u.id,
+            "username": u.username,
+            "status": u.status,
+            "days_on_platform": max(0, days),
+            "date_joined": u.date_joined.isoformat() if u.date_joined else None,
+            "leads_total": (lead_cnt.get(u.id, 0) + sr_cnt.get(u.id, 0) + gr_cnt.get(u.id, 0)),
+            "earned_for_curator_rub": int(earned_by_ref.get(u.id, 0)),
+        })
+
+    return JsonResponse({
+        "ok": True,
+        "curator": {
+            "id": curator.id,
+            "tg_username": curator.tg_username,
+            "display_name": curator.display_name or "",
+            "account_username": curator.account.username,
+            "account_id": curator.account_id,
+        },
+        "count": len(data),
+        "referrals": data,
+    })
+
+
+@_csrf_exempt
+@_require_GET
 def api_curators_list(request: HttpRequest) -> HttpResponse:
     """JSON API: список кураторов для CRM (windowgram).
 
@@ -3862,24 +3959,44 @@ def api_curators_list(request: HttpRequest) -> HttpResponse:
     if not expected_secret or auth != f"Bearer {expected_secret}":
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
 
-    from .models import Curator
+    from .models import Curator, PartnerEarning
 
     qs = Curator.objects.select_related("account")
     if request.GET.get("active") == "1":
         qs = qs.filter(is_active=True)
     qs = qs.order_by("tg_username")
+    curators = list(qs)
 
-    data = [
-        {
+    # Bulk: для каждого привязанного аккаунта считаем рефералов и заработок
+    account_ids = [c.account_id for c in curators if c.account_id]
+    refs_count: dict[int, int] = {}
+    earned_total: dict[int, int] = {}
+    if account_ids:
+        refs_count = dict(
+            User.objects.filter(partner_owner_id__in=account_ids)
+            .values("partner_owner_id").annotate(c=Count("id"))
+            .values_list("partner_owner_id", "c")
+        )
+        earned_total = dict(
+            PartnerEarning.objects.filter(partner_id__in=account_ids)
+            .values("partner_id").annotate(s=Sum("amount"))
+            .values_list("partner_id", "s")
+        )
+
+    data = []
+    for c in curators:
+        rc = refs_count.get(c.account_id, 0) if c.account_id else 0
+        ec = earned_total.get(c.account_id, 0) if c.account_id else 0
+        data.append({
             "id": c.id,
             "tg_username": c.tg_username,
             "display_name": c.display_name or "",
             "is_active": c.is_active,
             "account_username": c.account.username if c.account_id else None,
             "account_id": c.account_id,
+            "referrals_count": rc,                # сколько у привязанного аккаунта рефералов
+            "earned_total_rub": int(ec or 0),     # суммарный заработок куратора с рефералов, ₽
             "created_at": c.created_at.isoformat(),
-        }
-        for c in qs
-    ]
+        })
     return JsonResponse({"ok": True, "count": len(data), "curators": data})
 
