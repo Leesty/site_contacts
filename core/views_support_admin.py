@@ -3579,7 +3579,6 @@ def admin_curators_list(request: HttpRequest) -> HttpResponse:
         return HttpResponseForbidden("Только для главного админа.")
 
     from .models import Curator
-    from django.db.models import Count
 
     if request.method == "POST":
         action = request.POST.get("action") or "create"
@@ -3609,7 +3608,7 @@ def admin_curators_list(request: HttpRequest) -> HttpResponse:
             return redirect("admin_curators_list")
 
     curators = (
-        Curator.objects.annotate(users_count=Count("users"))
+        Curator.objects.select_related("account")
         .order_by("-is_active", "tg_username")
     )
     return render(request, "core/admin_curators_list.html", {
@@ -3619,10 +3618,13 @@ def admin_curators_list(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_curator_detail(request: HttpRequest, curator_id: int) -> HttpResponse:
-    """Карточка куратора: привязка/отвязка пользователей.
+    """Карточка куратора: привязка/отвязка его собственного аккаунта на сайте.
 
-    POST `action=attach` — привязать user_id к куратору.
-    POST `action=detach` — отвязать (curator=NULL).
+    Куратор → 1 аккаунт на сайте (OneToOne). Не путать с подопечными
+    (их у куратора нет на нашей стороне, они в TG).
+
+    POST `action=set_account` — привязать user_id как аккаунт куратора.
+    POST `action=clear_account` — отвязать (Curator.account = NULL).
     POST `action=rename` — обновить display_name / tg_username.
     GET `?q=...` — поиск по юзерам для привязки.
     """
@@ -3631,32 +3633,38 @@ def admin_curator_detail(request: HttpRequest, curator_id: int) -> HttpResponse:
 
     from .models import Curator
 
-    curator = Curator.objects.filter(pk=curator_id).first()
+    curator = Curator.objects.select_related("account").filter(pk=curator_id).first()
     if not curator:
         messages.error(request, "Куратор не найден.")
         return redirect("admin_curators_list")
 
     if request.method == "POST":
         action = request.POST.get("action") or ""
-        if action == "attach":
+        if action == "set_account":
             uid = (request.POST.get("user_id") or "").strip()
             if uid.isdigit():
                 user = User.objects.filter(pk=int(uid)).first()
-                if user:
-                    user.curator = curator
-                    user.save(update_fields=["curator"])
-                    messages.success(request, f"@{user.username} привязан к @{curator.tg_username}.")
-                else:
+                if not user:
                     messages.error(request, "Пользователь не найден.")
+                # Один аккаунт может быть привязан только к одному куратору
+                elif Curator.objects.filter(account=user).exclude(pk=curator.pk).exists():
+                    other = Curator.objects.filter(account=user).exclude(pk=curator.pk).first()
+                    messages.error(
+                        request,
+                        f"@{user.username} уже привязан к куратору @{other.tg_username}. "
+                        f"Сначала отвяжите там.",
+                    )
+                else:
+                    curator.account = user
+                    curator.save(update_fields=["account", "updated_at"])
+                    messages.success(request, f"Аккаунт @{user.username} привязан к куратору @{curator.tg_username}.")
             return redirect("admin_curator_detail", curator_id=curator.id)
-        elif action == "detach":
-            uid = (request.POST.get("user_id") or "").strip()
-            if uid.isdigit():
-                user = User.objects.filter(pk=int(uid), curator=curator).first()
-                if user:
-                    user.curator = None
-                    user.save(update_fields=["curator"])
-                    messages.success(request, f"@{user.username} отвязан от куратора.")
+        elif action == "clear_account":
+            if curator.account_id:
+                old = curator.account.username
+                curator.account = None
+                curator.save(update_fields=["account", "updated_at"])
+                messages.success(request, f"Аккаунт @{old} отвязан от куратора.")
             return redirect("admin_curator_detail", curator_id=curator.id)
         elif action == "rename":
             new_tg = _normalize_tg_username(request.POST.get("tg_username") or "")
@@ -3672,27 +3680,24 @@ def admin_curator_detail(request: HttpRequest, curator_id: int) -> HttpResponse:
             messages.success(request, "Сохранено.")
             return redirect("admin_curator_detail", curator_id=curator.id)
 
-    attached_users = curator.users.all().order_by("username")
-
-    # Поиск по сайту для привязки (исключаем уже привязанных к этому куратору
-    # и юзеров staff-ролей — куратор только над «исполнителями»).
+    # Поиск аккаунтов на сайте для привязки
     q = (request.GET.get("q") or "").strip().lstrip("@")
     search_results: list = []
     if q:
         search_results = list(
-            User.objects.filter(
-                role=User.Role.USER,
-            )
-            .filter(username__icontains=q)
-            .exclude(curator=curator)
-            .select_related("curator")
+            User.objects.filter(username__icontains=q)
+            .exclude(pk=curator.account_id) if curator.account_id else
+            User.objects.filter(username__icontains=q)
+        )
+        # фильтр по аккаунтам уже занятым другими кураторами — оставляем (видно бейджем)
+        search_results = list(
+            User.objects.filter(username__icontains=q)
+            .exclude(pk=curator.account_id)
             .order_by("username")[:50]
         )
 
     return render(request, "core/admin_curator_detail.html", {
         "curator": curator,
-        "attached_users": attached_users,
-        "attached_count": attached_users.count(),
         "q": q,
         "search_results": search_results,
     })
@@ -3721,9 +3726,8 @@ def api_curators_list(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
 
     from .models import Curator
-    from django.db.models import Count
 
-    qs = Curator.objects.annotate(users_count=Count("users"))
+    qs = Curator.objects.select_related("account")
     if request.GET.get("active") == "1":
         qs = qs.filter(is_active=True)
     qs = qs.order_by("tg_username")
@@ -3734,7 +3738,8 @@ def api_curators_list(request: HttpRequest) -> HttpResponse:
             "tg_username": c.tg_username,
             "display_name": c.display_name or "",
             "is_active": c.is_active,
-            "users_count": c.users_count,
+            "account_username": c.account.username if c.account_id else None,
+            "account_id": c.account_id,
             "created_at": c.created_at.isoformat(),
         }
         for c in qs

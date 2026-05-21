@@ -194,17 +194,6 @@ class User(AbstractUser):
         help_text="screen_name VK (последняя часть ссылки vk.com/...).",
     )
 
-    # Куратор: один пользователь может быть привязан к одному куратору
-    # (главный админ управляет на /staff/curators/). Кураторы — это
-    # внешние тимлиды, ведущие группу исполнителей в TG.
-    curator = models.ForeignKey(
-        "Curator",
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name="users",
-        help_text="Куратор-тимлид, который ведёт этого пользователя в TG.",
-    )
-
     def is_approved(self) -> bool:
         return self.status == self.Status.APPROVED
 
@@ -224,11 +213,14 @@ class TimeStampedModel(models.Model):
 
 
 class Curator(TimeStampedModel):
-    """Куратор-тимлид. Главный админ заводит его TG-ник и привязывает
-    к нему пользователей сайта на странице /staff/curators/.
+    """Куратор-тимлид. Главный админ заводит TG-ник и привязывает
+    САМОГО куратора как user-аккаунт на сайте (1:1).
 
-    Дальше планируется работа с кураторами (статистика, выплаты,
-    рассылки, etc.) — пока просто хранение TG-ника + список юзеров.
+    `account` — это пользовательский аккаунт куратора в системе
+    (через который он будет логиниться в кабинет / получать выплаты
+    в будущем). НЕ путать с подопечными — кураторы ведут исполнителей
+    только в Telegram, на сайте у каждого куратора свой собственный
+    аккаунт.
     """
 
     tg_username = models.CharField(
@@ -242,6 +234,13 @@ class Curator(TimeStampedModel):
         blank=True,
         default="",
         help_text="Человеческое имя (необязательно — для удобства).",
+    )
+    account = models.OneToOneField(
+        "User",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="curator_profile",
+        help_text="Аккаунт куратора на сайте (1:1). NULL — пока не привязан.",
     )
     is_active = models.BooleanField(default=True, db_index=True)
     created_by = models.ForeignKey(

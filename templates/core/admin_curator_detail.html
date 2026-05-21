@@ -36,118 +36,85 @@
       </div>
     </div>
 
-    {# Добавление юзеров — поиск #}
+    {# Аккаунт куратора на сайте #}
     <div class="col-lg-7">
       <div class="card shadow-sm h-100">
-        <div class="card-header bg-transparent border-secondary py-2"><strong>Привязать пользователя</strong></div>
+        <div class="card-header bg-transparent border-secondary py-2"><strong>Аккаунт куратора на сайте</strong></div>
         <div class="card-body">
-          <form method="get" class="d-flex gap-2 mb-3">
-            <input type="text" name="q" value="{{ q }}" placeholder="@username для поиска"
-                   class="form-control form-control-sm" style="max-width: 320px;">
-            <button type="submit" class="btn btn-outline-primary btn-sm">Найти</button>
-            {% if q %}<a href="{% url 'admin_curator_detail' curator.id %}" class="btn btn-outline-secondary btn-sm">×</a>{% endif %}
-          </form>
-
-          {% if q %}
-            {% if search_results %}
-              <div class="table-responsive">
-                <table class="table table-sm mb-0 align-middle table-dark-site">
-                  <thead>
-                    <tr>
-                      <th>@username</th>
-                      <th>Имя</th>
-                      <th>Текущий куратор</th>
-                      <th>Действие</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for u in search_results %}
-                      <tr>
-                        <td>@{{ u.username }}</td>
-                        <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
-                        <td class="small">
-                          {% if u.curator %}
-                            <span class="badge bg-warning text-dark" title="Сменим при привязке">@{{ u.curator.tg_username }}</span>
-                          {% else %}
-                            <span class="text-muted">—</span>
-                          {% endif %}
-                        </td>
-                        <td>
-                          <form method="post" class="d-inline">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="attach">
-                            <input type="hidden" name="user_id" value="{{ u.id }}">
-                            <button type="submit" class="btn btn-success btn-sm py-0">＋ Привязать</button>
-                          </form>
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% else %}
-              <p class="text-muted small mb-0">Никого не нашли. Уточни @ник.</p>
-            {% endif %}
+          {% if curator.account %}
+            <p class="small text-muted mb-2">К этому куратору привязан аккаунт:</p>
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <a href="{% url 'admin_user_leads_list' curator.account.pk %}" class="text-decoration-none">
+                <span class="badge bg-success" style="font-size:13px;">@{{ curator.account.username }}</span>
+              </a>
+              <span class="text-muted small">
+                · статус: {{ curator.account.status }}
+                · роль: {{ curator.account.role }}
+              </span>
+              <form method="post" class="ms-auto"
+                    onsubmit="return confirm('Отвязать @{{ curator.account.username }} от куратора?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="clear_account">
+                <button type="submit" class="btn btn-outline-danger btn-sm py-0">✗ Отвязать</button>
+              </form>
+            </div>
+            <p class="text-muted small mb-0">
+              Чтобы привязать другого — сначала отвяжите этого.
+            </p>
           {% else %}
-            <p class="text-muted small mb-0">Введите часть @ника пользователя и нажмите «Найти».</p>
+            <p class="small text-muted mb-2">Аккаунт не привязан. Найди и привяжи пользователя сайта:</p>
+            <form method="get" class="d-flex gap-2 mb-3">
+              <input type="text" name="q" value="{{ q }}" placeholder="@username для поиска"
+                     class="form-control form-control-sm" style="max-width: 320px;">
+              <button type="submit" class="btn btn-outline-primary btn-sm">Найти</button>
+              {% if q %}<a href="{% url 'admin_curator_detail' curator.id %}" class="btn btn-outline-secondary btn-sm">×</a>{% endif %}
+            </form>
+
+            {% if q %}
+              {% if search_results %}
+                <div class="table-responsive">
+                  <table class="table table-sm mb-0 align-middle table-dark-site">
+                    <thead>
+                      <tr>
+                        <th>@username</th>
+                        <th>Имя</th>
+                        <th>Роль</th>
+                        <th>Действие</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for u in search_results %}
+                        <tr>
+                          <td>@{{ u.username }}</td>
+                          <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
+                          <td class="small">
+                            <span class="badge bg-secondary">{{ u.role }}</span>
+                            {% if u.curator_profile %}
+                              <span class="badge bg-warning text-dark" title="Уже привязан как куратор">занят</span>
+                            {% endif %}
+                          </td>
+                          <td>
+                            <form method="post" class="d-inline">
+                              {% csrf_token %}
+                              <input type="hidden" name="action" value="set_account">
+                              <input type="hidden" name="user_id" value="{{ u.id }}">
+                              <button type="submit" class="btn btn-success btn-sm py-0">＋ Привязать</button>
+                            </form>
+                          </td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <p class="text-muted small mb-0">Никого не нашли. Уточни @ник.</p>
+              {% endif %}
+            {% else %}
+              <p class="text-muted small mb-0">Введите часть @ника пользователя и нажмите «Найти».</p>
+            {% endif %}
           {% endif %}
         </div>
       </div>
-    </div>
-  </div>
-
-  {# Привязанные юзеры #}
-  <div class="card shadow-sm mt-3">
-    <div class="card-header bg-transparent border-secondary py-2">
-      <strong>Привязано пользователей</strong>
-      <span class="text-muted small">· {{ attached_count }}</span>
-    </div>
-    <div class="card-body p-0">
-      {% if attached_users %}
-        <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
-              <tr>
-                <th>@username</th>
-                <th>Имя</th>
-                <th>Статус</th>
-                <th>Регистрация</th>
-                <th>Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for u in attached_users %}
-                <tr>
-                  <td>
-                    <a href="{% url 'admin_user_leads_list' u.pk %}" class="text-decoration-none">@{{ u.username }}</a>
-                  </td>
-                  <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
-                  <td>
-                    {% if u.status == 'approved' %}
-                      <span class="badge bg-success">approved</span>
-                    {% elif u.status == 'pending' %}
-                      <span class="badge bg-warning text-dark">pending</span>
-                    {% else %}
-                      <span class="badge bg-secondary">{{ u.status }}</span>
-                    {% endif %}
-                  </td>
-                  <td class="small text-muted">{{ u.date_joined|date:"d.m.Y" }}</td>
-                  <td>
-                    <form method="post" class="d-inline" onsubmit="return confirm('Отвязать @{{ u.username }}?');">
-                      {% csrf_token %}
-                      <input type="hidden" name="action" value="detach">
-                      <input type="hidden" name="user_id" value="{{ u.id }}">
-                      <button type="submit" class="btn btn-outline-danger btn-sm py-0">✗ Отвязать</button>
-                    </form>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="text-muted small p-3 mb-0">К этому куратору пока никто не привязан.</p>
-      {% endif %}
     </div>
   </div>
 {% endblock %}

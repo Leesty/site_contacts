@@ -39,7 +39,7 @@
               <tr>
                 <th>@tg_username</th>
                 <th>Имя</th>
-                <th class="text-center">Юзеров</th>
+                <th>Аккаунт на сайте</th>
                 <th class="text-center">Статус</th>
                 <th>Добавлен</th>
                 <th>Действия</th>
@@ -54,11 +54,13 @@
                     </a>
                   </td>
                   <td class="small text-muted">{{ c.display_name|default:"—" }}</td>
-                  <td class="text-center">
-                    {% if c.users_count %}
-                      <span class="badge bg-info text-dark">{{ c.users_count }}</span>
+                  <td>
+                    {% if c.account %}
+                      <a href="{% url 'admin_user_leads_list' c.account.pk %}" class="text-decoration-none">
+                        <span class="badge bg-success">@{{ c.account.username }}</span>
+                      </a>
                     {% else %}
-                      <span class="text-muted small">—</span>
+                      <span class="badge bg-warning text-dark">не привязан</span>
                     {% endif %}
                   </td>
                   <td class="text-center">
