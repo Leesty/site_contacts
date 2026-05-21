@@ -3711,6 +3711,143 @@ from django.views.decorators.http import require_GET as _require_GET
 
 @_csrf_exempt
 @_require_GET
+def api_users_with_stats(request: HttpRequest) -> HttpResponse:
+    """JSON API: список пользователей со статистикой одобренных отчётов.
+
+    Аутентификация: Bearer <SEARCH_BOT_WEBHOOK_SECRET>.
+
+    Параметры:
+      ?role=user  — фильтр по роли (по умолчанию все role=user)
+      ?limit=N  — ограничение количества (по умолчанию все)
+      ?offset=N — пагинация
+
+    Возвращает для каждого юзера:
+      - id, username, role, status, date_joined
+      - days_on_platform (от date_joined до сегодня)
+      - leads_total — Lead + SearchReport + GroupReport approved, за всё время
+      - leads_today — за сегодня (MSK)
+      - leads_week  — за последние 7 дней (MSK)
+
+    Все 3 счётчика суммируют ВСЕ типы approved-отчётов.
+    """
+    expected_secret = getattr(settings, "SEARCH_BOT_WEBHOOK_SECRET", "")
+    auth = request.headers.get("Authorization", "")
+    if not expected_secret or auth != f"Bearer {expected_secret}":
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=403)
+
+    from datetime import timedelta
+    from .models import Lead, SearchReport
+    try:
+        from .models import GroupReport
+    except ImportError:
+        GroupReport = None
+
+    role_filter = (request.GET.get("role") or "user").strip().lower()
+    try:
+        limit = int(request.GET.get("limit") or 0)
+    except (TypeError, ValueError):
+        limit = 0
+    try:
+        offset = int(request.GET.get("offset") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+
+    now = timezone.localtime(timezone.now())
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+    week_start = now - timedelta(days=7)
+    today_d = now.date()
+
+    users_qs = User.objects.all()
+    if role_filter and role_filter != "all":
+        users_qs = users_qs.filter(role=role_filter)
+    users_qs = users_qs.order_by("id")
+    total = users_qs.count()
+    if offset:
+        users_qs = users_qs[offset:]
+    if limit:
+        users_qs = users_qs[:limit]
+
+    user_ids = list(users_qs.values_list("id", flat=True))
+    if not user_ids:
+        return JsonResponse({"ok": True, "total": total, "count": 0, "users": []})
+
+    # Bulk-агрегаты — один запрос на каждую таблицу/период
+    def _bulk_counts(qs, user_field="user_id"):
+        return dict(
+            qs.values(user_field).annotate(c=Count("id")).values_list(user_field, "c")
+        )
+
+    lead_total = _bulk_counts(
+        Lead.objects.filter(user_id__in=user_ids, status="approved")
+    )
+    lead_today = _bulk_counts(
+        Lead.objects.filter(
+            user_id__in=user_ids, status="approved",
+            created_at__gte=today_start, created_at__lt=today_end,
+        )
+    )
+    lead_week = _bulk_counts(
+        Lead.objects.filter(
+            user_id__in=user_ids, status="approved",
+            created_at__gte=week_start,
+        )
+    )
+
+    sr_total = _bulk_counts(
+        SearchReport.objects.filter(user_id__in=user_ids, status="approved")
+    )
+    sr_today = _bulk_counts(
+        SearchReport.objects.filter(
+            user_id__in=user_ids, status="approved",
+            created_at__gte=today_start, created_at__lt=today_end,
+        )
+    )
+    sr_week = _bulk_counts(
+        SearchReport.objects.filter(
+            user_id__in=user_ids, status="approved",
+            created_at__gte=week_start,
+        )
+    )
+
+    gr_total = gr_today = gr_week = {}
+    if GroupReport is not None:
+        gr_total = _bulk_counts(
+            GroupReport.objects.filter(user_id__in=user_ids, status="approved")
+        )
+        gr_today = _bulk_counts(
+            GroupReport.objects.filter(
+                user_id__in=user_ids, status="approved",
+                created_at__gte=today_start, created_at__lt=today_end,
+            )
+        )
+        gr_week = _bulk_counts(
+            GroupReport.objects.filter(
+                user_id__in=user_ids, status="approved",
+                created_at__gte=week_start,
+            )
+        )
+
+    data = []
+    for u in users_qs:
+        days_on_platform = (today_d - u.date_joined.date()).days if u.date_joined else 0
+        data.append({
+            "id": u.id,
+            "username": u.username,
+            "role": u.role,
+            "status": u.status,
+            "date_joined": u.date_joined.isoformat() if u.date_joined else None,
+            "days_on_platform": max(0, days_on_platform),
+            "leads_total": (lead_total.get(u.id, 0) + sr_total.get(u.id, 0) + gr_total.get(u.id, 0)),
+            "leads_today": (lead_today.get(u.id, 0) + sr_today.get(u.id, 0) + gr_today.get(u.id, 0)),
+            "leads_week":  (lead_week.get(u.id, 0)  + sr_week.get(u.id, 0)  + gr_week.get(u.id, 0)),
+        })
+
+    return JsonResponse({"ok": True, "total": total, "count": len(data), "users": data})
+
+
+@_csrf_exempt
+@_require_GET
 def api_curators_list(request: HttpRequest) -> HttpResponse:
     """JSON API: список кураторов для CRM (windowgram).
 

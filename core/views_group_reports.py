@@ -761,55 +761,71 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
         return HttpResponseForbidden("Недостаточно прав.")
     report = get_object_or_404(GroupReport, pk=report_id)
 
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
     if request.method == "POST":
-        form = GroupReportRejectForm(request.POST)
-        if form.is_valid():
-            from .models import PartnerEarning
-            with transaction.atomic():
-                # Если был approved — откат начисления реферала + удаление partner earning
-                if report.status == GroupReport.Status.APPROVED and report.paid_reward:
-                    owner = User.objects.select_for_update().get(pk=report.user_id)
-                    _old = owner.balance or 0
-                    owner.balance = _old - report.paid_reward
-                    owner.save(update_fields=["balance"])
-                    log_balance_change(
-                        owner, "balance", _old, owner.balance,
-                        f"group_report_reject_rollback#{report_id} -{report.paid_reward}",
-                        request.user,
-                    )
-                    report.paid_reward = 0
-                # Откат начисления рефоводу/партнёру (баланс + log + удаление PE)
-                pe = PartnerEarning.objects.filter(group_report=report).select_related("partner").first()
-                if pe:
-                    partner_locked = User.objects.select_for_update().get(pk=pe.partner_id)
-                    _old_pb = partner_locked.balance or 0
-                    partner_locked.balance = _old_pb - pe.amount
-                    partner_locked.save(update_fields=["balance"])
-                    log_balance_change(
-                        partner_locked, "balance", _old_pb, partner_locked.balance,
-                        f"group_report_reject_partner_rollback#{report_id} -{pe.amount}",
-                        request.user,
-                    )
-                    pe.delete()
-                report.status = GroupReport.Status.REJECTED
-                report.rejection_reason = form.cleaned_data["rejection_reason"]
-                report.reviewed_at = timezone.now()
-                report.reviewed_by = request.user
-                report.save(update_fields=[
-                    "status", "rejection_reason", "reviewed_at", "reviewed_by",
-                    "paid_reward", "updated_at",
-                ])
-                GroupReportReviewLog.objects.create(
-                    report=report, admin=request.user,
-                    action=GroupReportReviewLog.Action.REJECTED,
+        # AJAX-флоу: принимаем простой POST `reason=...` без ModelForm.
+        # HTML-флоу (старая страница с формой): ModelForm + redirect.
+        if is_ajax:
+            reason = (request.POST.get("reason") or "").strip()
+            if not reason:
+                return JsonResponse(
+                    {"success": False, "message": "Укажите причину отклонения."},
+                    status=400,
                 )
-            messages.success(request, f"Отчёт #{report_id} отклонён.")
-            return _redirect_back_to_list(request)
-    else:
-        form = GroupReportRejectForm()
+        else:
+            form = GroupReportRejectForm(request.POST)
+            if not form.is_valid():
+                return render(request, "core/admin_group_report_reject.html", {
+                    "form": form, "report": report,
+                })
+            reason = form.cleaned_data["rejection_reason"]
+
+        from .models import PartnerEarning
+        with transaction.atomic():
+            if report.status == GroupReport.Status.APPROVED and report.paid_reward:
+                owner = User.objects.select_for_update().get(pk=report.user_id)
+                _old = owner.balance or 0
+                owner.balance = _old - report.paid_reward
+                owner.save(update_fields=["balance"])
+                log_balance_change(
+                    owner, "balance", _old, owner.balance,
+                    f"group_report_reject_rollback#{report_id} -{report.paid_reward}",
+                    request.user,
+                )
+                report.paid_reward = 0
+            pe = PartnerEarning.objects.filter(group_report=report).select_related("partner").first()
+            if pe:
+                partner_locked = User.objects.select_for_update().get(pk=pe.partner_id)
+                _old_pb = partner_locked.balance or 0
+                partner_locked.balance = _old_pb - pe.amount
+                partner_locked.save(update_fields=["balance"])
+                log_balance_change(
+                    partner_locked, "balance", _old_pb, partner_locked.balance,
+                    f"group_report_reject_partner_rollback#{report_id} -{pe.amount}",
+                    request.user,
+                )
+                pe.delete()
+            report.status = GroupReport.Status.REJECTED
+            report.rejection_reason = reason
+            report.reviewed_at = timezone.now()
+            report.reviewed_by = request.user
+            report.save(update_fields=[
+                "status", "rejection_reason", "reviewed_at", "reviewed_by",
+                "paid_reward", "updated_at",
+            ])
+            GroupReportReviewLog.objects.create(
+                report=report, admin=request.user,
+                action=GroupReportReviewLog.Action.REJECTED,
+            )
+
+        if is_ajax:
+            return JsonResponse({"success": True, "message": f"Отчёт #{report_id} отклонён."})
+        messages.success(request, f"Отчёт #{report_id} отклонён.")
+        return _redirect_back_to_list(request)
 
     return render(request, "core/admin_group_report_reject.html", {
-        "form": form, "report": report,
+        "form": GroupReportRejectForm(), "report": report,
     })
 
 
@@ -819,55 +835,66 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
         return HttpResponseForbidden("Недостаточно прав.")
     report = get_object_or_404(GroupReport, pk=report_id)
 
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
     if request.method == "POST":
-        form = GroupReportReworkForm(request.POST)
-        if form.is_valid():
-            from .models import PartnerEarning
-            with transaction.atomic():
-                if report.status == GroupReport.Status.APPROVED and report.paid_reward:
-                    owner = User.objects.select_for_update().get(pk=report.user_id)
-                    _old = owner.balance or 0
-                    owner.balance = _old - report.paid_reward
-                    owner.save(update_fields=["balance"])
-                    log_balance_change(
-                        owner, "balance", _old, owner.balance,
-                        f"group_report_rework_rollback#{report_id} -{report.paid_reward}",
-                        request.user,
-                    )
-                    report.paid_reward = 0
-                # Откат начисления рефоводу/партнёру (баланс + log + удаление PE)
-                pe = PartnerEarning.objects.filter(group_report=report).select_related("partner").first()
-                if pe:
-                    partner_locked = User.objects.select_for_update().get(pk=pe.partner_id)
-                    _old_pb = partner_locked.balance or 0
-                    partner_locked.balance = _old_pb - pe.amount
-                    partner_locked.save(update_fields=["balance"])
-                    log_balance_change(
-                        partner_locked, "balance", _old_pb, partner_locked.balance,
-                        f"group_report_rework_partner_rollback#{report_id} -{pe.amount}",
-                        request.user,
-                    )
-                    pe.delete()
-                report.status = GroupReport.Status.REWORK
-                report.rework_comment = form.cleaned_data.get("rework_comment", "")
-                report.rejection_reason = ""
-                report.reviewed_at = timezone.now()
-                report.reviewed_by = request.user
-                report.save(update_fields=[
-                    "status", "rework_comment", "rejection_reason",
-                    "reviewed_at", "reviewed_by", "paid_reward", "updated_at",
-                ])
-                GroupReportReviewLog.objects.create(
-                    report=report, admin=request.user,
-                    action=GroupReportReviewLog.Action.REWORK,
+        if is_ajax:
+            comment = (request.POST.get("comment") or "").strip()
+            # Комментарий необязателен — оставим как было
+        else:
+            form = GroupReportReworkForm(request.POST)
+            if not form.is_valid():
+                return render(request, "core/admin_group_report_rework.html", {
+                    "form": form, "report": report,
+                })
+            comment = form.cleaned_data.get("rework_comment", "")
+
+        from .models import PartnerEarning
+        with transaction.atomic():
+            if report.status == GroupReport.Status.APPROVED and report.paid_reward:
+                owner = User.objects.select_for_update().get(pk=report.user_id)
+                _old = owner.balance or 0
+                owner.balance = _old - report.paid_reward
+                owner.save(update_fields=["balance"])
+                log_balance_change(
+                    owner, "balance", _old, owner.balance,
+                    f"group_report_rework_rollback#{report_id} -{report.paid_reward}",
+                    request.user,
                 )
-            messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
-            return _redirect_back_to_list(request)
-    else:
-        form = GroupReportReworkForm()
+                report.paid_reward = 0
+            pe = PartnerEarning.objects.filter(group_report=report).select_related("partner").first()
+            if pe:
+                partner_locked = User.objects.select_for_update().get(pk=pe.partner_id)
+                _old_pb = partner_locked.balance or 0
+                partner_locked.balance = _old_pb - pe.amount
+                partner_locked.save(update_fields=["balance"])
+                log_balance_change(
+                    partner_locked, "balance", _old_pb, partner_locked.balance,
+                    f"group_report_rework_partner_rollback#{report_id} -{pe.amount}",
+                    request.user,
+                )
+                pe.delete()
+            report.status = GroupReport.Status.REWORK
+            report.rework_comment = comment
+            report.rejection_reason = ""
+            report.reviewed_at = timezone.now()
+            report.reviewed_by = request.user
+            report.save(update_fields=[
+                "status", "rework_comment", "rejection_reason",
+                "reviewed_at", "reviewed_by", "paid_reward", "updated_at",
+            ])
+            GroupReportReviewLog.objects.create(
+                report=report, admin=request.user,
+                action=GroupReportReviewLog.Action.REWORK,
+            )
+
+        if is_ajax:
+            return JsonResponse({"success": True, "message": f"Отчёт #{report_id} отправлен на доработку."})
+        messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
+        return _redirect_back_to_list(request)
 
     return render(request, "core/admin_group_report_rework.html", {
-        "form": form, "report": report,
+        "form": GroupReportReworkForm(), "report": report,
     })
 
 
