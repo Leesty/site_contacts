@@ -386,6 +386,8 @@ urlpatterns = [
     path("staff/payment/<int:user_id>/revert/", views_support_admin.balance_admin_payment_revert, name="balance_admin_payment_revert"),
     # Calendar (main_admin only): зеркало календаря созвонов из бот-сервера, read-only
     path("staff/calendar/", views_support_admin.admin_calendar, name="admin_calendar"),
+    path("staff/curators/", views_support_admin.admin_curators_list, name="admin_curators_list"),
+    path("staff/curators/<int:curator_id>/", views_support_admin.admin_curator_detail, name="admin_curator_detail"),
     # ═══ GroupReport (бета) ═══
     # Менеджер
     path("reports/groups/", views_group_reports.manager_group_reports_list, name="manager_group_reports_list"),

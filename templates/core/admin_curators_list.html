@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Кураторы — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">Кураторы <span class="text-muted small">({{ curators|length }})</span></h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Кураторы — внешние тимлиды, которые ведут своих исполнителей в Telegram.
+    Привязка пользователей к куратору пригодится дальше для статистики и выплат.
+  </p>
+
+  {# Форма добавления #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h6 class="mb-2">➕ Добавить куратора</h6>
+      <form method="post" class="d-flex flex-wrap gap-2 align-items-center">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <input type="text" name="tg_username" placeholder="@tg_username" required
+               class="form-control form-control-sm" style="max-width:240px;">
+        <input type="text" name="display_name" placeholder="Имя (необязательно)"
+               class="form-control form-control-sm" style="max-width:280px;">
+        <button type="submit" class="btn btn-primary btn-sm">Добавить</button>
+      </form>
+    </div>
+  </div>
+
+  {# Список #}
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      {% if curators %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>@tg_username</th>
+                <th>Имя</th>
+                <th class="text-center">Юзеров</th>
+                <th class="text-center">Статус</th>
+                <th>Добавлен</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in curators %}
+                <tr>
+                  <td>
+                    <a href="{% url 'admin_curator_detail' c.id %}" class="text-decoration-none">
+                      @{{ c.tg_username }}
+                    </a>
+                  </td>
+                  <td class="small text-muted">{{ c.display_name|default:"—" }}</td>
+                  <td class="text-center">
+                    {% if c.users_count %}
+                      <span class="badge bg-info text-dark">{{ c.users_count }}</span>
+                    {% else %}
+                      <span class="text-muted small">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    {% if c.is_active %}
+                      <span class="badge bg-success">активен</span>
+                    {% else %}
+                      <span class="badge bg-secondary">архив</span>
+                    {% endif %}
+                  </td>
+                  <td class="small text-muted">{{ c.created_at|date:"d.m.Y" }}</td>
+                  <td>
+                    <a href="{% url 'admin_curator_detail' c.id %}" class="btn btn-outline-primary btn-sm py-0">
+                      Управлять
+                    </a>
+                    <form method="post" class="d-inline" onsubmit="return confirm('Изменить статус куратора?');">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="toggle_active">
+                      <input type="hidden" name="curator_id" value="{{ c.id }}">
+                      <button type="submit" class="btn btn-outline-secondary btn-sm py-0">
+                        {% if c.is_active %}В архив{% else %}Восстановить{% endif %}
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted small p-3 mb-0">Кураторов пока нет. Добавьте первого через форму выше.</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

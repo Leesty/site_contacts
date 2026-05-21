@@ -194,6 +194,17 @@ class User(AbstractUser):
         help_text="screen_name VK (последняя часть ссылки vk.com/...).",
     )
 
+    # Куратор: один пользователь может быть привязан к одному куратору
+    # (главный админ управляет на /staff/curators/). Кураторы — это
+    # внешние тимлиды, ведущие группу исполнителей в TG.
+    curator = models.ForeignKey(
+        "Curator",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="users",
+        help_text="Куратор-тимлид, который ведёт этого пользователя в TG.",
+    )
+
     def is_approved(self) -> bool:
         return self.status == self.Status.APPROVED
 
@@ -210,6 +221,43 @@ class TimeStampedModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class Curator(TimeStampedModel):
+    """Куратор-тимлид. Главный админ заводит его TG-ник и привязывает
+    к нему пользователей сайта на странице /staff/curators/.
+
+    Дальше планируется работа с кураторами (статистика, выплаты,
+    рассылки, etc.) — пока просто хранение TG-ника + список юзеров.
+    """
+
+    tg_username = models.CharField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        help_text="@ник в Telegram (без @, lower-case). Уникальный.",
+    )
+    display_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Человеческое имя (необязательно — для удобства).",
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_by = models.ForeignKey(
+        "User",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_curators",
+    )
+
+    class Meta:
+        verbose_name = "Куратор"
+        verbose_name_plural = "Кураторы"
+        ordering = ["tg_username"]
+
+    def __str__(self) -> str:
+        return f"@{self.tg_username}"
 
 
 class BaseType(models.Model):

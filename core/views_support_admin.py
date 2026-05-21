@@ -3552,3 +3552,148 @@ def admin_calendar(request: HttpRequest) -> HttpResponse:
         "db_error": db_error,
     })
 
+
+# ─── Кураторы (главный админ управляет тимлидами) ──────────────────────────
+
+def _is_main_admin(request: HttpRequest) -> bool:
+    return getattr(request.user, "role", None) == "main_admin"
+
+
+def _normalize_tg_username(raw: str) -> str:
+    """Снимает @, t.me-префиксы и приводит к lower-case."""
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    s = s.lstrip("@")
+    for p in ("https://t.me/", "http://t.me/", "t.me/", "telegram.me/"):
+        if s.lower().startswith(p):
+            s = s[len(p):]
+            break
+    return s.strip().rstrip("/").lower()
+
+
+@login_required
+def admin_curators_list(request: HttpRequest) -> HttpResponse:
+    """Список кураторов + форма добавления. Только main_admin."""
+    if not _is_main_admin(request):
+        return HttpResponseForbidden("Только для главного админа.")
+
+    from .models import Curator
+    from django.db.models import Count
+
+    if request.method == "POST":
+        action = request.POST.get("action") or "create"
+        if action == "create":
+            raw = request.POST.get("tg_username") or ""
+            display = (request.POST.get("display_name") or "").strip()
+            tg = _normalize_tg_username(raw)
+            if not tg:
+                messages.error(request, "Укажите @ник куратора в Telegram.")
+            elif Curator.objects.filter(tg_username__iexact=tg).exists():
+                messages.warning(request, f"Куратор @{tg} уже добавлен.")
+            else:
+                Curator.objects.create(
+                    tg_username=tg,
+                    display_name=display[:255],
+                    created_by=request.user,
+                )
+                messages.success(request, f"Куратор @{tg} добавлен.")
+            return redirect("admin_curators_list")
+        elif action == "toggle_active":
+            cid = (request.POST.get("curator_id") or "").strip()
+            if cid.isdigit():
+                cur = Curator.objects.filter(pk=int(cid)).first()
+                if cur:
+                    cur.is_active = not cur.is_active
+                    cur.save(update_fields=["is_active", "updated_at"])
+            return redirect("admin_curators_list")
+
+    curators = (
+        Curator.objects.annotate(users_count=Count("users"))
+        .order_by("-is_active", "tg_username")
+    )
+    return render(request, "core/admin_curators_list.html", {
+        "curators": curators,
+    })
+
+
+@login_required
+def admin_curator_detail(request: HttpRequest, curator_id: int) -> HttpResponse:
+    """Карточка куратора: привязка/отвязка пользователей.
+
+    POST `action=attach` — привязать user_id к куратору.
+    POST `action=detach` — отвязать (curator=NULL).
+    POST `action=rename` — обновить display_name / tg_username.
+    GET `?q=...` — поиск по юзерам для привязки.
+    """
+    if not _is_main_admin(request):
+        return HttpResponseForbidden("Только для главного админа.")
+
+    from .models import Curator
+
+    curator = Curator.objects.filter(pk=curator_id).first()
+    if not curator:
+        messages.error(request, "Куратор не найден.")
+        return redirect("admin_curators_list")
+
+    if request.method == "POST":
+        action = request.POST.get("action") or ""
+        if action == "attach":
+            uid = (request.POST.get("user_id") or "").strip()
+            if uid.isdigit():
+                user = User.objects.filter(pk=int(uid)).first()
+                if user:
+                    user.curator = curator
+                    user.save(update_fields=["curator"])
+                    messages.success(request, f"@{user.username} привязан к @{curator.tg_username}.")
+                else:
+                    messages.error(request, "Пользователь не найден.")
+            return redirect("admin_curator_detail", curator_id=curator.id)
+        elif action == "detach":
+            uid = (request.POST.get("user_id") or "").strip()
+            if uid.isdigit():
+                user = User.objects.filter(pk=int(uid), curator=curator).first()
+                if user:
+                    user.curator = None
+                    user.save(update_fields=["curator"])
+                    messages.success(request, f"@{user.username} отвязан от куратора.")
+            return redirect("admin_curator_detail", curator_id=curator.id)
+        elif action == "rename":
+            new_tg = _normalize_tg_username(request.POST.get("tg_username") or "")
+            new_display = (request.POST.get("display_name") or "").strip()
+            if new_tg and new_tg != curator.tg_username:
+                from .models import Curator as _C
+                if _C.objects.filter(tg_username__iexact=new_tg).exclude(pk=curator.pk).exists():
+                    messages.error(request, f"@{new_tg} уже занят другим куратором.")
+                else:
+                    curator.tg_username = new_tg
+            curator.display_name = new_display[:255]
+            curator.save(update_fields=["tg_username", "display_name", "updated_at"])
+            messages.success(request, "Сохранено.")
+            return redirect("admin_curator_detail", curator_id=curator.id)
+
+    attached_users = curator.users.all().order_by("username")
+
+    # Поиск по сайту для привязки (исключаем уже привязанных к этому куратору
+    # и юзеров staff-ролей — куратор только над «исполнителями»).
+    q = (request.GET.get("q") or "").strip().lstrip("@")
+    search_results: list = []
+    if q:
+        search_results = list(
+            User.objects.filter(
+                role=User.Role.USER,
+            )
+            .filter(username__icontains=q)
+            .exclude(curator=curator)
+            .select_related("curator")
+            .order_by("username")[:50]
+        )
+
+    return render(request, "core/admin_curator_detail.html", {
+        "curator": curator,
+        "attached_users": attached_users,
+        "attached_count": attached_users.count(),
+        "q": q,
+        "search_results": search_results,
+    })
+

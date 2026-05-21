@@ -289,6 +289,9 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         ).count()
         incomplete_group_reports_count = GroupReport.objects.filter(is_complete=False).count()
         granted_group_report_users_count = User.objects.filter(can_create_group_reports=True).count()
+        # Кураторы (только активные) — для карточки на дашборде главного админа
+        from .models import Curator as _Curator
+        curators_count = _Curator.objects.filter(is_active=True).count()
 
         ctx = {
             "user": user,
@@ -316,6 +319,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "pending_group_reports_count": pending_group_reports_count,
             "incomplete_group_reports_count": incomplete_group_reports_count,
             "granted_group_report_users_count": granted_group_report_users_count,
+            "curators_count": curators_count,
         }
 
         if _is_main_admin(user):
