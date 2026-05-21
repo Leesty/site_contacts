@@ -40,18 +40,20 @@
                 <th>@tg_username</th>
                 <th>Имя</th>
                 <th>Аккаунт на сайте</th>
-                <th class="text-center">Статус</th>
+                <th class="text-center">Рефералов</th>
+                <th class="text-end">Заработано</th>
                 <th>Добавлен</th>
                 <th>Действия</th>
               </tr>
             </thead>
             <tbody>
               {% for c in curators %}
-                <tr>
+                <tr {% if not c.is_active %}class="text-muted" style="opacity:.55;"{% endif %}>
                   <td>
                     <a href="{% url 'admin_curator_detail' c.id %}" class="text-decoration-none">
                       @{{ c.tg_username }}
                     </a>
+                    {% if not c.is_active %}<span class="badge bg-secondary ms-1" style="font-size:9px;">архив</span>{% endif %}
                   </td>
                   <td class="small text-muted">{{ c.display_name|default:"—" }}</td>
                   <td>
@@ -64,10 +66,17 @@
                     {% endif %}
                   </td>
                   <td class="text-center">
-                    {% if c.is_active %}
-                      <span class="badge bg-success">активен</span>
+                    {% if c.referrals_count %}
+                      <span class="badge bg-info text-dark">{{ c.referrals_count }}</span>
                     {% else %}
-                      <span class="badge bg-secondary">архив</span>
+                      <span class="text-muted small">0</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end small">
+                    {% if c.earned_total %}
+                      <span class="text-success fw-semibold">{{ c.earned_total }} ₽</span>
+                    {% else %}
+                      <span class="text-muted">—</span>
                     {% endif %}
                   </td>
                   <td class="small text-muted">{{ c.created_at|date:"d.m.Y" }}</td>

@@ -3607,10 +3607,31 @@ def admin_curators_list(request: HttpRequest) -> HttpResponse:
                     cur.save(update_fields=["is_active", "updated_at"])
             return redirect("admin_curators_list")
 
-    curators = (
+    from .models import PartnerEarning
+    curators = list(
         Curator.objects.select_related("account")
         .order_by("-is_active", "tg_username")
     )
+
+    # Bulk: кол-во рефералов и заработок для каждого привязанного аккаунта
+    account_ids = [c.account_id for c in curators if c.account_id]
+    refs_by_acc: dict[int, int] = {}
+    earned_by_acc: dict[int, int] = {}
+    if account_ids:
+        refs_by_acc = dict(
+            User.objects.filter(partner_owner_id__in=account_ids)
+            .values("partner_owner_id").annotate(c=Count("id"))
+            .values_list("partner_owner_id", "c")
+        )
+        earned_by_acc = dict(
+            PartnerEarning.objects.filter(partner_id__in=account_ids)
+            .values("partner_id").annotate(s=Sum("amount"))
+            .values_list("partner_id", "s")
+        )
+    for c in curators:
+        c.referrals_count = refs_by_acc.get(c.account_id, 0) if c.account_id else 0
+        c.earned_total = int(earned_by_acc.get(c.account_id, 0) or 0) if c.account_id else 0
+
     return render(request, "core/admin_curators_list.html", {
         "curators": curators,
     })
