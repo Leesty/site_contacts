@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-05-21 (вечер) — `[feat]` Кураторы: синхронизация с CRM (windowgram)
+
+В CRM-системе (windowgram, бот-сервер в NL) появился доступ к списку кураторов с partnerka. Источник правды — partnerka, CRM read-only зеркало.
+
+**На partnerka:**
+- `GET /api/curators/` — JSON-список кураторов. Авторизация: `Bearer SEARCH_BOT_WEBHOOK_SECRET` (тот же ключ что у search-bot-start webhook и `/api/admins/external`).
+- Поля: `id, tg_username, display_name, is_active, users_count, created_at`.
+- Опциональный фильтр `?active=1`.
+
+**На windowgram** (`/opt/windowgram/backend/app/api/curators.py`):
+- `GET /api/curators` — JSON-прокси к partnerka. Авторизация: текущий CRM-юзер.
+- `GET /api/curators-page` — HTML-страница со списком (для случая, когда SPA-вкладку не получается добавить — фронт собран без исходников на сервере). Открывается админом по прямой ссылке: `https://murzzvon.ru/api/curators-page`.
+
+Сервис `windowgram` перезапущен. Эндпоинты подтверждены: partnerka API → 200 (`ok=true, count=0`), windowgram local → 403 без auth (правильно).
+
 ## 2026-05-21 (день) — `[feat]` Кураторы: первая итерация
 
 Новая сущность `Curator` — внешние тимлиды, ведущие группу исполнителей в TG. Главный админ на дашборде видит карточку «🧑‍🏫 Кураторы» (жёлтая, с каунтером активных).
