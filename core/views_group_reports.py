@@ -687,7 +687,10 @@ def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResp
         if not report:
             return _resp_or_redirect(False, "Отчёт не найден.")
         if report.status == GroupReport.Status.APPROVED:
-            return _resp_or_redirect(False, f"Отчёт #{report_id} уже одобрен.")
+            # Уже одобрен — UI скорее всего показывает устаревшее состояние
+            # (юзер дважды кликнул или открыта старая вкладка). Возвращаем
+            # success=True чтобы фронт всё равно убрал строку из DOM.
+            return _resp_or_redirect(True, f"Отчёт #{report_id} уже был одобрен ранее.")
 
         ref_reward, owner_cut, owner_user = _split_group_report_payout(report.user)
 
@@ -764,6 +767,14 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     if request.method == "POST":
+        # Идемпотентность: если уже отклонён — отдаём success чтобы фронт
+        # точно убрал строку (устаревший UI при повторном клике).
+        if report.status == GroupReport.Status.REJECTED:
+            if is_ajax:
+                return JsonResponse({"success": True, "message": f"Отчёт #{report_id} уже отклонён."})
+            messages.info(request, f"Отчёт #{report_id} уже отклонён.")
+            return _redirect_back_to_list(request)
+
         # AJAX-флоу: принимаем простой POST `reason=...` без ModelForm.
         # HTML-флоу (старая страница с формой): ModelForm + redirect.
         if is_ajax:
@@ -838,6 +849,14 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     if request.method == "POST":
+        # Идемпотентность: если уже на доработке — отдаём success
+        # (устаревший UI / двойной клик).
+        if report.status == GroupReport.Status.REWORK:
+            if is_ajax:
+                return JsonResponse({"success": True, "message": f"Отчёт #{report_id} уже на доработке."})
+            messages.info(request, f"Отчёт #{report_id} уже на доработке.")
+            return _redirect_back_to_list(request)
+
         if is_ajax:
             comment = (request.POST.get("comment") or "").strip()
             # Комментарий необязателен — оставим как было
