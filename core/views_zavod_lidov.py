@@ -232,7 +232,6 @@ def customer_download_excel(request: HttpRequest) -> HttpResponse:
         pairs = pair_values(user_vals, admin_vals, seed=f"proj-{proj.pk}")
         sheet_name = _sanitize_sheet_name(proj.name, existing_names)
         ws = wb.create_sheet(title=sheet_name)
-        ws.append(["Клиент", "Админ"])
         for u_val, a_val in pairs:
             ws.append([u_val, a_val])
         ws.column_dimensions["A"].width = 32
