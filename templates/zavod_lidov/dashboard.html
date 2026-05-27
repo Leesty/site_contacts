@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
   <h1 class="h4 mb-0">📲 Завод-лидов</h1>
-  <span class="text-muted small">Сегодня: <strong>{{ today|date:"d.m.Y" }}</strong> · файл приходит в 11:00 МСК</span>
+  <span class="text-muted small">Файл обновляется каждый день</span>
 </div>
 
 <div class="row g-3">
@@ -41,13 +41,13 @@
     <div class="card shadow-sm">
       <div class="card-body text-center py-5">
         {% if has_download %}
-          <p class="small text-muted mb-3">Файл с проектами обновляется в 11:00 МСК</p>
+          <p class="small text-muted mb-3">Файл обновляется каждый день</p>
           <a class="btn btn-success btn-lg" href="{% url 'zavod_lidov_download' %}">
             📥 Скачать Excel
           </a>
         {% else %}
           <p class="text-muted mb-0" style="font-size:14px;">
-            Файл будет доступен после закрытия дня — в 11:00 МСК
+            Файл с проектами появится здесь — обновляется каждый день
           </p>
         {% endif %}
       </div>
