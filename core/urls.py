@@ -395,7 +395,7 @@ urlpatterns = [
     path("api/users-stats/", views_support_admin.api_users_with_stats, name="api_users_with_stats"),
     # Завод-лидов: обмен по проектам клиент ↔ главный админ
     path("zavod/", views_zavod_lidov.customer_dashboard, name="zavod_lidov_customer"),
-    path("zavod/download/", views_zavod_lidov.customer_download_excel, name="zavod_lidov_download"),
+    path("zavod/download/<int:project_id>/", views_zavod_lidov.customer_download_excel, name="zavod_lidov_download"),
     path("staff/zavod-lidov/", views_zavod_lidov.admin_overview, name="admin_zavod_lidov_overview"),
     path("staff/zavod-lidov/<int:project_id>/", views_zavod_lidov.admin_project_detail, name="admin_zavod_lidov_project"),
     # ═══ GroupReport (бета) ═══

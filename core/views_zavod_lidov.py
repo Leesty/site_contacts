@@ -189,67 +189,73 @@ def customer_dashboard(request: HttpRequest) -> HttpResponse:
         messages.success(request, f"Проект «{project_name}» создан. Добавлено значений: {added}.")
         return redirect("zavod_lidov_customer")
 
-    # Файл доступен если есть хоть один закрытый проект
-    has_download = LidProject.objects.filter(
-        customer=customer, business_date__lt=today,
-    ).exists()
+    # Список ВСЕХ проектов клиента, новые сверху, с метаданными
+    projects_qs = (
+        LidProject.objects.filter(customer=customer)
+        .annotate(
+            n_total=Count("items"),
+        )
+        .order_by("-created_at")
+    )
+    projects = []
+    for p in projects_qs:
+        projects.append({
+            "obj": p,
+            "n_total": p.n_total,
+            "closed": p.business_date < today,
+        })
 
     return render(request, "zavod_lidov/dashboard.html", {
         "today": today,
-        "has_download": has_download,
+        "projects": projects,
     })
 
 
 @login_required
-def customer_download_excel(request: HttpRequest) -> HttpResponse:
-    """Excel: лист на каждый ЗАКРЫТЫЙ проект клиента."""
+def customer_download_excel(request: HttpRequest, project_id: int) -> HttpResponse:
+    """Excel конкретного проекта: один лист с этим проектом."""
     if not _is_lid_customer(request.user):
         return HttpResponseForbidden("Только для заказчиков лидов.")
 
-    customer = request.user
-    today = business_date_now()
-
-    projects = (
-        LidProject.objects.filter(customer=customer, business_date__lt=today)
-        .order_by("business_date", "created_at")
+    project = get_object_or_404(
+        LidProject, pk=project_id, customer=request.user,
     )
+    today = business_date_now()
+    # Проект должен быть закрыт (прошёл cutoff). Открытые качать нельзя —
+    # данные ещё не готовы.
+    if project.business_date >= today:
+        return HttpResponseForbidden("Проект ещё в работе.")
+
+    user_vals = list(
+        project.items.filter(is_admin=False)
+        .order_by("created_at").values_list("value", flat=True)
+    )
+    admin_vals = list(
+        project.items.filter(is_admin=True)
+        .order_by("created_at").values_list("value", flat=True)
+    )
+    pairs = pair_values(user_vals, admin_vals, seed=f"proj-{project.pk}")
 
     wb = Workbook()
     wb.remove(wb.active)
-    existing_names: set[str] = set()
-    any_added = False
-    for proj in projects:
-        user_vals = list(
-            proj.items.filter(is_admin=False)
-            .order_by("created_at").values_list("value", flat=True)
-        )
-        admin_vals = list(
-            proj.items.filter(is_admin=True)
-            .order_by("created_at").values_list("value", flat=True)
-        )
-        if not user_vals and not admin_vals:
-            continue
-        pairs = pair_values(user_vals, admin_vals, seed=f"proj-{proj.pk}")
-        sheet_name = _sanitize_sheet_name(proj.name, existing_names)
-        ws = wb.create_sheet(title=sheet_name)
-        for u_val, a_val in pairs:
-            ws.append([u_val, a_val])
-        ws.column_dimensions["A"].width = 32
-        ws.column_dimensions["B"].width = 32
-        any_added = True
-
-    if not any_added:
-        ws = wb.create_sheet(title="Пусто")
-        ws.append(["Закрытых проектов пока нет."])
+    sheet_name = _sanitize_sheet_name(project.name, set())
+    ws = wb.create_sheet(title=sheet_name)
+    for u_val, a_val in pairs:
+        ws.append([u_val, a_val])
+    ws.column_dimensions["A"].width = 32
+    ws.column_dimensions["B"].width = 32
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
+    # safe-имя файла из названия проекта (только latin/digit/underscore)
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", project.name).strip("_") or f"project-{project.pk}"
+    safe = safe[:50]
+    fname = f"{safe}_{project.business_date.strftime('%Y-%m-%d')}.xlsx"
     response = HttpResponse(
         buf.getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    fname = f"lidov_{customer.username}_{today.strftime('%Y-%m-%d')}.xlsx"
     response["Content-Disposition"] = f'attachment; filename="{fname}"'
     return response
 

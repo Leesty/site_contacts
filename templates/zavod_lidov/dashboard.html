@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
   <h1 class="h4 mb-0">📲 Завод-лидов</h1>
-  <span class="text-muted small">Файл обновляется каждый день</span>
+  <span class="text-muted small">Файлы обновляются каждый день</span>
 </div>
 
 <div class="row g-3">
@@ -36,19 +36,42 @@
     </div>
   </div>
 
-  {# Правая часть: только кнопка скачать #}
+  {# Правая часть: список проектов с кнопкой скачать у каждого #}
   <div class="col-lg-5">
     <div class="card shadow-sm">
-      <div class="card-body text-center py-5">
-        {% if has_download %}
-          <p class="small text-muted mb-3">Файл обновляется каждый день</p>
-          <a class="btn btn-success btn-lg" href="{% url 'zavod_lidov_download' %}">
-            📥 Скачать Excel
-          </a>
-        {% else %}
-          <p class="text-muted mb-0" style="font-size:14px;">
-            Файл с проектами появится здесь — обновляется каждый день
+      <div class="card-header bg-transparent border-secondary py-2">
+        <strong>Мои проекты</strong>
+        {% if projects %}<span class="text-muted small">· {{ projects|length }}</span>{% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if not projects %}
+          <p class="text-muted small text-center my-4 px-3">
+            Здесь будет список твоих проектов. Создай первый в форме слева.
           </p>
+        {% else %}
+        <div class="list-group list-group-flush">
+          {% for p in projects %}
+            <div class="list-group-item d-flex justify-content-between align-items-center gap-2"
+                 style="background:transparent; border-color:#1e293b;">
+              <div class="flex-grow-1 overflow-hidden">
+                <div class="fw-semibold text-truncate">{{ p.obj.name }}</div>
+                <div class="small text-muted">
+                  {{ p.obj.created_at|date:"d.m.Y" }}
+                  {% if p.n_total %}· {{ p.n_total }} значений{% endif %}
+                </div>
+              </div>
+              <div class="flex-shrink-0">
+                {% if p.closed %}
+                  <a class="btn btn-success btn-sm" href="{% url 'zavod_lidov_download' p.obj.id %}">
+                    📥 Скачать
+                  </a>
+                {% else %}
+                  <span class="badge bg-warning text-dark">в работе</span>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
         {% endif %}
       </div>
     </div>
