@@ -86,7 +86,7 @@
         <strong>📈 Заработано (одобренные начисления)</strong>
       </div>
       <div class="card-body">
-        <table class="table table-sm mb-0 small">
+        <table class="table table-sm table-dark-site mb-0 small">
           <tbody>
             <tr>
               <td class="text-muted">Lead (отчёты по базам)</td>
@@ -164,7 +164,7 @@
         {% endif %}
         {% if wr_approved %}
           <div class="px-3 pt-2 pb-1 small text-muted">Одобренные выводы</div>
-          <table class="table table-sm mb-0 small">
+          <table class="table table-sm table-dark-site mb-0 small">
             <thead>
               <tr>
                 <th class="ps-3">Дата</th>
@@ -214,7 +214,7 @@
     <div class="row g-3">
       <div class="col-md-6">
         <div class="small text-muted mb-1">ПОИСК</div>
-        <table class="table table-sm mb-0 small">
+        <table class="table table-sm table-dark-site mb-0 small">
           <tr><td>Сумма всех плюсов</td><td class="text-end text-success">+{{ plus_search }}₽</td></tr>
           <tr><td>Сумма всех минусов</td><td class="text-end text-danger">{{ minus_search }}₽</td></tr>
           <tr class="border-top"><th>Итог по логу</th><th class="text-end">{{ reconcile_search }}₽</th></tr>
@@ -229,7 +229,7 @@
       {% if balance_dozhim or plus_dozhim or minus_dozhim %}
       <div class="col-md-6">
         <div class="small text-muted mb-1">ДОЖИМ</div>
-        <table class="table table-sm mb-0 small">
+        <table class="table table-sm table-dark-site mb-0 small">
           <tr><td>Сумма всех плюсов</td><td class="text-end text-success">+{{ plus_dozhim }}₽</td></tr>
           <tr><td>Сумма всех минусов</td><td class="text-end text-danger">{{ minus_dozhim }}₽</td></tr>
           <tr class="border-top"><th>Итог по логу</th><th class="text-end">{{ reconcile_dozhim }}₽</th></tr>
@@ -269,7 +269,7 @@
   <div class="card-body p-0">
     {% if logs %}
     <div class="table-responsive">
-      <table class="table table-sm mb-0 align-middle small">
+      <table class="table table-sm table-dark-site mb-0 align-middle small">
         <thead>
           <tr>
             <th class="ps-3">Дата</th>
