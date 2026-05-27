@@ -1900,62 +1900,77 @@ class ManualSearchClaim(TimeStampedModel):
         return f"ManualClaim #{self.pk} @{self.user.username} {self.status}"
 
 
-# ─── Завод-лидов: обмен номерами клиент ↔ главный админ ─────────────────────
+# ─── Завод-лидов: обмен по ПРОЕКТАМ (номера/сайты) ──────────────────────────
 
-class LidPhoneSubmission(TimeStampedModel):
-    """Один номер, добавленный в обмен.
+class LidProject(TimeStampedModel):
+    """Проект обмена.
 
-    Клиент (role=lid_customer) вставляет свои номера → строки с
-    `is_admin=False`. Главный админ в ответ вставляет свои →
-    `is_admin=True`. Каждая «бизнес-дата» (00:00–11:00 MSK relative)
-    собирает обе стороны; на закрытии дня — при скачивании Excel —
-    случайно паруются.
-
-    `customer` — целевой клиент (один и тот же даже если submitter=admin).
-    `submitter` — кто физически нажал submit.
+    Клиент создаёт проект (название + первая порция значений). Главный
+    админ в ответ добавляет свои значения. В Excel один лист = один
+    проект. Закрытие через cutoff 11:00 MSK — после этого клиент
+    скачивает файл со всеми завершёнными проектами.
     """
 
     customer = models.ForeignKey(
-        "User",
-        on_delete=models.CASCADE,
-        related_name="lid_phones_as_customer",
-        help_text="Клиент, к чьему счёту относится номер (role=lid_customer).",
+        "User", on_delete=models.CASCADE,
+        related_name="lid_projects_as_customer",
+        help_text="Клиент-заказчик (role=lid_customer).",
     )
-    submitter = models.ForeignKey(
-        "User",
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="lid_phones_submitted",
-        help_text="Кто реально вставил номер.",
+    name = models.CharField(
+        max_length=200,
+        help_text="Название проекта (станет именем листа в Excel).",
     )
-    phone = models.CharField(max_length=32, db_index=True)
     business_date = models.DateField(
         db_index=True,
-        help_text="Бизнес-дата (MSK, cutoff 11:00). Все submissions с одной "
-                  "и той же business_date обрабатываются в одном Excel-листе.",
-    )
-    is_admin = models.BooleanField(
-        default=False,
-        db_index=True,
-        help_text="False = номер от клиента, True = номер-ответ от админа.",
+        help_text="Бизнес-дата (MSK, cutoff 11:00). По этой дате считаем "
+                  "«проект закрыт» = business_date < сегодняшняя.",
     )
 
     class Meta:
-        verbose_name = "Номер обмена (завод-лидов)"
-        verbose_name_plural = "Номера обмена (завод-лидов)"
-        ordering = ["-business_date", "-created_at"]
+        verbose_name = "Проект (завод-лидов)"
+        verbose_name_plural = "Проекты (завод-лидов)"
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["customer", "business_date", "is_admin"]),
+            models.Index(fields=["customer", "business_date"]),
         ]
-        # Дубликаты внутри одной (customer, day, side) — отсекаем.
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"LidProject #{self.pk} {self.name} ({self.customer.username})"
+
+
+class LidProjectItem(TimeStampedModel):
+    """Одно значение в проекте — номер ИЛИ сайт ИЛИ любая строка."""
+
+    project = models.ForeignKey(
+        "LidProject", on_delete=models.CASCADE,
+        related_name="items",
+    )
+    submitter = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="lid_project_items_submitted",
+    )
+    value = models.CharField(max_length=500, db_index=True)
+    is_admin = models.BooleanField(
+        default=False, db_index=True,
+        help_text="False = значение от клиента, True = ответ от админа.",
+    )
+
+    class Meta:
+        verbose_name = "Значение проекта (завод-лидов)"
+        verbose_name_plural = "Значения проекта (завод-лидов)"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["project", "is_admin"]),
+        ]
+        # Дубликаты в рамках одной (project, side) — отсекаем.
         constraints = [
             models.UniqueConstraint(
-                fields=["customer", "business_date", "is_admin", "phone"],
-                name="uniq_lid_phone_per_day_side",
+                fields=["project", "is_admin", "value"],
+                name="uniq_lid_item_per_project_side",
             ),
         ]
 
     def __str__(self) -> str:  # pragma: no cover
         side = "admin" if self.is_admin else "user"
-        return f"LidPhone {side} {self.phone} {self.business_date}"
+        return f"LidItem {side} {self.value} (p#{self.project_id})"
 

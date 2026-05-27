@@ -1,13 +1,18 @@
-"""Завод-лидов: обмен номерами между клиентом (role=lid_customer)
-и главным админом.
+"""Завод-лидов: обмен по проектам (номера/сайты) клиент ↔ главный админ.
 
-Бизнес-дата: «день» начинается в 11:00 MSK. Все номера, добавленные
-между 11:00 MSK дня X и 11:00 MSK дня X+1, имеют business_date = X.
+Бизнес-логика:
+- Клиент создаёт ПРОЕКТ: textarea с номерами/сайтами + название проекта.
+- Главный админ видит список всех проектов всех клиентов, заходит в
+  карточку проекта и добавляет свои значения в ответ.
+- Бизнес-дата проекта = MSK-дата создания (cutoff 11:00).
+- В 11:00 МСК проект «закрывается» (business_date < today).
+- Клиент скачивает Excel: один файл, лист = название проекта,
+  колонки [значение клиента, значение админа]. Парование случайно
+  и детерминистично по seed=project_id.
 
-При скачивании Excel формируются листы для каждого ЗАКРЫТОГО дня
-(business_date < текущая business_date). Для каждого листа парование
-номеров клиента и админа делается на лету, детерминистично (seed =
-ISO-дата), так что повторное скачивание даёт тот же результат.
+Значения: либо телефон (нормализуется в +цифры), либо сайт/URL (как
+есть, lowercase), либо любая другая строка (как есть). Дубликаты
+внутри (project, side) отсекаются БД-ой через UniqueConstraint.
 """
 
 from __future__ import annotations
@@ -21,12 +26,13 @@ from zoneinfo import ZoneInfo
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError
+from django.db.models import Count, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from openpyxl import Workbook
 
-from .models import LidPhoneSubmission, User
+from .models import LidProject, LidProjectItem, User
 
 
 MSK = ZoneInfo("Europe/Moscow")
@@ -34,10 +40,9 @@ BUSINESS_DAY_CUTOFF_HOUR = 11  # 11:00 MSK — новая бизнес-дата
 
 
 def business_date_now() -> date_cls:
-    """Возвращает текущую бизнес-дату (MSK, cutoff 11:00).
+    """Текущая бизнес-дата (MSK, cutoff 11:00).
 
-    Если сейчас 10:59 MSK — бизнес-дата = вчера.
-    Если сейчас 11:00 MSK — бизнес-дата = сегодня.
+    До 11:00 МСК — это всё ещё «вчерашний» бизнес-день.
     """
     now_msk = timezone.now().astimezone(MSK)
     if now_msk.hour < BUSINESS_DAY_CUTOFF_HOUR:
@@ -45,78 +50,93 @@ def business_date_now() -> date_cls:
     return now_msk.date()
 
 
-def is_business_date_closed(d: date_cls) -> bool:
-    """День закрыт = текущая бизнес-дата больше переданной."""
-    return d < business_date_now()
+def is_project_closed(project: "LidProject") -> bool:
+    return project.business_date < business_date_now()
 
 
-def parse_phones(text: str) -> list[str]:
-    """Парсит произвольный текст в список нормализованных телефонов.
+# ─── Парсер значений: телефон / URL / любая строка ──────────────────────
 
-    Стратегия: бьём текст по «разделителям» (новые строки, запятая,
-    точка с запятой, табуляция, multiple spaces), затем каждый кусок
-    нормализуем — оставляем цифры + ведущий `+`. Куски с длиной < 5
-    цифр отбрасываются. Дубликаты в рамках вставки отсекаются.
-    """
+_PHONE_LIKE_RE = re.compile(r"^[\d\+\-\s\(\)]+$")
+
+
+def _normalize_value(raw: str) -> str | None:
+    """Нормализует одно значение. Возвращает None если совсем мусор."""
+    v = raw.strip()
+    if not v:
+        return None
+    # Телефон: только цифры, +, -, (, ), пробелы
+    if _PHONE_LIKE_RE.match(v):
+        has_plus = v.lstrip().startswith("+")
+        digits = re.sub(r"\D", "", v)
+        if len(digits) < 5:
+            return None
+        return ("+" + digits) if has_plus else digits
+    # URL/сайт: содержит слэш или точку — оставляем как есть, lowercase
+    if "/" in v or "." in v:
+        return v.lower()
+    # Любое другое — как есть
+    return v
+
+
+def parse_values(text: str) -> list[str]:
+    """Разбивает вставленный текст на список значений (без дубликатов)."""
     if not text:
         return []
-    # Разделители: новая строка, запятая, точка с запятой, табуляция,
-    # 2+ подряд пробелов. Внутри одного chunk пробелы допустимы (`+7 999`
-    # это один номер). Дедуп — по нормализованной строке.
     chunks = re.split(r"[\n\r,;\t]+|[ ]{2,}", text)
     seen: set[str] = set()
     out: list[str] = []
     for chunk in chunks:
-        c = chunk.strip()
-        if not c:
+        v = _normalize_value(chunk)
+        if v is None or v in seen:
             continue
-        # Оставляем цифры и опциональный ведущий +
-        has_plus = c.startswith("+")
-        digits = re.sub(r"\D", "", c)
-        if len(digits) < 5:
-            continue
-        normalized = ("+" + digits) if has_plus else digits
-        if normalized not in seen:
-            seen.add(normalized)
-            out.append(normalized)
+        seen.add(v)
+        out.append(v)
     return out
 
 
-def pair_phones(user_phones: list[str], admin_phones: list[str], seed: str) -> list[tuple[str, str]]:
-    """Парует номера в детерминистично-случайном порядке.
+def pair_values(user_vals: list[str], admin_vals: list[str], seed: str) -> list[tuple[str, str]]:
+    """Паруем значения. rows = max(len(user), len(admin)).
 
-    Количество строк = max(len(user), len(admin)). Каждая сторона
-    представлена ВСЕМИ своими номерами хотя бы раз; разница добивается
-    случайным повторением из своего пула. seed → одна и та же дата
-    даёт один и тот же результат при повторном скачивании.
+    Каждая сторона представлена ВСЕМИ значениями хотя бы раз;
+    недостающие добиваются случайным повтором (seed детерминирует
+    результат — повторное скачивание даст ту же таблицу).
+    Если одна сторона пуста — другая остаётся, пара с "".
     """
     rng = random.Random(seed)
-    n_user = len(user_phones)
-    n_admin = len(admin_phones)
-    n = max(n_user, n_admin)
+    n = max(len(user_vals), len(admin_vals))
     if n == 0:
         return []
-    # Если одна сторона пустая — пары делать не из чего. Возвращаем
-    # ту сторону что есть, с пустой второй ячейкой.
-    if not user_phones:
-        return [("", a) for a in admin_phones]
-    if not admin_phones:
-        return [(u, "") for u in user_phones]
+    if not user_vals:
+        return [("", a) for a in admin_vals]
+    if not admin_vals:
+        return [(u, "") for u in user_vals]
 
-    user_pool = user_phones[:]
-    admin_pool = admin_phones[:]
+    user_pool = user_vals[:]
+    admin_pool = admin_vals[:]
     rng.shuffle(user_pool)
     rng.shuffle(admin_pool)
-
     if len(user_pool) < n:
-        user_pool.extend(rng.choices(user_phones, k=n - len(user_pool)))
+        user_pool.extend(rng.choices(user_vals, k=n - len(user_pool)))
     if len(admin_pool) < n:
-        admin_pool.extend(rng.choices(admin_phones, k=n - len(admin_pool)))
-
+        admin_pool.extend(rng.choices(admin_vals, k=n - len(admin_pool)))
     return list(zip(user_pool, admin_pool))
 
 
-# ─── Helpers для авторизации ──────────────────────────────────────────────
+def _sanitize_sheet_name(name: str, existing: set[str]) -> str:
+    """Excel: max 31 char, без \\ / ? * [ ] : и не пустое. Уникальность."""
+    cleaned = re.sub(r"[\\/?*\[\]:]", "_", name).strip() or "проект"
+    cleaned = cleaned[:31]
+    base = cleaned
+    i = 2
+    while cleaned in existing:
+        suffix = f" ({i})"
+        cleaned = (base[: 31 - len(suffix)] + suffix)
+        i += 1
+    existing.add(cleaned)
+    return cleaned
+
+
+# ─── Auth helpers ─────────────────────────────────────────────────────────
 
 def _is_lid_customer(user) -> bool:
     return getattr(user, "is_authenticated", False) and getattr(user, "role", None) == "lid_customer"
@@ -130,7 +150,7 @@ def _is_main_admin(user) -> bool:
 
 @login_required
 def customer_dashboard(request: HttpRequest) -> HttpResponse:
-    """Кабинет клиента: вставить номера + история + скачать Excel."""
+    """Клиент: создание проектов + кнопка скачать."""
     if not _is_lid_customer(request.user):
         return HttpResponseForbidden("Только для заказчиков лидов.")
 
@@ -138,121 +158,83 @@ def customer_dashboard(request: HttpRequest) -> HttpResponse:
     today = business_date_now()
 
     if request.method == "POST":
-        raw = request.POST.get("phones") or ""
-        phones = parse_phones(raw)
+        project_name = (request.POST.get("project_name") or "").strip()[:200]
+        raw_values = request.POST.get("values") or ""
+        values = parse_values(raw_values)
+        if not project_name:
+            messages.error(request, "Укажите название проекта.")
+            return redirect("zavod_lidov_customer")
+        if not values:
+            messages.warning(request, "Не удалось распознать ни одного значения.")
+            return redirect("zavod_lidov_customer")
+        project = LidProject.objects.create(
+            customer=customer, name=project_name, business_date=today,
+        )
         added = 0
-        dup = 0
-        for ph in phones:
+        for v in values:
             try:
-                LidPhoneSubmission.objects.create(
-                    customer=customer,
-                    submitter=customer,
-                    phone=ph,
-                    business_date=today,
-                    is_admin=False,
+                LidProjectItem.objects.create(
+                    project=project, submitter=customer, value=v, is_admin=False,
                 )
                 added += 1
             except IntegrityError:
-                dup += 1
-        if added:
-            messages.success(request, f"Добавлено номеров: {added}.{f' Дубликатов пропущено: {dup}.' if dup else ''}")
-        elif dup:
-            messages.info(request, f"Все {dup} номеров уже были добавлены сегодня.")
-        else:
-            messages.warning(request, "Не удалось распознать ни одного номера.")
+                pass
+        messages.success(request, f"Проект «{project_name}» создан. Добавлено значений: {added}.")
         return redirect("zavod_lidov_customer")
 
-    # Сводка: сколько добавлено за сегодня + история по дням
-    today_count = LidPhoneSubmission.objects.filter(
-        customer=customer, business_date=today, is_admin=False,
-    ).count()
-    today_admin_count = LidPhoneSubmission.objects.filter(
-        customer=customer, business_date=today, is_admin=True,
-    ).count()
-
-    # История за прошлые дни: список (date, my_count, admin_count, closed)
-    history_rows = []
-    daily = (
-        LidPhoneSubmission.objects.filter(customer=customer)
-        .values("business_date", "is_admin")
-        .order_by("-business_date")
-    )
-    by_day: dict = {}
-    for row in daily:
-        d = row["business_date"]
-        side_count = LidPhoneSubmission.objects.filter(
-            customer=customer, business_date=d, is_admin=row["is_admin"],
-        ).count()
-        by_day.setdefault(d, {"my": 0, "admin": 0})
-        if row["is_admin"]:
-            by_day[d]["admin"] = side_count
-        else:
-            by_day[d]["my"] = side_count
-    for d in sorted(by_day.keys(), reverse=True):
-        history_rows.append({
-            "date": d,
-            "my": by_day[d]["my"],
-            "admin": by_day[d]["admin"],
-            "closed": is_business_date_closed(d),
-        })
-
-    has_anything_to_download = any(r["closed"] and (r["my"] or r["admin"]) for r in history_rows)
+    # Файл доступен если есть хоть один закрытый проект
+    has_download = LidProject.objects.filter(
+        customer=customer, business_date__lt=today,
+    ).exists()
 
     return render(request, "zavod_lidov/dashboard.html", {
         "today": today,
-        "today_count": today_count,
-        "today_admin_count": today_admin_count,
-        "history_rows": history_rows,
-        "has_download": has_anything_to_download,
+        "has_download": has_download,
     })
 
 
 @login_required
 def customer_download_excel(request: HttpRequest) -> HttpResponse:
-    """Скачать Excel: один файл, листы — по каждой закрытой бизнес-дате
-    где у клиента были собственные номера."""
+    """Excel: лист на каждый ЗАКРЫТЫЙ проект клиента."""
     if not _is_lid_customer(request.user):
         return HttpResponseForbidden("Только для заказчиков лидов.")
 
     customer = request.user
     today = business_date_now()
 
-    closed_dates = (
-        LidPhoneSubmission.objects.filter(customer=customer, is_admin=False)
-        .exclude(business_date__gte=today)
-        .values_list("business_date", flat=True)
-        .distinct()
-        .order_by("business_date")
+    projects = (
+        LidProject.objects.filter(customer=customer, business_date__lt=today)
+        .order_by("business_date", "created_at")
     )
 
     wb = Workbook()
-    wb.remove(wb.active)  # дефолтный лист
+    wb.remove(wb.active)
+    existing_names: set[str] = set()
     any_added = False
-    for d in closed_dates:
-        user_phones = list(
-            LidPhoneSubmission.objects.filter(
-                customer=customer, business_date=d, is_admin=False,
-            ).order_by("created_at").values_list("phone", flat=True)
+    for proj in projects:
+        user_vals = list(
+            proj.items.filter(is_admin=False)
+            .order_by("created_at").values_list("value", flat=True)
         )
-        admin_phones = list(
-            LidPhoneSubmission.objects.filter(
-                customer=customer, business_date=d, is_admin=True,
-            ).order_by("created_at").values_list("phone", flat=True)
+        admin_vals = list(
+            proj.items.filter(is_admin=True)
+            .order_by("created_at").values_list("value", flat=True)
         )
-        pairs = pair_phones(user_phones, admin_phones, seed=d.isoformat())
-
-        ws = wb.create_sheet(title=d.strftime("%Y-%m-%d"))
-        ws.append(["Номер клиента", "Номер админа"])
-        for u_phone, a_phone in pairs:
-            ws.append([u_phone, a_phone])
-        ws.column_dimensions["A"].width = 22
-        ws.column_dimensions["B"].width = 22
+        if not user_vals and not admin_vals:
+            continue
+        pairs = pair_values(user_vals, admin_vals, seed=f"proj-{proj.pk}")
+        sheet_name = _sanitize_sheet_name(proj.name, existing_names)
+        ws = wb.create_sheet(title=sheet_name)
+        ws.append(["Клиент", "Админ"])
+        for u_val, a_val in pairs:
+            ws.append([u_val, a_val])
+        ws.column_dimensions["A"].width = 32
+        ws.column_dimensions["B"].width = 32
         any_added = True
 
     if not any_added:
-        # Пустой файл с одним пустым листом, чтобы кнопка не падала
         ws = wb.create_sheet(title="Пусто")
-        ws.append(["Ещё нет закрытых дней с номерами."])
+        ws.append(["Закрытых проектов пока нет."])
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -266,102 +248,89 @@ def customer_download_excel(request: HttpRequest) -> HttpResponse:
     return response
 
 
-# ─── Кабинет главного админа ─────────────────────────────────────────────
+# ─── Главный админ: список проектов + детальная карточка ─────────────────
 
 @login_required
 def admin_overview(request: HttpRequest) -> HttpResponse:
-    """Главный админ: видит список всех submissions, может вставить свои
-    номера в ответ для конкретного клиента."""
+    """Список ВСЕХ проектов (по всем клиентам), новые сверху."""
     if not _is_main_admin(request.user):
         return HttpResponseForbidden("Только для главного админа.")
 
+    today = business_date_now()
+    qs = (
+        LidProject.objects.select_related("customer")
+        .annotate(
+            n_user=Count("items", filter=Q(items__is_admin=False)),
+            n_admin=Count("items", filter=Q(items__is_admin=True)),
+        )
+        .order_by("-created_at")[:200]
+    )
+    projects = []
+    for p in qs:
+        projects.append({
+            "obj": p,
+            "n_user": p.n_user,
+            "n_admin": p.n_admin,
+            "closed": p.business_date < today,
+            "needs_attention": (p.business_date == today) and p.n_user > 0 and p.n_admin == 0,
+        })
+    return render(request, "core/admin_zavod_lidov.html", {
+        "today": today,
+        "projects": projects,
+    })
+
+
+@login_required
+def admin_project_detail(request: HttpRequest, project_id: int) -> HttpResponse:
+    """Детальная карточка проекта: список значений клиента + textarea
+    для добавления админских значений."""
+    if not _is_main_admin(request.user):
+        return HttpResponseForbidden("Только для главного админа.")
+
+    project = get_object_or_404(LidProject.objects.select_related("customer"), pk=project_id)
+
     if request.method == "POST":
-        customer_id = (request.POST.get("customer_id") or "").strip()
-        raw = request.POST.get("phones") or ""
-        if not customer_id.isdigit():
-            messages.error(request, "Не указан клиент.")
-            return redirect("admin_zavod_lidov_overview")
-        customer = User.objects.filter(pk=int(customer_id), role="lid_customer").first()
-        if not customer:
-            messages.error(request, "Клиент не найден или не lid_customer.")
-            return redirect("admin_zavod_lidov_overview")
-        phones = parse_phones(raw)
-        if not phones:
-            messages.warning(request, "Не удалось распознать ни одного номера.")
-            return redirect("admin_zavod_lidov_overview")
-        today = business_date_now()
+        raw = request.POST.get("values") or ""
+        values = parse_values(raw)
+        if not values:
+            messages.warning(request, "Не удалось распознать ни одного значения.")
+            return redirect("admin_zavod_lidov_project", project_id=project.pk)
         added = dup = 0
-        for ph in phones:
+        for v in values:
             try:
-                LidPhoneSubmission.objects.create(
-                    customer=customer,
-                    submitter=request.user,
-                    phone=ph,
-                    business_date=today,
-                    is_admin=True,
+                LidProjectItem.objects.create(
+                    project=project, submitter=request.user, value=v, is_admin=True,
                 )
                 added += 1
             except IntegrityError:
                 dup += 1
-        if added:
-            messages.success(request, f"Добавлено для @{customer.username}: {added}. {f'Дубли: {dup}.' if dup else ''}")
-        return redirect("admin_zavod_lidov_overview")
+        msg = f"Добавлено: {added}."
+        if dup:
+            msg += f" Дубликатов пропущено: {dup}."
+        messages.success(request, msg)
+        return redirect("admin_zavod_lidov_project", project_id=project.pk)
 
-    # Сводка по клиентам и дням
-    customers = User.objects.filter(role="lid_customer").order_by("username")
-    today = business_date_now()
-    summary = []
-    for c in customers:
-        days_qs = (
-            LidPhoneSubmission.objects.filter(customer=c)
-            .values_list("business_date", flat=True).distinct()
-            .order_by("-business_date")[:30]
-        )
-        days = []
-        for d in days_qs:
-            my = LidPhoneSubmission.objects.filter(customer=c, business_date=d, is_admin=False).count()
-            ad = LidPhoneSubmission.objects.filter(customer=c, business_date=d, is_admin=True).count()
-            days.append({
-                "date": d,
-                "user_count": my,
-                "admin_count": ad,
-                "closed": is_business_date_closed(d),
-                "needs_attention": (d == today) and my > 0 and ad == 0,
-            })
-        # Текущая (today) — отдельно, может ещё не быть в days_qs
-        today_my = LidPhoneSubmission.objects.filter(customer=c, business_date=today, is_admin=False).count()
-        today_ad = LidPhoneSubmission.objects.filter(customer=c, business_date=today, is_admin=True).count()
-        summary.append({
-            "customer": c,
-            "today_my": today_my,
-            "today_admin": today_ad,
-            "needs_admin_now": today_my > 0 and today_ad == 0,
-            "days": days,
-        })
+    user_items = list(project.items.filter(is_admin=False).order_by("created_at"))
+    admin_items = list(project.items.filter(is_admin=True).order_by("created_at"))
 
-    return render(request, "core/admin_zavod_lidov.html", {
-        "today": today,
-        "summary": summary,
+    return render(request, "core/admin_zavod_lidov_project.html", {
+        "project": project,
+        "user_items": user_items,
+        "admin_items": admin_items,
+        "closed": is_project_closed(project),
     })
 
 
 def pending_admin_attention_count() -> int:
-    """Сколько lid_customer'ов имеют сегодня клиентские номера БЕЗ ответа админа.
-
-    Используется как бейдж на дашборде главного админа.
-    """
+    """Сколько проектов СЕГОДНЯ ждут ответа админа (есть values клиента,
+    нет ни одного админского). Для бейджа на дашборде главного админа."""
     today = business_date_now()
-    customers_today = set(
-        LidPhoneSubmission.objects.filter(
-            business_date=today, is_admin=False,
-        ).values_list("customer_id", flat=True).distinct()
+    return (
+        LidProject.objects.filter(business_date=today)
+        .annotate(
+            n_user=Count("items", filter=Q(items__is_admin=False)),
+            n_admin=Count("items", filter=Q(items__is_admin=True)),
+        )
+        .filter(n_user__gt=0, n_admin=0)
+        .count()
     )
-    if not customers_today:
-        return 0
-    customers_with_reply = set(
-        LidPhoneSubmission.objects.filter(
-            business_date=today, is_admin=True,
-            customer_id__in=customers_today,
-        ).values_list("customer_id", flat=True).distinct()
-    )
-    return len(customers_today - customers_with_reply)

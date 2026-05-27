@@ -5,79 +5,50 @@
 {% block content %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
   <h1 class="h4 mb-0">📲 Завод-лидов</h1>
-  <span class="text-muted small">Бизнес-дата сегодня: <strong>{{ today|date:"d.m.Y" }}</strong> · день закрывается в 11:00 МСК</span>
+  <span class="text-muted small">Сегодня: <strong>{{ today|date:"d.m.Y" }}</strong> · файл приходит в 11:00 МСК</span>
 </div>
 
 <div class="row g-3">
-  {# Левая часть: форма добавления + сводка по сегодня #}
-  <div class="col-lg-6">
-    <div class="card shadow-sm h-100">
+  {# Левая часть: форма создания проекта #}
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
       <div class="card-header bg-transparent border-secondary py-2">
-        <strong>Вставить мои номера</strong>
+        <strong>Создать проект</strong>
       </div>
       <div class="card-body">
-        <p class="small text-muted mb-2">
-          Вставь любые номера — через запятую, пробел или с новой строки. Дубликаты автоматически
-          отсекаются. Можно вставлять сколько угодно раз за день.
+        <p class="small text-muted mb-3">
+          Вставь номера и/или сайты — через запятую, пробел или с новой строки.
+          Снизу укажи название проекта и отправь. Можно создавать сколько угодно проектов.
         </p>
         <form method="post">
           {% csrf_token %}
-          <textarea name="phones" rows="10" class="form-control mb-2"
-                    placeholder="+79991234567&#10;79007654321&#10;..." required></textarea>
-          <button type="submit" class="btn btn-success w-100">Добавить</button>
+          <label class="form-label small mb-1">Номера и/или сайты:</label>
+          <textarea name="values" rows="12" class="form-control mb-3"
+                    placeholder="+79991234567&#10;79007654321&#10;example.com&#10;https://site.ru/page&#10;..." required></textarea>
+
+          <label class="form-label small mb-1">Название проекта:</label>
+          <input type="text" name="project_name" class="form-control mb-3"
+                 placeholder="Например: Москва, май 2026" required maxlength="200">
+
+          <button type="submit" class="btn btn-success w-100">Отправить проект</button>
         </form>
-      </div>
-      <div class="card-footer bg-transparent border-secondary small text-muted">
-        За сегодня добавлено: <strong>{{ today_count }}</strong> · от админа: <strong>{{ today_admin_count }}</strong>
       </div>
     </div>
   </div>
 
-  {# Правая часть: история по дням + кнопка скачать #}
-  <div class="col-lg-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header bg-transparent border-secondary py-2 d-flex justify-content-between align-items-center">
-        <strong>История по дням</strong>
+  {# Правая часть: только кнопка скачать #}
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body text-center py-5">
         {% if has_download %}
-          <a class="btn btn-success btn-sm" href="{% url 'zavod_lidov_download' %}">
+          <p class="small text-muted mb-3">Файл с проектами обновляется в 11:00 МСК</p>
+          <a class="btn btn-success btn-lg" href="{% url 'zavod_lidov_download' %}">
             📥 Скачать Excel
           </a>
         {% else %}
-          <span class="text-muted small">Скачать можно после закрытия дня (11:00 МСК)</span>
-        {% endif %}
-      </div>
-      <div class="card-body p-0">
-        {% if history_rows %}
-        <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th class="text-center">Мои номера</th>
-                <th class="text-center">Ответ админа</th>
-                <th>Статус</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in history_rows %}
-                <tr>
-                  <td><strong>{{ row.date|date:"d.m.Y" }}</strong></td>
-                  <td class="text-center">{{ row.my|default:"—" }}</td>
-                  <td class="text-center">{{ row.admin|default:"—" }}</td>
-                  <td>
-                    {% if row.closed %}
-                      <span class="badge bg-success">закрыт</span>
-                    {% else %}
-                      <span class="badge bg-warning text-dark">сегодня (открыт)</span>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-        <p class="text-muted small p-3 mb-0">Пока ни одного дня с номерами. Добавь первые в форму слева.</p>
+          <p class="text-muted mb-0" style="font-size:14px;">
+            Файл будет доступен после закрытия дня — в 11:00 МСК
+          </p>
         {% endif %}
       </div>
     </div>
