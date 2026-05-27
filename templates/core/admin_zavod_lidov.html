@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Выгрузка номеров — Партнёрка{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h1 class="h4 mb-0">📲 Выгрузка номеров (Завод-лидов)</h1>
+    <p class="text-muted small mb-0">
+      Бизнес-дата сегодня: <strong>{{ today|date:"d.m.Y" }}</strong> · день закрывается в 11:00 МСК.
+      После закрытия — клиент скачивает Excel с парованием своих номеров и твоих.
+    </p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+</div>
+
+{% if not summary %}
+  <div class="alert alert-info">Пока нет ни одного клиента-заказчика лидов.</div>
+{% endif %}
+
+{% for s in summary %}
+  <div class="card shadow-sm mb-3 {% if s.needs_admin_now %}border-warning{% endif %}">
+    <div class="card-header bg-transparent border-secondary py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>@{{ s.customer.username }}</strong>
+        {% if s.needs_admin_now %}
+          <span class="badge bg-danger ms-2">⚠ ждёт ответа сегодня — {{ s.today_my }} номеров</span>
+        {% endif %}
+      </div>
+      <div class="small text-muted">
+        Сегодня от клиента: <strong>{{ s.today_my }}</strong> ·
+        твой ответ сегодня: <strong>{{ s.today_admin }}</strong>
+      </div>
+    </div>
+
+    <div class="row g-0">
+      {# Левая часть: форма вставки твоих номеров для этого клиента #}
+      <div class="col-lg-5 border-end border-secondary">
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="customer_id" value="{{ s.customer.id }}">
+            <label class="form-label small mb-1">Вставь свои номера для этого клиента:</label>
+            <textarea name="phones" rows="6" class="form-control mb-2"
+                      placeholder="+79991234567&#10;79007654321&#10;..."></textarea>
+            <button type="submit" class="btn btn-success btn-sm w-100">＋ Добавить</button>
+            <p class="text-muted small mt-2 mb-0">
+              Можно несколько раз за день — дубликаты пропустятся. После 11:00 МСК
+              станет недоступно — будет уже новый день.
+            </p>
+          </form>
+        </div>
+      </div>
+
+      {# Правая часть: история по дням этого клиента #}
+      <div class="col-lg-7">
+        <div class="card-body p-0">
+          {% if s.days %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 align-middle table-dark-site">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th class="text-center">От клиента</th>
+                    <th class="text-center">От тебя</th>
+                    <th>Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for d in s.days %}
+                    <tr {% if d.needs_attention %}class="table-warning"{% endif %}>
+                      <td><strong>{{ d.date|date:"d.m.Y" }}</strong></td>
+                      <td class="text-center">{{ d.user_count|default:"—" }}</td>
+                      <td class="text-center">{{ d.admin_count|default:"—" }}</td>
+                      <td>
+                        {% if d.closed %}
+                          <span class="badge bg-success">закрыт</span>
+                        {% elif d.needs_attention %}
+                          <span class="badge bg-warning text-dark">ждёт ответа</span>
+                        {% else %}
+                          <span class="badge bg-info text-dark">сегодня (открыт)</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted small p-3 mb-0">У клиента пока нет ни одной записи.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+{% endblock %}

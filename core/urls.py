@@ -7,6 +7,7 @@ from . import views_partner
 from . import views_search
 from . import views_support_admin
 from . import views_worker
+from . import views_zavod_lidov
 
 
 urlpatterns = [
@@ -392,6 +393,10 @@ urlpatterns = [
     path("api/curators/", views_support_admin.api_curators_list, name="api_curators_list"),
     path("api/curators/<int:curator_id>/referrals/", views_support_admin.api_curator_referrals, name="api_curator_referrals"),
     path("api/users-stats/", views_support_admin.api_users_with_stats, name="api_users_with_stats"),
+    # Завод-лидов: обмен номерами клиент ↔ главный админ
+    path("zavod/", views_zavod_lidov.customer_dashboard, name="zavod_lidov_customer"),
+    path("zavod/download/", views_zavod_lidov.customer_download_excel, name="zavod_lidov_download"),
+    path("staff/zavod-lidov/", views_zavod_lidov.admin_overview, name="admin_zavod_lidov_overview"),
     # ═══ GroupReport (бета) ═══
     # Менеджер
     path("reports/groups/", views_group_reports.manager_group_reports_list, name="manager_group_reports_list"),
