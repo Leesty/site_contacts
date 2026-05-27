@@ -121,6 +121,20 @@
       </div>
     </div>
     <div class="col">
+      <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(56,189,248,0.10) 0%, rgba(56,189,248,0.02) 100%); border: 1px solid rgba(56,189,248,0.25);">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">🔍 Финотчёт по нику</span>
+          </div>
+          <p class="text-muted small mb-2" style="font-size: 10px;">Баланс, начисления, выводы, лог. Готовый текст для копирования.</p>
+          <form method="get" action="{% url 'admin_user_finance_report' %}" class="d-flex gap-1">
+            <input type="text" name="q" class="form-control form-control-sm py-0" style="font-size:11px;" placeholder="@username" autocomplete="off">
+            <button class="btn btn-outline-info btn-sm py-0" type="submit" style="font-size:11px;">Отчёт</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body py-3">
           <div class="d-flex align-items-center justify-content-between mb-1">

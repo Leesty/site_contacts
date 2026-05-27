@@ -155,6 +155,11 @@ urlpatterns = [
         name="admin_earnings_stats",
     ),
     path(
+        "staff/user-finance-report/",
+        views_support_admin.admin_user_finance_report,
+        name="admin_user_finance_report",
+    ),
+    path(
         "staff/moderation-by-admin/",
         views_support_admin.admin_moderation_by_admin_list,
         name="admin_moderation_by_admin_list",

@@ -4021,3 +4021,254 @@ def api_curators_list(request: HttpRequest) -> HttpResponse:
         })
     return JsonResponse({"ok": True, "count": len(data), "curators": data})
 
+
+# ─── Финансовый отчёт по менеджеру (главный админ) ─────────────────────────
+
+@login_required
+def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
+    """Полный финансовый отчёт по менеджеру по нику. Только main_admin.
+
+    Показывает:
+      • Текущий баланс (поиск + дожим)
+      • Сколько начислено всего (по типам отчётов и из BalanceLog)
+      • Все заявки на вывод (approved / pending / rejected)
+      • Сверка: сумма (+) − сумма (−) должна совпасть с балансом
+      • Готовый текстовый блок для пересылки
+
+    Параметр `?q=ник` (с/без @, без http).
+    """
+    if not _is_main_admin(request):
+        return HttpResponseForbidden("Только для главного админа.")
+
+    from .models import (
+        BalanceLog,
+        GroupReport,
+        Lead as LeadModel,
+        SearchReport,
+        WithdrawalRequest as WR,
+        WorkerSelfLead as WSL,
+        ManualSearchClaim,
+        PartnerEarning,
+    )
+
+    raw = (request.GET.get("q") or "").strip()
+    # Чистим возможные обвязки: @username, https://t.me/username, t.me/username
+    cleaned = raw.lstrip("@")
+    for p in ("https://t.me/", "http://t.me/", "t.me/", "telegram.me/"):
+        if cleaned.lower().startswith(p):
+            cleaned = cleaned[len(p):]
+            break
+    cleaned = cleaned.strip().rstrip("/")
+
+    ctx: dict = {
+        "q": raw,
+        "target_user": None,
+        "candidates": [],
+        "error": None,
+    }
+
+    if not cleaned:
+        return render(request, "core/admin_user_finance_report.html", ctx)
+
+    # Точный матч по username (icontains) — ищем 1 пользователя.
+    qs = User.objects.filter(username__iexact=cleaned)
+    if not qs.exists():
+        # Пробуем по icontains — может быть похожих несколько.
+        cands = list(
+            User.objects.filter(username__icontains=cleaned)
+            .values("id", "username", "balance", "dozhim_balance", "role")[:10]
+        )
+        if not cands:
+            ctx["error"] = f"Пользователь @{cleaned} не найден."
+        else:
+            ctx["candidates"] = cands
+            ctx["error"] = f"Точного совпадения нет, найдены похожие ({len(cands)}):"
+        return render(request, "core/admin_user_finance_report.html", ctx)
+
+    u = qs.first()
+
+    # ─── Текущий баланс ───────────────────────────────────────────────────
+    balance_search = int(u.balance or 0)
+    balance_dozhim = int(u.dozhim_balance or 0)
+
+    # ─── Отчёты пользователя (счётчики и доход) ───────────────────────────
+    # Lead: paid_reward не сохраняется → берём из BalanceLog по reason "lead_approve#"
+    lead_qs = LeadModel.objects.filter(user=u)
+    lead_total = lead_qs.count()
+    lead_pending = lead_qs.filter(status=LeadModel.Status.PENDING).count()
+    lead_approved = lead_qs.filter(status=LeadModel.Status.APPROVED).count()
+    lead_rejected = lead_qs.filter(status=LeadModel.Status.REJECTED).count()
+    lead_rework = lead_qs.filter(status=LeadModel.Status.REWORK).count()
+
+    sr_qs = SearchReport.objects.filter(user=u)
+    sr_total = sr_qs.count()
+    sr_pending = sr_qs.filter(status=SearchReport.Status.PENDING).count()
+    sr_approved = sr_qs.filter(status=SearchReport.Status.APPROVED).count()
+    sr_rejected = sr_qs.filter(status=SearchReport.Status.REJECTED).count()
+    sr_rework = sr_qs.filter(status=SearchReport.Status.REWORK).count()
+    sr_paid_sum = int(sr_qs.filter(status=SearchReport.Status.APPROVED).aggregate(s=Sum("paid_reward"))["s"] or 0)
+
+    gr_qs = GroupReport.objects.filter(user=u)
+    gr_total = gr_qs.count()
+    gr_approved = gr_qs.filter(status=GroupReport.Status.APPROVED).count()
+    gr_paid_sum = int(gr_qs.filter(status=GroupReport.Status.APPROVED).aggregate(s=Sum("paid_reward"))["s"] or 0)
+
+    # WorkerSelfLead использует поле `worker`, не `user`, и `reward` вместо `paid_reward`.
+    # Этой моделью пользуется только воркерская ветка СС-админа — у обычных менеджеров будет 0.
+    wsl_qs = WSL.objects.filter(worker=u)
+    wsl_total = wsl_qs.count()
+    wsl_approved = wsl_qs.filter(status=WSL.Status.APPROVED).count()
+    wsl_paid_sum = int(wsl_qs.filter(status=WSL.Status.APPROVED).aggregate(s=Sum("reward"))["s"] or 0)
+
+    # Партнёрские начисления (если @user — партнёр / рефовод).
+    partner_earn_sum = int(
+        PartnerEarning.objects.filter(partner=u).aggregate(s=Sum("amount"))["s"] or 0
+    )
+    partner_earn_count = PartnerEarning.objects.filter(partner=u).count()
+
+    # Ручные claims (для контекста — это часть SR-экономики, но отдельная таблица).
+    msc_qs = ManualSearchClaim.objects.filter(user=u)
+    msc_paid_sum = int(msc_qs.filter(status=ManualSearchClaim.Status.APPROVED).aggregate(s=Sum("paid_reward"))["s"] or 0)
+
+    # ─── Заявки на вывод ──────────────────────────────────────────────────
+    wr_qs = WR.objects.filter(user=u).order_by("-created_at")
+    wr_pending = list(wr_qs.filter(status="pending"))
+    wr_approved = list(wr_qs.filter(status="approved"))
+    wr_rejected = list(wr_qs.filter(status="rejected"))
+    wr_approved_sum = sum(int(w.amount or 0) for w in wr_approved)
+    wr_pending_sum = sum(int(w.amount or 0) for w in wr_pending)
+
+    # ─── BalanceLog: канонический источник истины ─────────────────────────
+    logs = list(
+        BalanceLog.objects.filter(user=u)
+        .select_related("actor")
+        .order_by("-created_at")[:200]
+    )
+    # Полная агрегация по знаку delta (по всем записям, не только 200 последних).
+    plus_search = int(
+        BalanceLog.objects.filter(user=u, field="balance", delta__gt=0).aggregate(s=Sum("delta"))["s"] or 0
+    )
+    minus_search = int(
+        BalanceLog.objects.filter(user=u, field="balance", delta__lt=0).aggregate(s=Sum("delta"))["s"] or 0
+    )
+    plus_dozhim = int(
+        BalanceLog.objects.filter(user=u, field="dozhim_balance", delta__gt=0).aggregate(s=Sum("delta"))["s"] or 0
+    )
+    minus_dozhim = int(
+        BalanceLog.objects.filter(user=u, field="dozhim_balance", delta__lt=0).aggregate(s=Sum("delta"))["s"] or 0
+    )
+
+    reconcile_search = plus_search + minus_search   # minus_search уже отрицательный
+    reconcile_dozhim = plus_dozhim + minus_dozhim
+    diff_search = balance_search - reconcile_search
+    diff_dozhim = balance_dozhim - reconcile_dozhim
+
+    # ─── Готовый текстовый отчёт для копирования ──────────────────────────
+    lines: list[str] = []
+    lines.append(f"📊 ФИНАНСОВЫЙ ОТЧЁТ @{u.username} (id={u.id})")
+    lines.append("")
+    lines.append("ТЕКУЩЕЕ СОСТОЯНИЕ")
+    lines.append(f"• Баланс (поиск): {balance_search}₽")
+    if balance_dozhim:
+        lines.append(f"• Баланс (дожим): {balance_dozhim}₽")
+    if wr_pending:
+        lines.append(f"• На рассмотрении (вывод): {wr_pending_sum}₽ ({len(wr_pending)} шт.)")
+    else:
+        lines.append("• Pending-выводов: нет")
+    lines.append("")
+    lines.append("ПОЛУЧЕНО ВСЕГО (одобренные начисления)")
+    total_credited = plus_search + plus_dozhim
+    lines.append(f"• Всего по логу баланса: {total_credited}₽")
+    if sr_approved:
+        lines.append(f"  – SR одобрено: {sr_approved} шт. = {sr_paid_sum}₽")
+    if lead_approved:
+        lines.append(f"  – Lead одобрено: {lead_approved} шт. (Lead.paid_reward не хранится — см. BalanceLog)")
+    if gr_approved:
+        lines.append(f"  – GroupReport одобрено: {gr_approved} шт. = {gr_paid_sum}₽")
+    if wsl_approved:
+        lines.append(f"  – WorkerSelfLead одобрено: {wsl_approved} шт. = {wsl_paid_sum}₽")
+    if partner_earn_count:
+        lines.append(f"  – Партнёрские начисления: {partner_earn_count} шт. = {partner_earn_sum}₽")
+    if msc_paid_sum:
+        lines.append(f"  – ManualClaim одобрено: {msc_paid_sum}₽")
+    lines.append("")
+    lines.append("УЖЕ ВЫВЕДЕНО (одобренные заявки)")
+    if wr_approved:
+        for w in wr_approved:
+            dt = timezone.localtime(w.processed_at or w.created_at).strftime("%d.%m.%Y")
+            lines.append(f"• {dt} — {int(w.amount)}₽")
+        lines.append(f"ИТОГО ВЫВЕДЕНО: {wr_approved_sum}₽")
+    else:
+        lines.append("• Нет одобренных заявок на вывод")
+    lines.append("")
+    lines.append("СВЕРКА БАЛАНСА (поиск)")
+    lines.append(f"• Все плюсы:  +{plus_search}₽")
+    lines.append(f"• Все минусы: {minus_search}₽")
+    lines.append(f"• Итог по логу: {reconcile_search}₽")
+    lines.append(f"• Фактический баланс: {balance_search}₽")
+    if diff_search == 0:
+        lines.append("✅ Сходится — расхождений нет.")
+    else:
+        lines.append(f"⚠ Расхождение: {diff_search}₽ (фактический − по логу)")
+    if balance_dozhim or plus_dozhim or minus_dozhim:
+        lines.append("")
+        lines.append("СВЕРКА БАЛАНСА (дожим)")
+        lines.append(f"• Все плюсы:  +{plus_dozhim}₽")
+        lines.append(f"• Все минусы: {minus_dozhim}₽")
+        lines.append(f"• Итог по логу: {reconcile_dozhim}₽")
+        lines.append(f"• Фактический баланс: {balance_dozhim}₽")
+        if diff_dozhim == 0:
+            lines.append("✅ Сходится.")
+        else:
+            lines.append(f"⚠ Расхождение: {diff_dozhim}₽")
+    if wr_rejected:
+        lines.append("")
+        lines.append(f"ОТКЛОНЁННЫЕ ЗАЯВКИ НА ВЫВОД: {len(wr_rejected)}")
+    if sr_pending:
+        lines.append("")
+        lines.append(f"ОЖИДАЕТ ПРОВЕРКИ (SR на pending): {sr_pending} шт. (~{sr_pending * 150}₽ потенциально)")
+    if lead_pending:
+        lines.append(f"ОЖИДАЕТ ПРОВЕРКИ (Lead на pending): {lead_pending} шт.")
+    report_text = "\n".join(lines)
+
+    ctx.update({
+        "target_user": u,
+        "balance_search": balance_search,
+        "balance_dozhim": balance_dozhim,
+        "lead_total": lead_total,
+        "lead_pending": lead_pending,
+        "lead_approved": lead_approved,
+        "lead_rejected": lead_rejected,
+        "lead_rework": lead_rework,
+        "sr_total": sr_total,
+        "sr_pending": sr_pending,
+        "sr_approved": sr_approved,
+        "sr_rejected": sr_rejected,
+        "sr_rework": sr_rework,
+        "sr_paid_sum": sr_paid_sum,
+        "gr_total": gr_total,
+        "gr_approved": gr_approved,
+        "gr_paid_sum": gr_paid_sum,
+        "wsl_total": wsl_total,
+        "wsl_approved": wsl_approved,
+        "wsl_paid_sum": wsl_paid_sum,
+        "partner_earn_sum": partner_earn_sum,
+        "partner_earn_count": partner_earn_count,
+        "msc_paid_sum": msc_paid_sum,
+        "wr_pending": wr_pending,
+        "wr_approved": wr_approved,
+        "wr_rejected": wr_rejected,
+        "wr_approved_sum": wr_approved_sum,
+        "wr_pending_sum": wr_pending_sum,
+        "logs": logs,
+        "plus_search": plus_search,
+        "minus_search": minus_search,
+        "plus_dozhim": plus_dozhim,
+        "minus_dozhim": minus_dozhim,
+        "reconcile_search": reconcile_search,
+        "reconcile_dozhim": reconcile_dozhim,
+        "diff_search": diff_search,
+        "diff_dozhim": diff_dozhim,
+        "report_text": report_text,
+    })
+    return render(request, "core/admin_user_finance_report.html", ctx)

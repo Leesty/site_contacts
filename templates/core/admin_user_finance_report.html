@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block title %}Финансовый отчёт по менеджеру{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h1 class="h4 mb-0">🔍 Финансовый отчёт по менеджеру</h1>
+    <p class="text-muted small mb-0">
+      Текущий баланс, все начисления, выводы и сверка по BalanceLog.
+    </p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+</div>
+
+{# Форма поиска по нику #}
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-center">
+      <div class="col-md-6">
+        <input type="text" name="q" value="{{ q }}" autocomplete="off"
+               class="form-control" placeholder="@username (или ссылка t.me/...)">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-info w-100" type="submit">Получить отчёт</button>
+      </div>
+      <div class="col-md-4 text-muted small">
+        Ввод без чувствительности к регистру. Поддерживается t.me-ссылка.
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if error %}
+  <div class="alert alert-warning small">{{ error }}</div>
+{% endif %}
+
+{% if candidates %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <div class="small text-muted mb-2">Похожие пользователи:</div>
+      <div class="d-flex flex-wrap gap-2">
+        {% for c in candidates %}
+          <a class="btn btn-outline-info btn-sm py-0"
+             href="{% url 'admin_user_finance_report' %}?q={{ c.username }}">
+            @{{ c.username }} <span class="text-muted">·</span> balance {{ c.balance|default:0 }}₽
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if target_user %}
+{# ─── Шапка пользователя ───────────────────────────────────────────────── #}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h2 class="h5 mb-1">@{{ target_user.username }}</h2>
+        <div class="text-muted small">
+          id={{ target_user.id }} · роль: {{ target_user.get_role_display }}
+          {% if target_user.is_accredited %} · <span class="text-success">аккредитован</span>{% endif %}
+          {% if target_user.partner_owner_id %} · рефовод: @{{ target_user.partner_owner.username }}{% endif %}
+        </div>
+      </div>
+      <div class="text-end">
+        <div class="text-muted small">Баланс (поиск)</div>
+        <div class="h3 mb-0 {% if balance_search < 0 %}text-danger{% else %}text-success{% endif %}">
+          {{ balance_search }}₽
+        </div>
+        {% if balance_dozhim or plus_dozhim %}
+          <div class="text-muted small mt-2">Баланс (дожим)</div>
+          <div class="h5 mb-0">{{ balance_dozhim }}₽</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {# ─── Колонка 1: счётчики отчётов и начислений ─────────────────────── #}
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-transparent border-secondary py-2">
+        <strong>📈 Заработано (одобренные начисления)</strong>
+      </div>
+      <div class="card-body">
+        <table class="table table-sm mb-0 small">
+          <tbody>
+            <tr>
+              <td class="text-muted">Lead (отчёты по базам)</td>
+              <td class="text-end">
+                <span class="badge bg-success">{{ lead_approved }} одобр.</span>
+                {% if lead_pending %}<span class="badge bg-warning text-dark">{{ lead_pending }} ожид.</span>{% endif %}
+                {% if lead_rework %}<span class="badge bg-info text-dark">{{ lead_rework }} дораб.</span>{% endif %}
+                {% if lead_rejected %}<span class="badge bg-danger">{{ lead_rejected }} откл.</span>{% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td class="text-muted">SearchReport (SL)</td>
+              <td class="text-end">
+                <span class="badge bg-success">{{ sr_approved }} × ≈ {{ sr_paid_sum }}₽</span>
+                {% if sr_pending %}<span class="badge bg-warning text-dark">{{ sr_pending }} ожид.</span>{% endif %}
+                {% if sr_rework %}<span class="badge bg-info text-dark">{{ sr_rework }} дораб.</span>{% endif %}
+                {% if sr_rejected %}<span class="badge bg-danger">{{ sr_rejected }} откл.</span>{% endif %}
+              </td>
+            </tr>
+            {% if gr_total %}
+              <tr>
+                <td class="text-muted">GroupReport</td>
+                <td class="text-end">
+                  <span class="badge bg-success">{{ gr_approved }} × ≈ {{ gr_paid_sum }}₽</span>
+                </td>
+              </tr>
+            {% endif %}
+            {% if wsl_total %}
+              <tr>
+                <td class="text-muted">WorkerSelfLead (СС)</td>
+                <td class="text-end">
+                  <span class="badge bg-success">{{ wsl_approved }} × ≈ {{ wsl_paid_sum }}₽</span>
+                </td>
+              </tr>
+            {% endif %}
+            {% if partner_earn_count %}
+              <tr>
+                <td class="text-muted">Партнёрские (рефералы)</td>
+                <td class="text-end">
+                  <span class="badge bg-success">{{ partner_earn_count }} × ≈ {{ partner_earn_sum }}₽</span>
+                </td>
+              </tr>
+            {% endif %}
+            {% if msc_paid_sum %}
+              <tr>
+                <td class="text-muted">ManualClaim (ручной матч)</td>
+                <td class="text-end"><span class="badge bg-success">{{ msc_paid_sum }}₽</span></td>
+              </tr>
+            {% endif %}
+            <tr class="border-top">
+              <th>Всего по логу баланса (+)</th>
+              <th class="text-end">+{{ plus_search }}₽
+                {% if plus_dozhim %} + {{ plus_dozhim }}₽ (дожим){% endif %}
+              </th>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ─── Колонка 2: заявки на вывод ─────────────────────────────────────── #}
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-transparent border-secondary py-2">
+        <strong>💰 Выводы</strong>
+      </div>
+      <div class="card-body p-0">
+        {% if wr_pending %}
+          <div class="px-3 pt-3">
+            <div class="alert alert-warning small mb-2 py-2">
+              На рассмотрении: <strong>{{ wr_pending_sum }}₽</strong> ({{ wr_pending|length }} шт.)
+            </div>
+          </div>
+        {% endif %}
+        {% if wr_approved %}
+          <div class="px-3 pt-2 pb-1 small text-muted">Одобренные выводы</div>
+          <table class="table table-sm mb-0 small">
+            <thead>
+              <tr>
+                <th class="ps-3">Дата</th>
+                <th class="text-end">Сумма</th>
+                <th class="pe-3">Тип</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for w in wr_approved %}
+                <tr>
+                  <td class="ps-3 small text-muted">
+                    {{ w.processed_at|default:w.created_at|date:"d.m.Y H:i" }}
+                  </td>
+                  <td class="text-end fw-semibold">{{ w.amount }}₽</td>
+                  <td class="pe-3 small text-muted">
+                    {% if w.processed_by %}@{{ w.processed_by.username }}{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+              <tr class="border-top">
+                <th class="ps-3">ИТОГО ВЫВЕДЕНО</th>
+                <th class="text-end">{{ wr_approved_sum }}₽</th>
+                <th></th>
+              </tr>
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted small p-3 mb-0">Одобренных заявок на вывод нет.</p>
+        {% endif %}
+        {% if wr_rejected %}
+          <div class="px-3 pt-2 pb-3 text-muted small border-top">
+            Отклонённых заявок: {{ wr_rejected|length }}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ─── Сверка баланса ──────────────────────────────────────────────────── #}
+<div class="card shadow-sm mb-3">
+  <div class="card-header bg-transparent border-secondary py-2">
+    <strong>🧮 Сверка баланса</strong>
+    <span class="text-muted small">· источник истины — BalanceLog</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="small text-muted mb-1">ПОИСК</div>
+        <table class="table table-sm mb-0 small">
+          <tr><td>Сумма всех плюсов</td><td class="text-end text-success">+{{ plus_search }}₽</td></tr>
+          <tr><td>Сумма всех минусов</td><td class="text-end text-danger">{{ minus_search }}₽</td></tr>
+          <tr class="border-top"><th>Итог по логу</th><th class="text-end">{{ reconcile_search }}₽</th></tr>
+          <tr><th>Фактический баланс</th><th class="text-end">{{ balance_search }}₽</th></tr>
+          <tr><th>Расхождение</th>
+            <th class="text-end {% if diff_search == 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if diff_search == 0 %}0₽ ✓{% else %}{{ diff_search }}₽ ⚠{% endif %}
+            </th>
+          </tr>
+        </table>
+      </div>
+      {% if balance_dozhim or plus_dozhim or minus_dozhim %}
+      <div class="col-md-6">
+        <div class="small text-muted mb-1">ДОЖИМ</div>
+        <table class="table table-sm mb-0 small">
+          <tr><td>Сумма всех плюсов</td><td class="text-end text-success">+{{ plus_dozhim }}₽</td></tr>
+          <tr><td>Сумма всех минусов</td><td class="text-end text-danger">{{ minus_dozhim }}₽</td></tr>
+          <tr class="border-top"><th>Итог по логу</th><th class="text-end">{{ reconcile_dozhim }}₽</th></tr>
+          <tr><th>Фактический баланс</th><th class="text-end">{{ balance_dozhim }}₽</th></tr>
+          <tr><th>Расхождение</th>
+            <th class="text-end {% if diff_dozhim == 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if diff_dozhim == 0 %}0₽ ✓{% else %}{{ diff_dozhim }}₽ ⚠{% endif %}
+            </th>
+          </tr>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ─── Готовый текстовый отчёт для пересылки ──────────────────────────── #}
+<div class="card shadow-sm mb-3">
+  <div class="card-header bg-transparent border-secondary py-2 d-flex justify-content-between align-items-center">
+    <strong>📋 Готовый отчёт для пересылки</strong>
+    <button class="btn btn-outline-info btn-sm py-0" type="button" onclick="copyReport()">
+      Скопировать
+    </button>
+  </div>
+  <div class="card-body p-0">
+    <textarea id="report-text" class="form-control border-0" rows="18"
+              style="font-family: ui-monospace, monospace; font-size: 12px; background: transparent; color: inherit; border-radius: 0; resize: vertical;">{{ report_text }}</textarea>
+  </div>
+</div>
+
+{# ─── BalanceLog (последние 200 записей) ────────────────────────────── #}
+<div class="card shadow-sm mb-3">
+  <div class="card-header bg-transparent border-secondary py-2">
+    <strong>📜 BalanceLog</strong>
+    <span class="text-muted small">· последние {{ logs|length }} записей</span>
+  </div>
+  <div class="card-body p-0">
+    {% if logs %}
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle small">
+        <thead>
+          <tr>
+            <th class="ps-3">Дата</th>
+            <th>Поле</th>
+            <th class="text-end">Δ</th>
+            <th class="text-end">Было</th>
+            <th class="text-end">Стало</th>
+            <th>Причина</th>
+            <th class="pe-3">Кто</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in logs %}
+            <tr>
+              <td class="ps-3 text-nowrap text-muted">{{ l.created_at|date:"d.m H:i" }}</td>
+              <td>{% if l.field == "dozhim_balance" %}<span class="badge bg-secondary">дожим</span>{% else %}<span class="text-muted">поиск</span>{% endif %}</td>
+              <td class="text-end fw-semibold {% if l.delta > 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if l.delta > 0 %}+{% endif %}{{ l.delta }}
+              </td>
+              <td class="text-end text-muted">{{ l.old_value }}</td>
+              <td class="text-end">{{ l.new_value }}</td>
+              <td class="small">{{ l.reason }}</td>
+              <td class="pe-3 small text-muted">
+                {% if l.actor %}@{{ l.actor.username }}{% else %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="text-muted small p-3 mb-0">BalanceLog пуст.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function copyReport() {
+  const ta = document.getElementById("report-text");
+  ta.select();
+  ta.setSelectionRange(0, 99999);
+  try {
+    document.execCommand("copy");
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = "Скопировано ✓";
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  } catch (e) {
+    alert("Не получилось скопировать. Выдели текст вручную.");
+  }
+}
+</script>
+
+{% else %}
+  {% if not error %}
+    <div class="card shadow-sm">
+      <div class="card-body py-5 text-center">
+        <p class="text-muted mb-2">
+          Введи @username менеджера выше — получишь полный финансовый отчёт:
+          баланс, начисления, выводы, BalanceLog и готовый текст для пересылки.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+{% endif %}
+
+{% endblock %}
