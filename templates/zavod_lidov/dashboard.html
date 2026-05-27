@@ -5,7 +5,6 @@
 {% block content %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
   <h1 class="h4 mb-0">📲 Завод-лидов</h1>
-  <span class="text-muted small">Файлы обновляются каждый день</span>
 </div>
 
 <div class="row g-3">
@@ -16,27 +15,36 @@
         <strong>Создать проект</strong>
       </div>
       <div class="card-body">
-        <p class="small text-muted mb-3">
-          Вставь номера и/или сайты — через запятую, пробел или с новой строки.
-          Снизу укажи название проекта и отправь. Можно создавать сколько угодно проектов.
-        </p>
         <form method="post">
           {% csrf_token %}
-          <label class="form-label small mb-1">Номера и/или сайты:</label>
-          <textarea name="values" rows="12" class="form-control mb-3"
-                    placeholder="+79991234567&#10;79007654321&#10;example.com&#10;https://site.ru/page&#10;..." required></textarea>
+          <label class="form-label small mb-1">Номера и/или сайты (необязательно):</label>
+          <textarea name="values" rows="8" class="form-control mb-3"
+                    placeholder="+79991234567&#10;example.com&#10;..."></textarea>
 
           <label class="form-label small mb-1">Название проекта:</label>
           <input type="text" name="project_name" class="form-control mb-3"
                  placeholder="Например: Москва, май 2026" required maxlength="200">
 
-          <button type="submit" class="btn btn-success w-100">Отправить проект</button>
+          <div class="row g-2 mb-3">
+            <div class="col">
+              <label class="form-label small mb-1">Общий лимит:</label>
+              <input type="number" name="total_limit" class="form-control"
+                     placeholder="например 300" min="1">
+            </div>
+            <div class="col">
+              <label class="form-label small mb-1">Дневной лимит:</label>
+              <input type="number" name="daily_limit" class="form-control"
+                     placeholder="например 50" min="1">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-success w-100">Создать проект</button>
         </form>
       </div>
     </div>
   </div>
 
-  {# Правая часть: список проектов с кнопкой скачать у каждого #}
+  {# Правая часть: список проектов с прогрессом и кнопкой скачать #}
   <div class="col-lg-5">
     <div class="card shadow-sm">
       <div class="card-header bg-transparent border-secondary py-2">
@@ -51,23 +59,42 @@
         {% else %}
         <div class="list-group list-group-flush">
           {% for p in projects %}
-            <div class="list-group-item d-flex justify-content-between align-items-center gap-2"
-                 style="background:transparent; border-color:#1e293b;">
-              <div class="flex-grow-1 overflow-hidden">
-                <div class="fw-semibold text-truncate">{{ p.obj.name }}</div>
-                <div class="small text-muted">
-                  {{ p.obj.created_at|date:"d.m.Y" }}
-                  {% if p.n_total %}· {{ p.n_total }} значений{% endif %}
+            <div class="list-group-item" style="background:transparent; border-color:#1e293b;">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="flex-grow-1 overflow-hidden">
+                  <div class="fw-semibold text-truncate">
+                    {{ p.obj.name }}
+                    {% if p.n_admin_today %}
+                      <span class="badge bg-success ms-1" style="font-size:10px;">+{{ p.n_admin_today }} сегодня</span>
+                    {% endif %}
+                  </div>
+                  <div class="small text-muted mt-1">
+                    {{ p.obj.created_at|date:"d.m.Y" }}
+                    {% if p.obj.total_limit %}
+                      · {{ p.n_total }} / {{ p.obj.total_limit }}
+                    {% else %}
+                      · {{ p.n_total }} значений
+                    {% endif %}
+                    {% if p.obj.daily_limit %}
+                      · дневной {{ p.obj.daily_limit }}
+                    {% endif %}
+                  </div>
+                  {% if p.obj.total_limit %}
+                    <div class="progress mt-2" style="height: 4px;">
+                      <div class="progress-bar bg-{% if p.obj.is_closed %}success{% else %}info{% endif %}"
+                           role="progressbar" style="width: {{ p.progress_pct }}%;"></div>
+                    </div>
+                  {% endif %}
                 </div>
-              </div>
-              <div class="flex-shrink-0">
-                {% if p.closed %}
-                  <a class="btn btn-success btn-sm" href="{% url 'zavod_lidov_download' p.obj.id %}">
-                    📥 Скачать
-                  </a>
-                {% else %}
-                  <span class="badge bg-warning text-dark">в работе</span>
-                {% endif %}
+                <div class="flex-shrink-0">
+                  {% if p.obj.is_closed %}
+                    <a class="btn btn-success btn-sm" href="{% url 'zavod_lidov_download' p.obj.id %}">
+                      📥 Скачать
+                    </a>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">в работе</span>
+                  {% endif %}
+                </div>
               </div>
             </div>
           {% endfor %}

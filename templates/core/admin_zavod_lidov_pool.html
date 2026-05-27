@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Пул номеров — @{{ customer.username }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h1 class="h4 mb-0">🗂 Пул номеров для @{{ customer.username }}</h1>
+    <p class="text-muted small mb-0">
+      Свободно: <strong>{{ n_free }}</strong> ·
+      Уже роздано: <strong>{{ n_used }}</strong>
+    </p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_zavod_lidov_overview' %}">← К списку</a>
+</div>
+
+<div class="row g-3">
+  {# Форма пополнения #}
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header bg-transparent border-secondary py-2">
+        <strong>Залить номера в пул</strong>
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">
+          Вставь любое количество номеров и/или сайтов (поддерживает 10к+).
+          Разделители: запятая, пробел, новая строка. Дубликаты внутри пула
+          отсекаются автоматически. Из пула номера случайно раздаются
+          в открытые проекты клиента согласно их дневным лимитам.
+        </p>
+        <form method="post">
+          {% csrf_token %}
+          <textarea name="values" rows="20" class="form-control mb-2"
+                    placeholder="+79991234567&#10;79007654321&#10;..." required></textarea>
+          <button type="submit" class="btn btn-success w-100">＋ Залить в пул</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# Открытые проекты клиента #}
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-transparent border-secondary py-2">
+        <strong>Открытые проекты клиента</strong>
+        {% if open_projects %}<span class="text-muted small">· {{ open_projects|length }}</span>{% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if open_projects %}
+          <div class="list-group list-group-flush">
+            {% for p in open_projects %}
+              <div class="list-group-item" style="background:transparent; border-color:#1e293b;">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                  <div class="overflow-hidden">
+                    <div class="fw-semibold text-truncate">{{ p.name }}</div>
+                    <div class="small text-muted">
+                      Дневной: {{ p.daily_limit|default:"—" }} ·
+                      Лимит: {{ p.n_admin }} / {{ p.total_limit|default:"∞" }}
+                    </div>
+                  </div>
+                  <a href="{% url 'admin_zavod_lidov_project' p.id %}" class="btn btn-outline-primary btn-sm py-0">
+                    Открыть
+                  </a>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted small p-3 mb-0">У клиента нет открытых проектов.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

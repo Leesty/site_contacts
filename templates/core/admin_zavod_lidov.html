@@ -1,18 +1,51 @@
 {% extends "base.html" %}
 
-{% block title %}Выгрузка номеров — Партнёрка{% endblock %}
+{% block title %}Завод-лидов — Партнёрка{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <div>
-    <h1 class="h4 mb-0">📲 Выгрузка номеров — проекты</h1>
+    <h1 class="h4 mb-0">📲 Завод-лидов — проекты и пул</h1>
     <p class="text-muted small mb-0">
-      Сегодня: <strong>{{ today|date:"d.m.Y" }}</strong> · cutoff 11:00 МСК — после этого проект становится «закрыт».
+      Сегодня: <strong>{{ today|date:"d.m.Y" }}</strong> · авто-раздача из пула в проекты в 11:00 МСК (lazy).
     </p>
   </div>
   <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
 </div>
 
+{# Пул номеров по клиентам #}
+<h6 class="text-uppercase text-muted small mb-2">Пул номеров</h6>
+{% if not pool_summary %}
+  <div class="alert alert-info">Нет ни одного клиента-заказчика лидов.</div>
+{% else %}
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3 mb-4">
+  {% for s in pool_summary %}
+    <div class="col">
+      <div class="card h-100 shadow-sm {% if s.n_free == 0 and s.n_open_projects %}border-danger{% endif %}">
+        <div class="card-body py-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>@{{ s.customer.username }}</strong>
+            {% if s.n_free == 0 and s.n_open_projects %}
+              <span class="badge bg-danger">пул пуст</span>
+            {% endif %}
+          </div>
+          <p class="small text-muted mb-2">
+            Свободно: <strong>{{ s.n_free }}</strong> ·
+            Роздано: <strong>{{ s.n_used }}</strong> ·
+            Открытых проектов: <strong>{{ s.n_open_projects }}</strong>
+          </p>
+          <a class="btn btn-success btn-sm w-100" href="{% url 'admin_zavod_lidov_pool' s.customer.id %}">
+            ＋ Залить номера
+          </a>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# Все проекты #}
+<h6 class="text-uppercase text-muted small mb-2">Проекты</h6>
 {% if not projects %}
   <div class="alert alert-info">Пока нет ни одного проекта.</div>
 {% else %}
@@ -25,8 +58,8 @@
             <th>#</th>
             <th>Клиент</th>
             <th>Проект</th>
-            <th class="text-center">От клиента</th>
-            <th class="text-center">От админа</th>
+            <th class="text-center">Лимиты (день / всего)</th>
+            <th class="text-center">Прогресс</th>
             <th>Дата</th>
             <th>Статус</th>
             <th>Действия</th>
@@ -34,24 +67,32 @@
         </thead>
         <tbody>
           {% for p in projects %}
-            <tr {% if p.needs_attention %}class="table-warning"{% endif %}>
+            <tr>
               <td class="text-muted small">#{{ p.obj.id }}</td>
               <td>@{{ p.obj.customer.username }}</td>
               <td><strong>{{ p.obj.name }}</strong></td>
-              <td class="text-center">
-                {% if p.n_user %}<span class="badge bg-info text-dark">{{ p.n_user }}</span>{% else %}<span class="text-muted small">0</span>{% endif %}
+              <td class="text-center small">
+                {{ p.obj.daily_limit|default:"—" }} / {{ p.obj.total_limit|default:"∞" }}
               </td>
-              <td class="text-center">
-                {% if p.n_admin %}<span class="badge bg-success">{{ p.n_admin }}</span>{% else %}<span class="text-muted small">0</span>{% endif %}
+              <td class="text-center small" style="min-width: 140px;">
+                {% if p.obj.total_limit %}
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="progress flex-grow-1" style="height: 6px;">
+                      <div class="progress-bar bg-{% if p.obj.is_closed %}success{% else %}info{% endif %}"
+                           role="progressbar" style="width: {{ p.progress_pct }}%;"></div>
+                    </div>
+                    <span class="text-nowrap">{{ p.n_admin }}/{{ p.obj.total_limit }}</span>
+                  </div>
+                {% else %}
+                  <span class="text-muted">{{ p.n_admin }}</span>
+                {% endif %}
               </td>
               <td class="small text-muted">{{ p.obj.business_date|date:"d.m.Y" }}</td>
               <td>
-                {% if p.closed %}
+                {% if p.obj.is_closed %}
                   <span class="badge bg-secondary">закрыт</span>
-                {% elif p.needs_attention %}
-                  <span class="badge bg-warning text-dark">ждёт ответа</span>
                 {% else %}
-                  <span class="badge bg-info text-dark">сегодня</span>
+                  <span class="badge bg-info text-dark">открыт</span>
                 {% endif %}
               </td>
               <td>
