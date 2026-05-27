@@ -401,6 +401,7 @@ urlpatterns = [
     # Завод-лидов: обмен по проектам клиент ↔ главный админ
     path("zavod/", views_zavod_lidov.customer_dashboard, name="zavod_lidov_customer"),
     path("zavod/download/<int:project_id>/", views_zavod_lidov.customer_download_excel, name="zavod_lidov_download"),
+    path("zavod/finish/<int:project_id>/", views_zavod_lidov.customer_finish_project, name="zavod_lidov_finish"),
     path("staff/zavod-lidov/", views_zavod_lidov.admin_overview, name="admin_zavod_lidov_overview"),
     path("staff/zavod-lidov/pool/<int:customer_id>/", views_zavod_lidov.admin_pool, name="admin_zavod_lidov_pool"),
     path("staff/zavod-lidov/<int:project_id>/", views_zavod_lidov.admin_project_detail, name="admin_zavod_lidov_project"),

@@ -83,13 +83,19 @@
                     </div>
                   {% endif %}
                 </div>
-                <div class="flex-shrink-0">
+                <div class="flex-shrink-0 d-flex flex-column gap-1 align-items-end">
                   {% if p.obj.is_closed %}
                     <a class="btn btn-success btn-sm" href="{% url 'zavod_lidov_download' p.obj.id %}">
                       📥 Скачать
                     </a>
                   {% else %}
                     <span class="badge bg-warning text-dark">в работе</span>
+                    <form method="post" action="{% url 'zavod_lidov_finish' p.obj.id %}" class="m-0">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-outline-danger btn-sm py-0" style="font-size:11px;">
+                        Завершить
+                      </button>
+                    </form>
                   {% endif %}
                 </div>
               </div>

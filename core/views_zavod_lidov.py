@@ -354,6 +354,21 @@ def customer_dashboard(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def customer_finish_project(request: HttpRequest, project_id: int) -> HttpResponse:
+    if not _is_lid_customer(request.user):
+        return HttpResponseForbidden("Только для заказчиков лидов.")
+    if request.method != "POST":
+        return redirect("zavod_lidov_customer")
+    project = get_object_or_404(
+        LidProject, pk=project_id, customer=request.user,
+    )
+    if not project.is_closed:
+        project.is_closed = True
+        project.save(update_fields=["is_closed", "updated_at"])
+    return redirect("zavod_lidov_customer")
+
+
+@login_required
 def customer_download_excel(request: HttpRequest, project_id: int) -> HttpResponse:
     """Excel конкретного проекта: один лист с этим проектом."""
     if not _is_lid_customer(request.user):
