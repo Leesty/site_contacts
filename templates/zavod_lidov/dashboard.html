@@ -18,23 +18,20 @@
         <form method="post">
           {% csrf_token %}
           <label class="form-label small mb-1">Номера и/или сайты (необязательно):</label>
-          <textarea name="values" rows="8" class="form-control mb-3"
-                    placeholder="+79991234567&#10;example.com&#10;..."></textarea>
+          <textarea name="values" rows="8" class="form-control mb-3"></textarea>
 
           <label class="form-label small mb-1">Название проекта:</label>
           <input type="text" name="project_name" class="form-control mb-3"
-                 placeholder="Например: Москва, май 2026" required maxlength="200">
+                 required maxlength="200">
 
           <div class="row g-2 mb-3">
             <div class="col">
               <label class="form-label small mb-1">Общий лимит:</label>
-              <input type="number" name="total_limit" class="form-control"
-                     placeholder="например 300" min="1">
+              <input type="number" name="total_limit" class="form-control" min="1">
             </div>
             <div class="col">
               <label class="form-label small mb-1">Дневной лимит:</label>
-              <input type="number" name="daily_limit" class="form-control"
-                     placeholder="например 50" min="1">
+              <input type="number" name="daily_limit" class="form-control" min="1">
             </div>
           </div>
 
