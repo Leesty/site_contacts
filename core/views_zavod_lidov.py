@@ -60,21 +60,28 @@ _PHONE_LIKE_RE = re.compile(r"^[\d\+\-\s\(\)]+$")
 
 
 def _normalize_value(raw: str) -> str | None:
-    """Нормализует одно значение. Возвращает None если совсем мусор."""
+    """Нормализует одно значение. Возвращает None если пусто после trim.
+
+    Принимаем любую непустую строку:
+    - Если похоже на телефон (>=5 цифр + только цифры/+/-/()) →
+      нормализуем в +цифры/цифры.
+    - Если содержит точку или слэш → URL/сайт, lowercase.
+    - Иначе → как есть (любая строка, в т.ч. короткая «1», «А-12»).
+    """
     v = raw.strip()
     if not v:
         return None
-    # Телефон: только цифры, +, -, (, ), пробелы
+    # Телефон: только цифры/+/-/()/пробелы И минимум 5 цифр
     if _PHONE_LIKE_RE.match(v):
-        has_plus = v.lstrip().startswith("+")
         digits = re.sub(r"\D", "", v)
-        if len(digits) < 5:
-            return None
-        return ("+" + digits) if has_plus else digits
-    # URL/сайт: содержит слэш или точку — оставляем как есть, lowercase
+        if len(digits) >= 5:
+            has_plus = v.lstrip().startswith("+")
+            return ("+" + digits) if has_plus else digits
+        # Короткий «1», «42» — не телефон, оставляем как есть
+        return v
+    # URL/сайт
     if "/" in v or "." in v:
         return v.lower()
-    # Любое другое — как есть
     return v
 
 
