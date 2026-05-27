@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Списки контактов{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h4 mb-0">📞 Списки контактов</h1>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+</div>
+
+{# ─── Фильтры + поиск ─────────────────────────────────────────────── #}
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-center">
+      <div class="col-md-3">
+        <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="" {% if not status_filter %}selected{% endif %}>Все статусы</option>
+          {% for val, label in final_statuses %}
+            <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+          <option value="callback_today" {% if status_filter == "callback_today" %}selected{% endif %}>Перезвонить сегодня</option>
+        </select>
+      </div>
+      <div class="col-md-5">
+        <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+               placeholder="Поиск: контакт / источник / имя">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-outline-primary btn-sm w-100" type="submit">Применить</button>
+      </div>
+      {% if status_filter or q %}
+        <div class="col-md-2">
+          <a class="btn btn-outline-secondary btn-sm w-100" href="{% url 'cold_contacts_list' %}">Сбросить</a>
+        </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+{# ─── Добавить новый контакт ───────────────────────────────────────── #}
+<div class="card shadow-sm mb-3">
+  <div class="card-header bg-transparent border-secondary py-2">
+    <strong>＋ Добавить контакт</strong>
+  </div>
+  <div class="card-body py-3">
+    <form method="post" action="{% url 'cold_contacts_add' %}" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <div class="col-md-4">
+        <label class="form-label small mb-1">Источник</label>
+        <input type="text" name="source" class="form-control form-control-sm" maxlength="255">
+      </div>
+      <div class="col-md-5">
+        <label class="form-label small mb-1">Контакт *</label>
+        <input type="text" name="contact" class="form-control form-control-sm" maxlength="255" required>
+      </div>
+      <div class="col-md-3">
+        <button type="submit" class="btn btn-success btn-sm w-100">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ─── Таблица контактов ───────────────────────────────────────────── #}
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    {% if not contacts %}
+      <p class="text-muted small text-center my-4 px-3">
+        Контактов пока нет. Добавь первый в форме выше.
+      </p>
+    {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle table-dark-site">
+        <thead>
+          <tr>
+            <th>Источник</th>
+            <th>Контакт</th>
+            <th class="text-center">Попытка 1</th>
+            <th class="text-center">Попытка 2</th>
+            <th class="text-center">Попытка 3</th>
+            <th>Итог</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in contacts %}
+            {% with c=row.obj %}
+            <tr>
+              <td class="small">{{ c.source|default:"—" }}</td>
+              <td class="text-nowrap"><strong>{{ c.contact }}</strong>{% if c.name %}<br><span class="small text-muted">{{ c.name }}</span>{% endif %}</td>
+              {% for a in row.attempts %}
+                <td class="text-center" style="min-width: 180px;">
+                  <form method="post" action="{% url 'cold_contact_attempt' c.id forloop.counter %}"
+                        class="m-0 d-flex flex-column gap-1 attempt-form" data-final-status="{{ c.final_status }}">
+                    {% csrf_token %}
+                    <select name="status" class="form-select form-select-sm py-0 attempt-status"
+                            data-contact-id="{{ c.id }}" data-attempt-no="{{ forloop.counter }}"
+                            style="font-size: 11px;">
+                      <option value="">—</option>
+                      {% for val, label in attempt_statuses %}
+                        <option value="{{ val }}" {% if a and a.status == val %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                    <input type="datetime-local" name="callback_at"
+                           class="form-control form-control-sm py-0 callback-input"
+                           value="{% if a and a.callback_at %}{{ a.callback_at|date:'Y-m-d\TH:i' }}{% endif %}"
+                           style="font-size: 11px; {% if not a or a.status != 'callback' %}display:none;{% endif %}">
+                    <button type="submit" class="btn btn-outline-primary btn-sm py-0 attempt-save"
+                            style="font-size: 11px; {% if not a %}display:none;{% endif %}">Сохранить</button>
+                  </form>
+                </td>
+              {% endfor %}
+              <td class="small">
+                {% if c.final_status == "lead" %}
+                  <span class="badge bg-success">ЛИД</span>
+                  {% if c.lead_call_date %}<br><span class="text-muted">{{ c.lead_call_date|date:"d.m" }} {{ c.lead_call_time|time:"H:i" }}</span>{% endif %}
+                {% elif c.final_status == "refused" %}
+                  <span class="badge bg-secondary">отказ</span>
+                {% elif c.final_status == "no_answer" %}
+                  <span class="badge bg-dark">нет ответа</span>
+                {% else %}
+                  <span class="badge bg-info text-dark">в работе</span>
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="{% url 'cold_contact_delete' c.id %}" class="m-0"
+                      onsubmit="return confirm('Удалить контакт {{ c.contact|escapejs }}?');">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-outline-danger btn-sm py-0" style="font-size: 11px;">🗑</button>
+                </form>
+              </td>
+            </tr>
+            {% endwith %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ─── Модалка «зафиксировать лид» ───────────────────────────────────── #}
+<div class="modal fade" id="leadModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background: #1e293b;">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title">Зафиксировать лид</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <form id="leadForm" method="post" action="">
+        {% csrf_token %}
+        <input type="hidden" name="attempt_no" id="leadAttemptNo" value="1">
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Номер телефона</label>
+            <input type="text" id="leadPhone" class="form-control form-control-sm" readonly>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Имя (необязательно)</label>
+            <input type="text" name="name" class="form-control form-control-sm" maxlength="255">
+          </div>
+          <div class="row g-2">
+            <div class="col">
+              <label class="form-label small mb-1">Дата созвона</label>
+              <input type="date" name="call_date" class="form-control form-control-sm" required>
+            </div>
+            <div class="col">
+              <label class="form-label small mb-1">Время МСК</label>
+              <input type="time" name="call_time" class="form-control form-control-sm" required>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-success btn-sm">Создать лид</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Контакты, по которым уже зафиксирован лид (имя/дата уже есть) — повторно
+  // модалку не показываем, просто меняем статус на 'lead'.
+  const LEAD_URL_TPL = "{% url 'cold_contact_lead' 0 %}".replace("/0/", "/__ID__/");
+
+  document.querySelectorAll(".attempt-status").forEach(function(sel) {
+    sel.addEventListener("change", function(e) {
+      const form = e.target.closest("form");
+      const cbInput = form.querySelector(".callback-input");
+      const saveBtn = form.querySelector(".attempt-save");
+      const val = e.target.value;
+
+      // Показ/скрытие datetime для callback
+      cbInput.style.display = (val === "callback") ? "" : "none";
+      if (val !== "callback") cbInput.value = "";
+
+      // Если выбран "Лид" — открываем модалку и НЕ сабмитим обычную форму
+      if (val === "lead") {
+        const contactId = e.target.dataset.contactId;
+        const attemptNo = e.target.dataset.attemptNo;
+        const row = e.target.closest("tr");
+        const phone = row.querySelector("td:nth-child(2) strong").textContent.trim();
+        const finalStatus = form.dataset.finalStatus;
+
+        // Если уже лид — просто меняем без модалки (на случай если меняют попытку)
+        if (finalStatus === "lead") {
+          form.submit();
+          return;
+        }
+
+        document.getElementById("leadPhone").value = phone;
+        document.getElementById("leadAttemptNo").value = attemptNo;
+        document.getElementById("leadForm").action = LEAD_URL_TPL.replace("__ID__", contactId);
+
+        // Префилл даты — сегодня
+        const dateInput = document.querySelector("#leadForm input[name='call_date']");
+        const timeInput = document.querySelector("#leadForm input[name='call_time']");
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth()+1).padStart(2,"0");
+        const dd = String(today.getDate()).padStart(2,"0");
+        dateInput.value = `${yyyy}-${mm}-${dd}`;
+        timeInput.value = "";
+
+        const modal = new bootstrap.Modal(document.getElementById("leadModal"));
+        modal.show();
+
+        // НЕ submit-им — пользователь это сделает через модалку.
+        // Возвращаем select в предыдущее значение, чтобы не «застряло».
+        // Восстановим из исходно выбранной опции (DOM сам помнит selected).
+        e.target.value = e.target.querySelector("option[selected]")?.value || "";
+        return;
+      }
+
+      // Показываем кнопку сохранения (статус выбран)
+      saveBtn.style.display = val ? "" : "none";
+      // Если выбран статус ≠ callback — сабмитим сразу
+      if (val && val !== "callback") {
+        form.submit();
+      }
+    });
+  });
+})();
+</script>
+
+{% endblock %}

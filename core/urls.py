@@ -2,6 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 
 from . import views
+from . import views_cold_contacts
 from . import views_group_reports
 from . import views_partner
 from . import views_search
@@ -402,6 +403,12 @@ urlpatterns = [
     path("zavod/", views_zavod_lidov.customer_dashboard, name="zavod_lidov_customer"),
     path("zavod/download/<int:project_id>/", views_zavod_lidov.customer_download_excel, name="zavod_lidov_download"),
     path("zavod/finish/<int:project_id>/", views_zavod_lidov.customer_finish_project, name="zavod_lidov_finish"),
+    # Списки холодных контактов (user / worker) — воронка 3 попыток
+    path("cold-contacts/", views_cold_contacts.contacts_list, name="cold_contacts_list"),
+    path("cold-contacts/add/", views_cold_contacts.contacts_add, name="cold_contacts_add"),
+    path("cold-contacts/<int:contact_id>/attempt/<int:n>/", views_cold_contacts.contact_attempt_update, name="cold_contact_attempt"),
+    path("cold-contacts/<int:contact_id>/lead/", views_cold_contacts.contact_mark_lead, name="cold_contact_lead"),
+    path("cold-contacts/<int:contact_id>/delete/", views_cold_contacts.contact_delete, name="cold_contact_delete"),
     path("staff/zavod-lidov/", views_zavod_lidov.admin_overview, name="admin_zavod_lidov_overview"),
     path("staff/zavod-lidov/pool/<int:customer_id>/", views_zavod_lidov.admin_pool, name="admin_zavod_lidov_pool"),
     path("staff/zavod-lidov/<int:project_id>/", views_zavod_lidov.admin_project_detail, name="admin_zavod_lidov_project"),

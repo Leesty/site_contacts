@@ -2040,3 +2040,82 @@ class AdminPhonePool(TimeStampedModel):
         st = "used" if self.is_used else "free"
         return f"AdminPool[{st}] {self.value} ({self.customer.username})"
 
+
+# ─── Списки холодных контактов менеджера (user / worker) ─────────────────
+
+class ColdContact(TimeStampedModel):
+    """Контакт потенциального клиента, который менеджер ведёт по 3 попыткам."""
+
+    class FinalStatus(models.TextChoices):
+        IN_PROGRESS = "in_progress", "В работе"
+        LEAD = "lead", "Лид"
+        REFUSED = "refused", "Отказ"
+        NO_ANSWER = "no_answer", "Нет ответа (3 НДЗ)"
+
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="cold_contacts",
+    )
+    source = models.CharField(max_length=255, blank=True, help_text="Источник контакта.")
+    contact = models.CharField(max_length=255, help_text="Номер телефона / контакт.")
+    name = models.CharField(max_length=255, blank=True, help_text="Имя клиента (если стал лидом).")
+    final_status = models.CharField(
+        max_length=20,
+        choices=FinalStatus.choices,
+        default=FinalStatus.IN_PROGRESS,
+        db_index=True,
+    )
+    lead_call_date = models.DateField(null=True, blank=True, help_text="Дата созвона (при статусе «лид»).")
+    lead_call_time = models.TimeField(null=True, blank=True, help_text="Время созвона МСК (при статусе «лид»).")
+
+    class Meta:
+        verbose_name = "Холодный контакт"
+        verbose_name_plural = "Холодные контакты"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["owner", "final_status"]),
+            models.Index(fields=["owner", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"ColdContact #{self.pk} {self.contact} ({self.final_status})"
+
+
+class CallAttempt(TimeStampedModel):
+    """Одна из 3 попыток дозвона по холодному контакту."""
+
+    class Status(models.TextChoices):
+        ANSWERED = "answered", "Дозвонился"
+        NDZ = "ndz", "Недозвон (НДЗ)"
+        LEAD = "lead", "Лид"
+        CALLBACK = "callback", "Перезвонить"
+        REFUSED = "refused", "Отказ"
+
+    contact = models.ForeignKey(
+        ColdContact,
+        on_delete=models.CASCADE,
+        related_name="attempts",
+    )
+    attempt_no = models.PositiveSmallIntegerField(help_text="Номер попытки: 1 / 2 / 3.")
+    status = models.CharField(max_length=20, choices=Status.choices)
+    callback_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Когда перезвонить (только при статусе callback).",
+    )
+    note = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Попытка дозвона"
+        verbose_name_plural = "Попытки дозвона"
+        ordering = ["contact_id", "attempt_no"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["contact", "attempt_no"],
+                name="uniq_attempt_per_contact_no",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"Attempt#{self.attempt_no} of contact#{self.contact_id}: {self.status}"
+

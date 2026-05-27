@@ -189,6 +189,16 @@
     </div>
     {% endif %}{% endif %}
 
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="card-icon mb-2" aria-hidden="true">📞</div>
+          <h2 class="h5 mb-2">Списки контактов</h2>
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'cold_contacts_list' %}">Перейти</a>
+        </div>
+      </div>
+    </div>
+
     {% if is_accredited_ref_owner %}
     <div class="col">
       <div class="card h-100 shadow-sm">
