@@ -69,10 +69,8 @@
         <div class="h3 mb-0 {% if balance_search < 0 %}text-danger{% else %}text-success{% endif %}">
           {{ balance_search }}₽
         </div>
-        {% if balance_dozhim or plus_dozhim %}
-          <div class="text-muted small mt-2">Баланс (дожим)</div>
-          <div class="h5 mb-0">{{ balance_dozhim }}₽</div>
-        {% endif %}
+        <div class="text-muted small mt-2">Баланс (дожим)</div>
+        <div class="h5 mb-0 {% if balance_dozhim < 0 %}text-danger{% endif %}">{{ balance_dozhim }}₽</div>
       </div>
     </div>
   </div>
@@ -89,14 +87,28 @@
         <table class="table table-sm table-dark-site mb-0 small">
           <tbody>
             <tr>
-              <td class="text-muted">Lead (отчёты по базам)</td>
+              <td class="text-muted">Lead — Поиск</td>
               <td class="text-end">
-                <span class="badge bg-success">{{ lead_approved }} одобр.</span>
-                {% if lead_pending %}<span class="badge bg-warning text-dark">{{ lead_pending }} ожид.</span>{% endif %}
+                <span class="badge bg-success">{{ lead_approved_search }} одобр.</span>
+                {% if lead_pending_search %}<span class="badge bg-warning text-dark">{{ lead_pending_search }} ожид.</span>{% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td class="text-muted">Lead — Дожим</td>
+              <td class="text-end">
+                <span class="badge bg-success">{{ lead_approved_dozhim }} одобр.</span>
+                {% if lead_pending_dozhim %}<span class="badge bg-warning text-dark">{{ lead_pending_dozhim }} ожид.</span>{% endif %}
+              </td>
+            </tr>
+            {% if lead_rework or lead_rejected %}
+            <tr>
+              <td class="text-muted">Lead — прочее</td>
+              <td class="text-end">
                 {% if lead_rework %}<span class="badge bg-info text-dark">{{ lead_rework }} дораб.</span>{% endif %}
                 {% if lead_rejected %}<span class="badge bg-danger">{{ lead_rejected }} откл.</span>{% endif %}
               </td>
             </tr>
+            {% endif %}
             <tr>
               <td class="text-muted">SearchReport (SL)</td>
               <td class="text-end">
@@ -226,7 +238,6 @@
           </tr>
         </table>
       </div>
-      {% if balance_dozhim or plus_dozhim or minus_dozhim %}
       <div class="col-md-6">
         <div class="small text-muted mb-1">ДОЖИМ</div>
         <table class="table table-sm table-dark-site mb-0 small">
@@ -241,7 +252,6 @@
           </tr>
         </table>
       </div>
-      {% endif %}
     </div>
   </div>
 </div>

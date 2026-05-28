@@ -2575,8 +2575,16 @@ def standalone_admin_worker_self_lead_approve(request: HttpRequest, self_lead_id
         self_lead.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by_id", "updated_at"])
 
         worker = User.objects.select_for_update().get(pk=self_lead.worker_id)
-        worker.balance = (worker.balance or 0) + self_lead.reward
+        _old_bal = worker.balance or 0
+        worker.balance = _old_bal + self_lead.reward
         worker.save(update_fields=["balance"])
+        # Логируем — без этого финансовый отчёт показывает плюсы=0 при
+        # фактическом балансе >0 (исторический баг).
+        log_balance_change(
+            worker, "balance", _old_bal, worker.balance,
+            f"worker_self_lead_approve#{self_lead.id} +{self_lead.reward}",
+            request.user,
+        )
 
     from django.contrib import messages
     messages.success(request, f"Лид одобрен. Исполнителю @{self_lead.worker.username} начислено {self_lead.reward} руб.")
@@ -2610,8 +2618,14 @@ def standalone_admin_worker_self_lead_reject(request: HttpRequest, self_lead_id:
 
         if was_approved:
             worker = User.objects.select_for_update().get(pk=self_lead.worker_id)
-            worker.balance = (worker.balance or 0) - self_lead.reward
+            _old_bal = worker.balance or 0
+            worker.balance = _old_bal - self_lead.reward
             worker.save(update_fields=["balance"])
+            log_balance_change(
+                worker, "balance", _old_bal, worker.balance,
+                f"worker_self_lead_reject#{self_lead.id} -{self_lead.reward}",
+                request.user,
+            )
 
     from django.contrib import messages
     from django.urls import reverse
@@ -2650,8 +2664,14 @@ def standalone_admin_worker_self_lead_rework(request: HttpRequest, self_lead_id:
 
         if was_approved:
             worker = User.objects.select_for_update().get(pk=self_lead.worker_id)
-            worker.balance = (worker.balance or 0) - self_lead.reward
+            _old_bal = worker.balance or 0
+            worker.balance = _old_bal - self_lead.reward
             worker.save(update_fields=["balance"])
+            log_balance_change(
+                worker, "balance", _old_bal, worker.balance,
+                f"worker_self_lead_rework#{self_lead.id} -{self_lead.reward}",
+                request.user,
+            )
 
     from django.contrib import messages
     if was_approved:
@@ -4092,13 +4112,23 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
     balance_dozhim = int(u.dozhim_balance or 0)
 
     # ─── Отчёты пользователя (счётчики и доход) ───────────────────────────
-    # Lead: paid_reward не сохраняется → берём из BalanceLog по reason "lead_approve#"
+    # Lead: paid_reward не сохраняется → берём из BalanceLog по reason "lead_approve#".
+    # Разделяем поиск/дожим — у них РАЗНЫЕ балансы (User.balance vs User.dozhim_balance).
     lead_qs = LeadModel.objects.filter(user=u)
     lead_total = lead_qs.count()
     lead_pending = lead_qs.filter(status=LeadModel.Status.PENDING).count()
     lead_approved = lead_qs.filter(status=LeadModel.Status.APPROVED).count()
     lead_rejected = lead_qs.filter(status=LeadModel.Status.REJECTED).count()
     lead_rework = lead_qs.filter(status=LeadModel.Status.REWORK).count()
+    # Сплит approved Lead по отделам
+    lead_approved_dozhim = lead_qs.filter(
+        status=LeadModel.Status.APPROVED, lead_type__slug="dozhim",
+    ).count()
+    lead_approved_search = lead_approved - lead_approved_dozhim
+    lead_pending_dozhim = lead_qs.filter(
+        status=LeadModel.Status.PENDING, lead_type__slug="dozhim",
+    ).count()
+    lead_pending_search = lead_pending - lead_pending_dozhim
 
     sr_qs = SearchReport.objects.filter(user=u)
     sr_total = sr_qs.count()
@@ -4165,12 +4195,18 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
 
     # ─── Готовый текстовый отчёт для копирования ──────────────────────────
     lines: list[str] = []
+    # Прикидываем фактическую заработанную сумму (для аудита) — нужна чтобы
+    # ловить случаи когда approve чего-то не залогировался в BalanceLog
+    # (например, исторический баг с WorkerSelfLead approve).
+    expected_credited = sr_paid_sum + gr_paid_sum + wsl_paid_sum + partner_earn_sum + msc_paid_sum
+    # NB: Lead.paid_reward не хранится, его вклад только в BalanceLog —
+    # поэтому сравнение «expected vs log» работает только для не-Lead отчётов.
+
     lines.append(f"📊 ФИНАНСОВЫЙ ОТЧЁТ @{u.username} (id={u.id})")
     lines.append("")
     lines.append("ТЕКУЩЕЕ СОСТОЯНИЕ")
     lines.append(f"• Баланс (поиск): {balance_search}₽")
-    if balance_dozhim:
-        lines.append(f"• Баланс (дожим): {balance_dozhim}₽")
+    lines.append(f"• Баланс (дожим): {balance_dozhim}₽")
     if wr_pending:
         lines.append(f"• На рассмотрении (вывод): {wr_pending_sum}₽ ({len(wr_pending)} шт.)")
     else:
@@ -4178,11 +4214,19 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
     lines.append("")
     lines.append("ПОЛУЧЕНО ВСЕГО (одобренные начисления)")
     total_credited = plus_search + plus_dozhim
-    lines.append(f"• Всего по логу баланса: {total_credited}₽")
-    if sr_approved:
-        lines.append(f"  – SR одобрено: {sr_approved} шт. = {sr_paid_sum}₽")
+    lines.append(f"• Всего по логу баланса (поиск+дожим): {total_credited}₽")
     if lead_approved:
-        lines.append(f"  – Lead одобрено: {lead_approved} шт. (Lead.paid_reward не хранится — см. BalanceLog)")
+        if lead_approved_dozhim and lead_approved_search:
+            lines.append(
+                f"  – Lead одобрено: {lead_approved} шт. "
+                f"(поиск: {lead_approved_search} · дожим: {lead_approved_dozhim})"
+            )
+        elif lead_approved_dozhim:
+            lines.append(f"  – Lead-ДОЖИМ одобрено: {lead_approved_dozhim} шт. (~{lead_approved_dozhim * 40}₽)")
+        else:
+            lines.append(f"  – Lead-ПОИСК одобрено: {lead_approved_search} шт.")
+    if sr_approved:
+        lines.append(f"  – SR (SearchLink) одобрено: {sr_approved} шт. = {sr_paid_sum}₽")
     if gr_approved:
         lines.append(f"  – GroupReport одобрено: {gr_approved} шт. = {gr_paid_sum}₽")
     if wsl_approved:
@@ -4210,25 +4254,50 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
         lines.append("✅ Сходится — расхождений нет.")
     else:
         lines.append(f"⚠ Расхождение: {diff_search}₽ (фактический − по логу)")
-    if balance_dozhim or plus_dozhim or minus_dozhim:
+    # Дожим — ВСЕГДА показываем (даже если 0), чтобы было видно что проверили
+    lines.append("")
+    lines.append("СВЕРКА БАЛАНСА (дожим)")
+    lines.append(f"• Все плюсы:  +{plus_dozhim}₽")
+    lines.append(f"• Все минусы: {minus_dozhim}₽")
+    lines.append(f"• Итог по логу: {reconcile_dozhim}₽")
+    lines.append(f"• Фактический баланс: {balance_dozhim}₽")
+    if diff_dozhim == 0:
+        lines.append("✅ Сходится.")
+    else:
+        lines.append(f"⚠ Расхождение: {diff_dozhim}₽")
+
+    # Аудит: сравнение «ожидаемо начислено по approved отчётам» с тем что в логе.
+    # Если есть WSL/GR/SR-approve которые не залогировали — здесь это всплывёт.
+    if expected_credited > 0:
+        actual_plus = plus_search + plus_dozhim
+        audit_diff = expected_credited - actual_plus
         lines.append("")
-        lines.append("СВЕРКА БАЛАНСА (дожим)")
-        lines.append(f"• Все плюсы:  +{plus_dozhim}₽")
-        lines.append(f"• Все минусы: {minus_dozhim}₽")
-        lines.append(f"• Итог по логу: {reconcile_dozhim}₽")
-        lines.append(f"• Фактический баланс: {balance_dozhim}₽")
-        if diff_dozhim == 0:
-            lines.append("✅ Сходится.")
+        lines.append("АУДИТ НАЧИСЛЕНИЙ (без Lead — у него нет paid_reward)")
+        lines.append(f"• Ожидаемо по approved отчётам: {expected_credited}₽")
+        lines.append(f"• Зафиксировано в BalanceLog: +{actual_plus}₽")
+        if audit_diff == 0:
+            lines.append("✅ Аудит сошёлся.")
+        elif audit_diff > 0:
+            lines.append(f"⚠ Не залогировано: {audit_diff}₽ (вероятно, approve без log_balance_change)")
         else:
-            lines.append(f"⚠ Расхождение: {diff_dozhim}₽")
+            lines.append(f"ℹ В логе на {-audit_diff}₽ больше — есть начисления не от отчётов (Lead/админ-аджаст/...)")
+
     if wr_rejected:
         lines.append("")
         lines.append(f"ОТКЛОНЁННЫЕ ЗАЯВКИ НА ВЫВОД: {len(wr_rejected)}")
     if sr_pending:
         lines.append("")
         lines.append(f"ОЖИДАЕТ ПРОВЕРКИ (SR на pending): {sr_pending} шт. (~{sr_pending * 150}₽ потенциально)")
-    if lead_pending:
-        lines.append(f"ОЖИДАЕТ ПРОВЕРКИ (Lead на pending): {lead_pending} шт.")
+    if lead_pending_search or lead_pending_dozhim:
+        if lead_pending_dozhim and lead_pending_search:
+            lines.append(
+                f"ОЖИДАЕТ ПРОВЕРКИ (Lead): {lead_pending} шт. "
+                f"(поиск: {lead_pending_search} · дожим: {lead_pending_dozhim})"
+            )
+        elif lead_pending_dozhim:
+            lines.append(f"ОЖИДАЕТ ПРОВЕРКИ (Lead-дожим): {lead_pending_dozhim} шт.")
+        else:
+            lines.append(f"ОЖИДАЕТ ПРОВЕРКИ (Lead-поиск): {lead_pending_search} шт.")
     report_text = "\n".join(lines)
 
     ctx.update({
@@ -4240,6 +4309,11 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
         "lead_approved": lead_approved,
         "lead_rejected": lead_rejected,
         "lead_rework": lead_rework,
+        "lead_approved_search": lead_approved_search,
+        "lead_approved_dozhim": lead_approved_dozhim,
+        "lead_pending_search": lead_pending_search,
+        "lead_pending_dozhim": lead_pending_dozhim,
+        "expected_credited": expected_credited,
         "sr_total": sr_total,
         "sr_pending": sr_pending,
         "sr_approved": sr_approved,
