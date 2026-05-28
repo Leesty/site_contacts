@@ -4,6 +4,20 @@
 {% block title %}Отчёты по группам — модерация{% endblock %}
 
 {% block content %}
+<style>
+  .gr-actions-cell {
+    position: sticky;
+    right: 0;
+    background: rgba(2, 6, 23, 0.97);
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.45);
+    z-index: 2;
+    min-width: 110px;
+  }
+  thead .gr-actions-cell {
+    background: rgba(6, 78, 59, 0.6);
+    z-index: 3;
+  }
+</style>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div>
     <h1 class="h4 mb-0">
@@ -60,9 +74,9 @@
             <th>Дата</th>
             <th>Скринкаст</th>
             <th>Авто-валидация</th>
-            {% if tab == 'pending' or tab == 'rework' or tab == 'incomplete' %}<th>Действия</th>{% endif %}
             {% if tab == 'rework' or tab == 'rejected' %}<th>Причина</th>{% endif %}
             {% if tab == 'approved' or tab == 'rejected' or tab == 'rework' %}<th>Проверил</th>{% endif %}
+            {% if tab == 'pending' or tab == 'rework' or tab == 'incomplete' %}<th class="gr-actions-cell">Действия</th>{% endif %}
           </tr>
         </thead>
         <tbody>
@@ -102,20 +116,22 @@
                   <span class="badge bg-secondary" title="{{ r.validation_note }}">⚠ {{ r.validation_note|truncatewords:6 }}</span>
                 {% endif %}
               </td>
-              {% if tab == 'pending' or tab == 'rework' or tab == 'incomplete' %}
-              <td class="text-nowrap">
-                <button type="button" class="btn btn-success btn-sm py-0 js-gr-approve"
-                        data-report-id="{{ r.id }}" title="Одобрить">✓</button>
-                <button type="button" class="btn btn-warning btn-sm py-0 js-gr-rework"
-                        data-report-id="{{ r.id }}" title="На доработку">✎</button>
-                <button type="button" class="btn btn-danger btn-sm py-0 js-gr-reject"
-                        data-report-id="{{ r.id }}" title="Отклонить">✗</button>
-              </td>
-              {% endif %}
               {% if tab == 'rework' %}<td class="small text-muted">{{ r.rework_comment|truncatewords:12 }}</td>{% endif %}
               {% if tab == 'rejected' %}<td class="small text-muted">{{ r.rejection_reason|truncatewords:12 }}</td>{% endif %}
               {% if tab == 'approved' or tab == 'rejected' or tab == 'rework' %}
                 <td class="small">{% if r.reviewed_by %}@{{ r.reviewed_by.username }}{% endif %}<br><span class="text-muted">{{ r.reviewed_at|date:"d.m H:i" }}</span></td>
+              {% endif %}
+              {% if tab == 'pending' or tab == 'rework' or tab == 'incomplete' %}
+              <td class="gr-actions-cell">
+                <div class="d-flex flex-nowrap gap-1">
+                  <button type="button" class="btn btn-success btn-sm py-0 js-gr-approve"
+                          data-report-id="{{ r.id }}" title="Одобрить">✓</button>
+                  <button type="button" class="btn btn-warning btn-sm py-0 js-gr-rework"
+                          data-report-id="{{ r.id }}" title="На доработку">✎</button>
+                  <button type="button" class="btn btn-danger btn-sm py-0 js-gr-reject"
+                          data-report-id="{{ r.id }}" title="Отклонить">✗</button>
+                </div>
+              </td>
               {% endif %}
             </tr>
           {% endfor %}

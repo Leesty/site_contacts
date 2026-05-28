@@ -1,224 +1,436 @@
 {% extends "base.html" %}
+{% load support_extras static %}
 
 {% block title %}Прозвон — отчёты на проверке{% endblock %}
 
 {% block content %}
-<style>
-  /* Колонка "Действия" — sticky справа, чтобы кнопки были видны
-     без горизонтального скролла на широких таблицах. */
-  .cr-actions-cell {
-    position: sticky;
-    right: 0;
-    background: rgba(2, 6, 23, 0.97);
-    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.45);
-    z-index: 2;
-    min-width: 130px;
-  }
-  thead .cr-actions-cell {
-    background: rgba(6, 78, 59, 0.6);
-    z-index: 3;
-  }
-</style>
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <div>
-    <h1 class="h4 mb-0">📞 Прозвон — отчёты</h1>
-    <p class="text-muted small mb-0">
-      Менеджер: <strong>{{ manager_reward }}₽</strong> · Админ-проверщик: <strong>{{ admin_reward }}₽</strong>
-    </p>
+  {% csrf_token %}
+  <style>
+    .cr-actions-cell {
+      position: sticky;
+      right: 0;
+      background: rgba(2, 6, 23, 0.97);
+      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.45);
+      z-index: 2;
+      min-width: 120px;
+    }
+    thead .cr-actions-cell {
+      background: rgba(6, 78, 59, 0.6);
+      z-index: 3;
+    }
+  </style>
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-0">📞 Прозвон — отчёты</h1>
+      <p class="text-muted small mb-0">
+        Менеджер: <strong>{{ manager_reward }}₽</strong> · Админ-проверщик: <strong>{{ admin_reward }}₽</strong>
+      </p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
   </div>
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
-</div>
 
-{# Табы #}
-<ul class="nav nav-tabs mb-3">
-  <li class="nav-item">
-    <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new">
-      Новые
-      {% if counts.new %}<span class="badge bg-danger ms-1">{{ counts.new }}</span>{% endif %}
-    </a>
-  </li>
-  {% if user.role == "main_admin" %}
-  <li class="nav-item">
-    <a class="nav-link {% if tab == 'incomplete' %}active{% endif %}" href="?tab=incomplete">
-      Не валидные
-      {% if counts.incomplete %}<span class="badge bg-warning text-dark ms-1">{{ counts.incomplete }}</span>{% endif %}
-    </a>
-  </li>
-  {% endif %}
-  <li class="nav-item">
-    <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">
-      Одобренные <span class="text-muted">({{ counts.approved }})</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">
-      Отклонённые <span class="text-muted">({{ counts.rejected }})</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all">Все</a>
-  </li>
-</ul>
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new{% if q %}&q={{ q|urlencode }}{% endif %}">
+        Новые {% if counts.new %}<span class="badge bg-danger ms-1">{{ counts.new }}</span>{% endif %}
+      </a>
+    </li>
+    {% if user.role == "main_admin" or user.role == "admin" or user.role == "support" %}
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'incomplete' %}active{% endif %}" href="?tab=incomplete{% if q %}&q={{ q|urlencode }}{% endif %}">
+        Не валидные {% if counts.incomplete %}<span class="badge bg-warning text-dark ms-1">{{ counts.incomplete }}</span>{% endif %}
+      </a>
+    </li>
+    {% endif %}
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved{% if q %}&q={{ q|urlencode }}{% endif %}">
+        Одобренные ({{ counts.approved }})
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected{% if q %}&q={{ q|urlencode }}{% endif %}">
+        Отклонённые ({{ counts.rejected }})
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all{% if q %}&q={{ q|urlencode }}{% endif %}">Все</a>
+    </li>
+  </ul>
 
-{% if not reports %}
-  <div class="alert alert-info">В этой вкладке отчётов нет.</div>
-{% else %}
-<div class="card shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-sm table-dark-site mb-0 align-middle small">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Менеджер</th>
-            <th>Контакт</th>
-            <th>Чат</th>
-            <th>Валидация</th>
-            <th>Источник</th>
-            <th>Скринкаст</th>
-            <th>Статус</th>
-            <th class="cr-actions-cell">Действия</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in reports %}
+  <form method="get" class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="text" name="q" value="{{ q|default:'' }}" class="form-control form-control-sm"
+           style="max-width: 360px;" placeholder="Поиск: контакт, @менеджер, имя, TG, источник…"
+           autocomplete="off">
+    <button type="submit" class="btn btn-outline-primary btn-sm">Найти</button>
+    {% if q %}<a class="btn btn-outline-secondary btn-sm" href="?tab={{ tab }}">Сбросить</a>{% endif %}
+  </form>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
             <tr>
-              <td class="text-muted">#{{ r.id }}<br><span class="text-muted small">{{ r.created_at|date:"d.m H:i" }}</span></td>
-              <td>@{{ r.cold_contact.owner.username }}</td>
-              <td>
-                <strong>{{ r.cold_contact.contact }}</strong>
-                {% if r.cold_contact.name %}<br><span class="small text-muted">{{ r.cold_contact.name }}</span>{% endif %}
-                {% if r.cold_contact.tg_username %}<br><span class="small text-muted">@{{ r.cold_contact.tg_username }}</span>{% endif %}
-              </td>
-              <td>
-                {% if r.cold_contact.chat_invite_link %}
-                  <a href="{{ r.cold_contact.chat_invite_link }}" target="_blank" rel="noopener" class="btn btn-outline-info btn-sm py-0">🔗 чат</a>
-                {% else %}
-                  —
-                {% endif %}
-              </td>
-              <td>
-                {% if r.is_complete %}
-                  <span class="badge bg-success">✓</span>
-                {% else %}
-                  <span class="badge bg-warning text-dark" title="{{ r.validation_note }}">✗</span>
-                {% endif %}
-                {% if r.validation_note %}
-                  <div class="text-muted small">{{ r.validation_note }}</div>
-                {% endif %}
-              </td>
-              <td class="small">{{ r.source|default:"—" }}</td>
-              <td>
-                {% if r.screencast %}
-                  <a href="{% url 'admin_call_report_screencast' r.id %}" target="_blank" class="btn btn-outline-secondary btn-sm py-0">📎</a>
-                {% else %}
-                  —
-                {% endif %}
-              </td>
-              <td>
-                {% if r.status == "pending" %}
-                  <span class="badge bg-warning text-dark">pending</span>
-                {% elif r.status == "approved" %}
-                  <span class="badge bg-success">approved</span>
-                  {% if r.reviewed_by %}<br><span class="small text-muted">@{{ r.reviewed_by.username }}</span>{% endif %}
-                {% elif r.status == "rejected" %}
-                  <span class="badge bg-danger">rejected</span>
-                  {% if r.rejection_reason %}<br><span class="small text-muted">{{ r.rejection_reason|truncatechars:60 }}</span>{% endif %}
-                {% elif r.status == "rework" %}
-                  <span class="badge bg-info text-dark">rework</span>
-                {% endif %}
-              </td>
-              <td class="cr-actions-cell">
-                {% if r.status == "pending" %}
-                  <div class="d-flex flex-column gap-1">
-                    {% if r.is_complete %}
-                      <form method="post" action="{% url 'admin_call_report_approve' r.id %}" class="m-0">
-                        {% csrf_token %}
-                        <input type="hidden" name="return_tab" value="{{ tab }}">
-                        <button type="submit" class="btn btn-success btn-sm py-0 w-100"
-                                style="font-size:11px;"
-                                onclick="return confirm('Одобрить отчёт #{{ r.id }}? +80₽ менеджеру, +10₽ вам.');">
-                          ✓ Одобрить
-                        </button>
-                      </form>
-                    {% endif %}
-                    <button type="button" class="btn btn-outline-warning btn-sm py-0"
-                            style="font-size:11px;"
-                            onclick="openRework({{ r.id }})">⟲ Доработка</button>
-                    <button type="button" class="btn btn-outline-danger btn-sm py-0"
-                            style="font-size:11px;"
-                            onclick="openReject({{ r.id }})">✗ Отклонить</button>
-                  </div>
-                {% endif %}
-              </td>
+              <th>#</th>
+              <th>Менеджер</th>
+              <th>Контакт</th>
+              <th>Чат</th>
+              <th>Валидация</th>
+              <th>Источник</th>
+              <th>Скринкаст</th>
+              {% if tab == 'rework' or tab == 'rejected' %}<th>Причина</th>{% endif %}
+              {% if tab == 'approved' or tab == 'rejected' %}<th>Проверил</th>{% endif %}
+              <th class="cr-actions-cell">Действия</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for r in page_obj %}
+              <tr data-row-id="{{ r.id }}">
+                <td class="text-muted small">
+                  #{{ r.id }}<br>
+                  <span class="text-muted">{{ r.created_at|date:"d.m H:i" }}</span>
+                </td>
+                <td>
+                  <a href="{% url 'admin_user_leads_list' r.cold_contact.owner_id %}" class="text-truncate d-inline-block" style="max-width:100px;">@{{ r.cold_contact.owner.username }}</a>
+                </td>
+                <td>
+                  <strong>{{ r.cold_contact.contact }}</strong>
+                  {% if r.cold_contact.name %}<br><span class="small text-muted">{{ r.cold_contact.name }}</span>{% endif %}
+                  {% if r.cold_contact.tg_username %}<br><span class="small text-muted">@{{ r.cold_contact.tg_username }}</span>{% endif %}
+                </td>
+                <td>
+                  {% if r.cold_contact.chat_invite_link %}
+                    <a href="{{ r.cold_contact.chat_invite_link }}" target="_blank" rel="noopener" class="btn btn-outline-info btn-sm py-0" title="Открыть чат">🔗</a>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td style="max-width: 200px;">
+                  {% if r.is_complete %}
+                    <span class="badge bg-success" title="Все 4 этапа">✓ полный</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark" title="{{ r.validation_note }}">⚠ не полный</span>
+                    {% if r.validation_note %}
+                      <div class="small text-muted">{{ r.validation_note|truncatechars:80 }}</div>
+                    {% endif %}
+                  {% endif %}
+                </td>
+                <td class="small" style="max-width: 150px;">{{ r.source|default:"—"|truncatechars:50 }}</td>
+                <td>
+                  {% if r.screencast %}
+                    {% if r.screencast|lead_attachment_is_video %}
+                      <button type="button" class="btn btn-outline-primary btn-sm py-0 js-video-preview"
+                              data-video-url="{% url 'admin_call_report_screencast' r.id %}"
+                              data-s3-url="{{ r.screencast|attachment_s3_url }}"
+                              data-lead-id="CR{{ r.id }}">▶</button>
+                    {% else %}
+                      <a href="{% url 'admin_call_report_screencast' r.id %}" target="_blank" class="btn btn-outline-primary btn-sm py-0">📎</a>
+                    {% endif %}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                {% if tab == 'rework' %}
+                  <td class="text-break small" style="max-width:150px;">{{ r.rework_comment|default:"—"|truncatechars:50 }}</td>
+                {% elif tab == 'rejected' %}
+                  <td class="text-break small" style="max-width:150px;">{{ r.rejection_reason|default:"—"|truncatechars:50 }}</td>
+                {% endif %}
+                {% if tab == 'approved' or tab == 'rejected' %}
+                  <td class="small">{% if r.reviewed_by %}@{{ r.reviewed_by.username }}<br><span class="text-muted">{{ r.reviewed_at|date:"d.m H:i" }}</span>{% else %}—{% endif %}</td>
+                {% endif %}
+                <td class="cr-actions-cell">
+                  <div class="d-flex flex-nowrap gap-1">
+                    {% if r.status == 'approved' %}
+                      <button type="button" class="btn btn-outline-danger btn-sm py-0 js-cr-reject"
+                              data-report-id="{{ r.id }}" data-approved="1"
+                              title="Отклонить (откат +{{ manager_reward }} ₽)">✗</button>
+                      <button type="button" class="btn btn-warning btn-sm py-0 text-dark js-cr-rework"
+                              data-report-id="{{ r.id }}" data-approved="1"
+                              title="На доработку (откат +{{ manager_reward }} ₽)">↺</button>
+                    {% elif r.status == 'rework' %}
+                      {% if r.is_complete %}
+                      <button type="button" class="btn btn-success btn-sm py-0 js-cr-approve"
+                              data-report-id="{{ r.id }}" title="Одобрить">✓</button>
+                      {% endif %}
+                      <button type="button" class="btn btn-outline-danger btn-sm py-0 js-cr-reject"
+                              data-report-id="{{ r.id }}" title="Отклонить">✗</button>
+                    {% elif r.status == 'rejected' %}
+                      {% if r.is_complete %}
+                      <button type="button" class="btn btn-success btn-sm py-0 js-cr-approve"
+                              data-report-id="{{ r.id }}" title="Принять отклонённый">✓</button>
+                      {% endif %}
+                      <button type="button" class="btn btn-warning btn-sm py-0 text-dark js-cr-rework"
+                              data-report-id="{{ r.id }}" title="На доработку">↺</button>
+                    {% elif r.status == 'pending' %}
+                      {% if r.is_complete %}
+                      <button type="button" class="btn btn-success btn-sm py-0 js-cr-approve"
+                              data-report-id="{{ r.id }}" title="Одобрить">✓</button>
+                      {% endif %}
+                      <button type="button" class="btn btn-outline-danger btn-sm py-0 js-cr-reject"
+                              data-report-id="{{ r.id }}" title="Отклонить">✗</button>
+                      <button type="button" class="btn btn-warning btn-sm py-0 text-dark js-cr-rework"
+                              data-report-id="{{ r.id }}" title="На доработку">↺</button>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="10" class="text-muted text-center py-4">Нет отчётов в этой вкладке.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer bg-transparent border-secondary d-flex justify-content-center py-2">
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.previous_page_number }}">←</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if q %}&q={{ q|urlencode }}{% endif %}&page={{ page_obj.next_page_number }}">→</a></li>{% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
   </div>
-</div>
-{% endif %}
 
-{# Модалка reject #}
-<div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content" style="background: #1e293b;">
-      <form id="rejectForm" method="post" action="">
-        {% csrf_token %}
-        <input type="hidden" name="return_tab" value="{{ tab }}">
-        <div class="modal-header border-secondary">
-          <h5 class="modal-title">Отклонить отчёт</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+  <!-- Reject modal -->
+  <div class="modal fade" id="crRejectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title">Отклонить отчёт #<span id="crRejectId"></span></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <label class="form-label small mb-1">Причина отклонения</label>
-          <textarea name="reason" class="form-control" rows="4" required></textarea>
+          <div id="crRejectApprovedWarning" class="alert alert-warning py-2 small d-none">
+            ⚠ Отчёт был одобрен. {{ manager_reward }} ₽ будет списано с баланса.
+          </div>
+          <label class="form-label">Причина отклонения</label>
+          <textarea id="crRejectReason" class="form-control" rows="3" placeholder="Укажите причину"></textarea>
         </div>
-        <div class="modal-footer border-secondary">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
-          <button type="submit" class="btn btn-danger btn-sm">Отклонить</button>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+          <button type="button" class="btn btn-danger btn-sm" id="crRejectSubmit">Отклонить</button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
-</div>
 
-{# Модалка rework #}
-<div class="modal fade" id="reworkModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content" style="background: #1e293b;">
-      <form id="reworkForm" method="post" action="">
-        {% csrf_token %}
-        <input type="hidden" name="return_tab" value="{{ tab }}">
-        <div class="modal-header border-secondary">
-          <h5 class="modal-title">На доработку</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+  <!-- Rework modal -->
+  <div class="modal fade" id="crReworkModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title">На доработку — отчёт #<span id="crReworkId"></span></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <label class="form-label small mb-1">Что исправить</label>
-          <textarea name="comment" class="form-control" rows="4" required></textarea>
+          <div id="crReworkApprovedWarning" class="alert alert-warning py-2 small d-none">
+            ⚠ Отчёт был одобрен. {{ manager_reward }} ₽ будет списано с баланса.
+          </div>
+          <label class="form-label">Комментарий (необязательно)</label>
+          <textarea id="crReworkComment" class="form-control" rows="3" placeholder="Что нужно исправить"></textarea>
         </div>
-        <div class="modal-footer border-secondary">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
-          <button type="submit" class="btn btn-warning btn-sm">Отправить</button>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+          <button type="button" class="btn btn-warning btn-sm" id="crReworkSubmit">Отправить на доработку</button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
-</div>
 
-<script>
-const REJECT_TPL = "{% url 'admin_call_report_reject' 0 %}".replace("/0/", "/__ID__/");
-const REWORK_TPL = "{% url 'admin_call_report_rework' 0 %}".replace("/0/", "/__ID__/");
+  <!-- Video modal -->
+  <div class="modal fade" id="videoPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark">
+        <div class="modal-header border-secondary py-2">
+          <h6 class="modal-title">Скринкаст #<span id="videoLeadId"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <video id="videoPreviewPlayer" controls preload="none" style="width: 100%; max-height: 70vh;">
+            Ваш браузер не поддерживает видео.
+          </video>
+        </div>
+        <div class="modal-footer border-secondary py-2">
+          <a id="videoDownloadLink" href="#" target="_blank" class="btn btn-outline-primary btn-sm">Открыть в новой вкладке</a>
+        </div>
+      </div>
+    </div>
+  </div>
 
-function openReject(id) {
-  document.getElementById("rejectForm").action = REJECT_TPL.replace("__ID__", id);
-  new bootstrap.Modal(document.getElementById("rejectModal")).show();
-}
-function openRework(id) {
-  document.getElementById("reworkForm").action = REWORK_TPL.replace("__ID__", id);
-  new bootstrap.Modal(document.getElementById("reworkModal")).show();
-}
-</script>
+  <div id="cr-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index: 1100; display: none;" role="alert"></div>
+
+  <script src="{% static 'js/video-preview.js' %}"></script>
+  <script>
+  (function() {
+    var toast = document.getElementById('cr-toast');
+    function getCsrf() {
+      var el = document.querySelector('[name=csrfmiddlewaretoken]');
+      if (el) return el.value;
+      var m = document.cookie.match(/csrftoken=([^;]+)/);
+      return m ? m[1] : '';
+    }
+    function showToast(msg, type) {
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-' + (type || 'success') + ' py-2 px-3 mb-0 shadow-sm';
+      toast.style.display = 'block';
+      setTimeout(function() { toast.style.display = 'none'; }, 3000);
+    }
+    function fadeRow(rowId) {
+      var row = document.querySelector('tr[data-row-id="' + rowId + '"]');
+      if (!row) return;
+      row.style.transition = 'opacity 0.25s';
+      row.style.opacity = '0';
+      setTimeout(function() { row.remove(); }, 250);
+    }
+    function decTabBadge() {
+      var active = document.querySelector('.nav-tabs .nav-link.active .badge');
+      if (!active) return;
+      var n = parseInt(active.textContent, 10);
+      if (isNaN(n)) return;
+      if (n <= 1) active.remove();
+      else active.textContent = String(n - 1);
+    }
+
+    // Approve (AJAX)
+    document.querySelectorAll('.js-cr-approve').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var rid = btn.getAttribute('data-report-id');
+        btn.disabled = true; btn.textContent = '…';
+        var body = new FormData();
+        body.append('csrfmiddlewaretoken', getCsrf());
+        fetch('/staff/call-reports/' + rid + '/approve/', {
+          method: 'POST', body: body,
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin',
+        })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(res) {
+          if (res.ok && res.data.success) {
+            fadeRow(rid); decTabBadge();
+            showToast(res.data.message || 'Одобрено', 'success');
+          } else {
+            btn.disabled = false; btn.textContent = '✓';
+            showToast((res.data && res.data.message) || 'Ошибка', 'danger');
+          }
+        })
+        .catch(function() {
+          btn.disabled = false; btn.textContent = '✓';
+          showToast('Ошибка сети', 'danger');
+        });
+      });
+    });
+
+    // Reject modal
+    var _rejectModal = null;
+    function getRejectModal() {
+      if (!_rejectModal) _rejectModal = new bootstrap.Modal(document.getElementById('crRejectModal'));
+      return _rejectModal;
+    }
+    var rejectBtnCtx = null;
+    document.querySelectorAll('.js-cr-reject').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        rejectBtnCtx = btn;
+        var rid = btn.getAttribute('data-report-id');
+        var isApproved = btn.getAttribute('data-approved') === '1';
+        document.getElementById('crRejectId').textContent = rid;
+        document.getElementById('crRejectReason').value = '';
+        var warn = document.getElementById('crRejectApprovedWarning');
+        isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none');
+        document.getElementById('crRejectSubmit').disabled = false;
+        document.getElementById('crRejectSubmit').textContent = 'Отклонить';
+        getRejectModal().show();
+        setTimeout(function() { document.getElementById('crRejectReason').focus(); }, 300);
+      });
+    });
+    document.getElementById('crRejectSubmit').addEventListener('click', function() {
+      if (!rejectBtnCtx) return;
+      var reason = document.getElementById('crRejectReason').value.trim();
+      if (!reason) {
+        document.getElementById('crRejectReason').classList.add('is-invalid');
+        return;
+      }
+      var rid = rejectBtnCtx.getAttribute('data-report-id');
+      var sub = document.getElementById('crRejectSubmit');
+      sub.disabled = true; sub.textContent = '…';
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      body.append('reason', reason);
+      fetch('/staff/call-reports/' + rid + '/reject/', {
+        method: 'POST', body: body,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
+      })
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        if (res.ok && res.data.success) {
+          getRejectModal().hide();
+          fadeRow(rid); decTabBadge();
+          showToast(res.data.message || 'Отклонён', 'danger');
+        } else {
+          sub.disabled = false; sub.textContent = 'Отклонить';
+          showToast((res.data && res.data.message) || 'Не удалось отклонить', 'danger');
+        }
+      })
+      .catch(function() {
+        sub.disabled = false; sub.textContent = 'Отклонить';
+        showToast('Ошибка сети', 'danger');
+      });
+    });
+
+    // Rework modal
+    var _reworkModal = null;
+    function getReworkModal() {
+      if (!_reworkModal) _reworkModal = new bootstrap.Modal(document.getElementById('crReworkModal'));
+      return _reworkModal;
+    }
+    var reworkBtnCtx = null;
+    document.querySelectorAll('.js-cr-rework').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        reworkBtnCtx = btn;
+        var rid = btn.getAttribute('data-report-id');
+        var isApproved = btn.getAttribute('data-approved') === '1';
+        document.getElementById('crReworkId').textContent = rid;
+        document.getElementById('crReworkComment').value = '';
+        var warn = document.getElementById('crReworkApprovedWarning');
+        isApproved ? warn.classList.remove('d-none') : warn.classList.add('d-none');
+        document.getElementById('crReworkSubmit').disabled = false;
+        document.getElementById('crReworkSubmit').textContent = 'Отправить на доработку';
+        getReworkModal().show();
+        setTimeout(function() { document.getElementById('crReworkComment').focus(); }, 300);
+      });
+    });
+    document.getElementById('crReworkSubmit').addEventListener('click', function() {
+      if (!reworkBtnCtx) return;
+      var comment = document.getElementById('crReworkComment').value.trim();
+      var rid = reworkBtnCtx.getAttribute('data-report-id');
+      var sub = document.getElementById('crReworkSubmit');
+      sub.disabled = true; sub.textContent = '…';
+      var body = new FormData();
+      body.append('csrfmiddlewaretoken', getCsrf());
+      body.append('comment', comment);
+      fetch('/staff/call-reports/' + rid + '/rework/', {
+        method: 'POST', body: body,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
+      })
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        if (res.ok && res.data.success) {
+          getReworkModal().hide();
+          fadeRow(rid); decTabBadge();
+          showToast(res.data.message || 'На доработке', 'warning');
+        } else {
+          sub.disabled = false; sub.textContent = 'Отправить на доработку';
+          showToast((res.data && res.data.message) || 'Не удалось', 'danger');
+        }
+      })
+      .catch(function() {
+        sub.disabled = false; sub.textContent = 'Отправить на доработку';
+        showToast('Ошибка сети', 'danger');
+      });
+    });
+  })();
+  </script>
 {% endblock %}

@@ -1,18 +1,30 @@
 """Админская проверка отчётов «Прозвон» (CallReport).
 
-- Видят: main_admin / support.
-- По умолчанию список — только `is_complete=True` + `status=pending`.
-  Отчёты без валидации висят у менеджера, до админа не доходят.
-- Approve → +80₽ менеджеру, +10₽ админу, логируется через log_balance_change.
+UX-флоу скопирован с SearchLink:
+- AJAX-кнопки: approve / reject (modal) / rework (modal) с fadeRow
+- Toast-уведомления
+- Видео-превью если screencast — видео
+- Поиск ?q= по контакту / @менеджеру / источнику
+- Пагинация
+
+Видят: main_admin / admin / support.
+По дефолту таб «Новые» — только is_complete=True + status=pending.
+Approve → +80₽ менеджеру, +10₧ админу (через log_balance_change).
 """
 
 from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import transaction
-from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseForbidden
+from django.db.models import Q
+from django.http import (
+    FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseForbidden,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from .models import CallReport, User, log_balance_change
@@ -28,14 +40,21 @@ def _can_review(user) -> bool:
     return getattr(user, "role", None) in {"main_admin", "support", "admin"}
 
 
-def _back_to_list(request: HttpRequest):
-    """Редирект на список с сохранением исходной вкладки.
+def _is_ajax(request: HttpRequest) -> bool:
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
-    Берём return_tab из POST (hidden input в формах) или ?tab=... из GET.
-    Без него после approve/reject/rework админ оказывался на дефолтном
-    табе «Новые», теряя контекст где он работал.
-    """
-    from django.urls import reverse
+
+def _resp(request: HttpRequest, success: bool, message: str, *, status: int | None = None):
+    """AJAX → JsonResponse, иначе — flash + redirect c сохранением таба."""
+    if _is_ajax(request):
+        return JsonResponse(
+            {"success": success, "message": message},
+            status=status or (200 if success else 400),
+        )
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
     tab = (request.POST.get("return_tab") or request.GET.get("tab") or "").strip()
     url = reverse("admin_call_reports_list")
     if tab:
@@ -49,7 +68,10 @@ def admin_call_reports_list(request: HttpRequest) -> HttpResponse:
         return HttpResponseForbidden("Недоступно для вашей роли.")
 
     tab = (request.GET.get("tab") or "new").lower()
-    base = CallReport.objects.select_related("cold_contact", "cold_contact__owner", "reviewed_by")
+    q = (request.GET.get("q") or "").strip()
+    base = CallReport.objects.select_related(
+        "cold_contact", "cold_contact__owner", "reviewed_by",
+    )
 
     if tab == "all":
         qs = base
@@ -58,18 +80,22 @@ def admin_call_reports_list(request: HttpRequest) -> HttpResponse:
     elif tab == "rejected":
         qs = base.filter(status=CallReport.Status.REJECTED)
     elif tab == "incomplete":
-        # Только для главного админа — невалидированные на pending
-        if request.user.role != "main_admin":
-            return HttpResponseForbidden("Только главному админу.")
         qs = base.filter(status=CallReport.Status.PENDING, is_complete=False)
     else:
-        # default: «новые» — только is_complete=True + pending
         qs = base.filter(status=CallReport.Status.PENDING, is_complete=True)
         tab = "new"
 
+    if q:
+        qs = qs.filter(
+            Q(cold_contact__contact__icontains=q)
+            | Q(cold_contact__owner__username__icontains=q)
+            | Q(cold_contact__name__icontains=q)
+            | Q(cold_contact__tg_username__icontains=q)
+            | Q(source__icontains=q)
+        )
+
     qs = qs.order_by("-created_at")
 
-    # Счётчики для табов
     counts = {
         "new": base.filter(status=CallReport.Status.PENDING, is_complete=True).count(),
         "incomplete": base.filter(status=CallReport.Status.PENDING, is_complete=False).count(),
@@ -77,9 +103,12 @@ def admin_call_reports_list(request: HttpRequest) -> HttpResponse:
         "rejected": base.filter(status=CallReport.Status.REJECTED).count(),
     }
 
+    page_obj = Paginator(qs, 50).get_page(request.GET.get("page", 1))
+
     return render(request, "core/admin_call_reports.html", {
-        "reports": qs[:200],
+        "page_obj": page_obj,
         "tab": tab,
+        "q": q,
         "counts": counts,
         "manager_reward": MANAGER_REWARD,
         "admin_reward": ADMIN_REWARD,
@@ -91,23 +120,21 @@ def admin_call_report_approve(request: HttpRequest, report_id: int) -> HttpRespo
     if not _can_review(request.user):
         return HttpResponseForbidden("Недоступно для вашей роли.")
     if request.method != "POST":
-        return _back_to_list(request)
+        return _resp(request, False, "Только POST.", status=405)
 
     with transaction.atomic():
         report = CallReport.objects.select_for_update().filter(pk=report_id).first()
         if not report:
-            return _back_to_list(request)
+            return _resp(request, False, "Отчёт не найден.", status=404)
         if report.status == CallReport.Status.APPROVED:
-            messages.info(request, "Отчёт уже одобрен.")
-            return _back_to_list(request)
+            # Идемпотентно — фронт всё равно удалит строку
+            return _resp(request, True, f"Отчёт #{report_id} уже одобрен.")
         if not report.is_complete:
-            messages.warning(request, "Нельзя одобрять отчёт без авто-валидации.")
-            return _back_to_list(request)
+            return _resp(request, False, "Нельзя одобрять отчёт без авто-валидации (4 этапа).", status=400)
 
         manager = User.objects.select_for_update().get(pk=report.cold_contact.owner_id)
         admin = User.objects.select_for_update().get(pk=request.user.pk)
 
-        # +80₽ менеджеру
         _old_m = manager.balance or 0
         manager.balance = _old_m + MANAGER_REWARD
         manager.save(update_fields=["balance"])
@@ -116,7 +143,6 @@ def admin_call_report_approve(request: HttpRequest, report_id: int) -> HttpRespo
             f"call_report_approve#{report.id} +{MANAGER_REWARD}", request.user,
         )
 
-        # +10₽ админу (если это не тот же человек — но и тогда тоже норм)
         _old_a = admin.balance or 0
         admin.balance = _old_a + ADMIN_REWARD
         admin.save(update_fields=["balance"])
@@ -136,11 +162,10 @@ def admin_call_report_approve(request: HttpRequest, report_id: int) -> HttpRespo
             "rejection_reason", "rework_comment", "updated_at",
         ])
 
-    messages.success(
-        request,
+    return _resp(
+        request, True,
         f"Отчёт #{report.id} одобрен. Менеджер +{MANAGER_REWARD}₽, вам +{ADMIN_REWARD}₽.",
     )
-    return _back_to_list(request)
 
 
 @login_required
@@ -148,23 +173,41 @@ def admin_call_report_reject(request: HttpRequest, report_id: int) -> HttpRespon
     if not _can_review(request.user):
         return HttpResponseForbidden("Недоступно для вашей роли.")
     if request.method != "POST":
-        return _back_to_list(request)
+        return _resp(request, False, "Только POST.", status=405)
 
-    report = get_object_or_404(CallReport, pk=report_id)
+    report = CallReport.objects.filter(pk=report_id).first()
+    if not report:
+        return _resp(request, False, "Отчёт не найден.", status=404)
+    if report.status == CallReport.Status.REJECTED:
+        return _resp(request, True, f"Отчёт #{report_id} уже отклонён.")
+
     reason = (request.POST.get("reason") or "").strip()[:1000]
     if not reason:
-        messages.error(request, "Укажите причину отклонения.")
-        return _back_to_list(request)
+        return _resp(request, False, "Укажите причину отклонения.", status=400)
 
-    report.status = CallReport.Status.REJECTED
-    report.rejection_reason = reason
-    report.reviewed_at = timezone.now()
-    report.reviewed_by = request.user
-    report.save(update_fields=[
-        "status", "rejection_reason", "reviewed_at", "reviewed_by", "updated_at",
-    ])
-    messages.success(request, f"Отчёт #{report.id} отклонён.")
-    return _back_to_list(request)
+    with transaction.atomic():
+        # Если отчёт был approved — откат начислений
+        if report.status == CallReport.Status.APPROVED and report.paid_reward:
+            manager = User.objects.select_for_update().get(pk=report.cold_contact.owner_id)
+            _old_m = manager.balance or 0
+            manager.balance = _old_m - report.paid_reward
+            manager.save(update_fields=["balance"])
+            log_balance_change(
+                manager, "balance", _old_m, manager.balance,
+                f"call_report_reject_rollback#{report.id} -{report.paid_reward}", request.user,
+            )
+            report.paid_reward = 0
+
+        report.status = CallReport.Status.REJECTED
+        report.rejection_reason = reason
+        report.reviewed_at = timezone.now()
+        report.reviewed_by = request.user
+        report.save(update_fields=[
+            "status", "rejection_reason", "reviewed_at", "reviewed_by",
+            "paid_reward", "updated_at",
+        ])
+
+    return _resp(request, True, f"Отчёт #{report.id} отклонён.")
 
 
 @login_required
@@ -172,23 +215,39 @@ def admin_call_report_rework(request: HttpRequest, report_id: int) -> HttpRespon
     if not _can_review(request.user):
         return HttpResponseForbidden("Недоступно для вашей роли.")
     if request.method != "POST":
-        return _back_to_list(request)
+        return _resp(request, False, "Только POST.", status=405)
 
-    report = get_object_or_404(CallReport, pk=report_id)
+    report = CallReport.objects.filter(pk=report_id).first()
+    if not report:
+        return _resp(request, False, "Отчёт не найден.", status=404)
+    if report.status == CallReport.Status.REWORK:
+        return _resp(request, True, f"Отчёт #{report_id} уже на доработке.")
+
     comment = (request.POST.get("comment") or "").strip()[:1000]
-    if not comment:
-        messages.error(request, "Укажите что доработать.")
-        return _back_to_list(request)
 
-    report.status = CallReport.Status.REWORK
-    report.rework_comment = comment
-    report.reviewed_at = timezone.now()
-    report.reviewed_by = request.user
-    report.save(update_fields=[
-        "status", "rework_comment", "reviewed_at", "reviewed_by", "updated_at",
-    ])
-    messages.success(request, f"Отчёт #{report.id} отправлен на доработку.")
-    return _back_to_list(request)
+    with transaction.atomic():
+        # Если был approved — откат
+        if report.status == CallReport.Status.APPROVED and report.paid_reward:
+            manager = User.objects.select_for_update().get(pk=report.cold_contact.owner_id)
+            _old_m = manager.balance or 0
+            manager.balance = _old_m - report.paid_reward
+            manager.save(update_fields=["balance"])
+            log_balance_change(
+                manager, "balance", _old_m, manager.balance,
+                f"call_report_rework_rollback#{report.id} -{report.paid_reward}", request.user,
+            )
+            report.paid_reward = 0
+
+        report.status = CallReport.Status.REWORK
+        report.rework_comment = comment
+        report.reviewed_at = timezone.now()
+        report.reviewed_by = request.user
+        report.save(update_fields=[
+            "status", "rework_comment", "reviewed_at", "reviewed_by",
+            "paid_reward", "updated_at",
+        ])
+
+    return _resp(request, True, f"Отчёт #{report.id} отправлен на доработку.")
 
 
 @login_required
