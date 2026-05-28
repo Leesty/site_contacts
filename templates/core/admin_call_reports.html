@@ -3,6 +3,22 @@
 {% block title %}Прозвон — отчёты на проверке{% endblock %}
 
 {% block content %}
+<style>
+  /* Колонка "Действия" — sticky справа, чтобы кнопки были видны
+     без горизонтального скролла на широких таблицах. */
+  .cr-actions-cell {
+    position: sticky;
+    right: 0;
+    background: rgba(2, 6, 23, 0.97);
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.45);
+    z-index: 2;
+    min-width: 130px;
+  }
+  thead .cr-actions-cell {
+    background: rgba(6, 78, 59, 0.6);
+    z-index: 3;
+  }
+</style>
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <div>
     <h1 class="h4 mb-0">📞 Прозвон — отчёты</h1>
@@ -61,7 +77,7 @@
             <th>Источник</th>
             <th>Скринкаст</th>
             <th>Статус</th>
-            <th>Действия</th>
+            <th class="cr-actions-cell">Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -112,17 +128,20 @@
                   <span class="badge bg-info text-dark">rework</span>
                 {% endif %}
               </td>
-              <td>
-                {% if r.status == "pending" and r.is_complete %}
+              <td class="cr-actions-cell">
+                {% if r.status == "pending" %}
                   <div class="d-flex flex-column gap-1">
-                    <form method="post" action="{% url 'admin_call_report_approve' r.id %}" class="m-0">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-success btn-sm py-0 w-100"
-                              style="font-size:11px;"
-                              onclick="return confirm('Одобрить отчёт #{{ r.id }}? +80₽ менеджеру, +10₽ вам.');">
-                        ✓ Одобрить
-                      </button>
-                    </form>
+                    {% if r.is_complete %}
+                      <form method="post" action="{% url 'admin_call_report_approve' r.id %}" class="m-0">
+                        {% csrf_token %}
+                        <input type="hidden" name="return_tab" value="{{ tab }}">
+                        <button type="submit" class="btn btn-success btn-sm py-0 w-100"
+                                style="font-size:11px;"
+                                onclick="return confirm('Одобрить отчёт #{{ r.id }}? +80₽ менеджеру, +10₽ вам.');">
+                          ✓ Одобрить
+                        </button>
+                      </form>
+                    {% endif %}
                     <button type="button" class="btn btn-outline-warning btn-sm py-0"
                             style="font-size:11px;"
                             onclick="openRework({{ r.id }})">⟲ Доработка</button>
@@ -147,6 +166,7 @@
     <div class="modal-content" style="background: #1e293b;">
       <form id="rejectForm" method="post" action="">
         {% csrf_token %}
+        <input type="hidden" name="return_tab" value="{{ tab }}">
         <div class="modal-header border-secondary">
           <h5 class="modal-title">Отклонить отчёт</h5>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -170,6 +190,7 @@
     <div class="modal-content" style="background: #1e293b;">
       <form id="reworkForm" method="post" action="">
         {% csrf_token %}
+        <input type="hidden" name="return_tab" value="{{ tab }}">
         <div class="modal-header border-secondary">
           <h5 class="modal-title">На доработку</h5>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>

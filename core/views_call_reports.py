@@ -28,6 +28,21 @@ def _can_review(user) -> bool:
     return getattr(user, "role", None) in {"main_admin", "support", "admin"}
 
 
+def _back_to_list(request: HttpRequest):
+    """Редирект на список с сохранением исходной вкладки.
+
+    Берём return_tab из POST (hidden input в формах) или ?tab=... из GET.
+    Без него после approve/reject/rework админ оказывался на дефолтном
+    табе «Новые», теряя контекст где он работал.
+    """
+    from django.urls import reverse
+    tab = (request.POST.get("return_tab") or request.GET.get("tab") or "").strip()
+    url = reverse("admin_call_reports_list")
+    if tab:
+        url += f"?tab={tab}"
+    return redirect(url)
+
+
 @login_required
 def admin_call_reports_list(request: HttpRequest) -> HttpResponse:
     if not _can_review(request.user):
@@ -76,18 +91,18 @@ def admin_call_report_approve(request: HttpRequest, report_id: int) -> HttpRespo
     if not _can_review(request.user):
         return HttpResponseForbidden("Недоступно для вашей роли.")
     if request.method != "POST":
-        return redirect("admin_call_reports_list")
+        return _back_to_list(request)
 
     with transaction.atomic():
         report = CallReport.objects.select_for_update().filter(pk=report_id).first()
         if not report:
-            return redirect("admin_call_reports_list")
+            return _back_to_list(request)
         if report.status == CallReport.Status.APPROVED:
             messages.info(request, "Отчёт уже одобрен.")
-            return redirect("admin_call_reports_list")
+            return _back_to_list(request)
         if not report.is_complete:
             messages.warning(request, "Нельзя одобрять отчёт без авто-валидации.")
-            return redirect("admin_call_reports_list")
+            return _back_to_list(request)
 
         manager = User.objects.select_for_update().get(pk=report.cold_contact.owner_id)
         admin = User.objects.select_for_update().get(pk=request.user.pk)
@@ -125,7 +140,7 @@ def admin_call_report_approve(request: HttpRequest, report_id: int) -> HttpRespo
         request,
         f"Отчёт #{report.id} одобрен. Менеджер +{MANAGER_REWARD}₽, вам +{ADMIN_REWARD}₽.",
     )
-    return redirect("admin_call_reports_list")
+    return _back_to_list(request)
 
 
 @login_required
@@ -133,13 +148,13 @@ def admin_call_report_reject(request: HttpRequest, report_id: int) -> HttpRespon
     if not _can_review(request.user):
         return HttpResponseForbidden("Недоступно для вашей роли.")
     if request.method != "POST":
-        return redirect("admin_call_reports_list")
+        return _back_to_list(request)
 
     report = get_object_or_404(CallReport, pk=report_id)
     reason = (request.POST.get("reason") or "").strip()[:1000]
     if not reason:
         messages.error(request, "Укажите причину отклонения.")
-        return redirect("admin_call_reports_list")
+        return _back_to_list(request)
 
     report.status = CallReport.Status.REJECTED
     report.rejection_reason = reason
@@ -149,7 +164,7 @@ def admin_call_report_reject(request: HttpRequest, report_id: int) -> HttpRespon
         "status", "rejection_reason", "reviewed_at", "reviewed_by", "updated_at",
     ])
     messages.success(request, f"Отчёт #{report.id} отклонён.")
-    return redirect("admin_call_reports_list")
+    return _back_to_list(request)
 
 
 @login_required
@@ -157,13 +172,13 @@ def admin_call_report_rework(request: HttpRequest, report_id: int) -> HttpRespon
     if not _can_review(request.user):
         return HttpResponseForbidden("Недоступно для вашей роли.")
     if request.method != "POST":
-        return redirect("admin_call_reports_list")
+        return _back_to_list(request)
 
     report = get_object_or_404(CallReport, pk=report_id)
     comment = (request.POST.get("comment") or "").strip()[:1000]
     if not comment:
         messages.error(request, "Укажите что доработать.")
-        return redirect("admin_call_reports_list")
+        return _back_to_list(request)
 
     report.status = CallReport.Status.REWORK
     report.rework_comment = comment
@@ -173,7 +188,7 @@ def admin_call_report_rework(request: HttpRequest, report_id: int) -> HttpRespon
         "status", "rework_comment", "reviewed_at", "reviewed_by", "updated_at",
     ])
     messages.success(request, f"Отчёт #{report.id} отправлен на доработку.")
-    return redirect("admin_call_reports_list")
+    return _back_to_list(request)
 
 
 @login_required
