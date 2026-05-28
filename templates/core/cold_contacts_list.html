@@ -78,7 +78,7 @@
             <th class="text-center">Попытка 2</th>
             <th class="text-center">Попытка 3</th>
             <th>Итог</th>
-            <th></th>
+            <th>Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -123,11 +123,18 @@
               </td>
               <td>
                 <div class="d-flex gap-1 align-items-center flex-wrap">
-                  {% if c.final_status == "lead" %}
+                  {% if c.final_status != "lead" %}
+                    <button type="button" class="btn btn-success btn-sm py-0 lead-btn"
+                            data-contact-id="{{ c.id }}"
+                            data-phone="{{ c.contact|escape }}"
+                            style="font-size: 11px;" title="Зафиксировать как лид + создать чат">
+                      💚 Лид
+                    </button>
+                  {% else %}
                     {% if c.chat_invite_link %}
                       <a class="btn btn-outline-info btn-sm py-0" style="font-size: 11px;"
                          href="{{ c.chat_invite_link }}" target="_blank" rel="noopener"
-                         title="Ссылка на чат">🔗</a>
+                         title="Ссылка на чат">🔗 чат</a>
                     {% else %}
                       <form method="post" action="{% url 'cold_contact_create_chat' c.id %}" class="m-0">
                         {% csrf_token %}
@@ -269,6 +276,37 @@
       if (val && val !== "callback") {
         form.submit();
       }
+    });
+  });
+
+  // Прямая кнопка «💚 Лид» в колонке «Действия» — открывает ту же модалку.
+  function openLeadModal(contactId, phone) {
+    document.getElementById("leadPhone").value = phone;
+    document.getElementById("leadAttemptNo").value = "1";
+    document.getElementById("leadForm").action = LEAD_URL_TPL.replace("__ID__", contactId);
+
+    // Префилл даты — сегодня
+    const dateInput = document.querySelector("#leadForm input[name='call_date']");
+    const timeInput = document.querySelector("#leadForm input[name='call_time']");
+    const nameInput = document.querySelector("#leadForm input[name='name']");
+    const tgInput = document.querySelector("#leadForm input[name='tg_username']");
+    if (nameInput) nameInput.value = "";
+    if (tgInput) tgInput.value = "";
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    dateInput.value = `${yyyy}-${mm}-${dd}`;
+    timeInput.value = "";
+
+    new bootstrap.Modal(document.getElementById("leadModal")).show();
+  }
+
+  document.querySelectorAll(".lead-btn").forEach(function(btn) {
+    btn.addEventListener("click", function(e) {
+      const contactId = e.currentTarget.dataset.contactId;
+      const phone = e.currentTarget.dataset.phone;
+      openLeadModal(contactId, phone);
     });
   });
 })();
