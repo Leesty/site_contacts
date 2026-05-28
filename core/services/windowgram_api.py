@@ -173,9 +173,14 @@ def send_summary(chat_id: int, phone: str, date_str: str, time_str: str) -> None
 def validate_chat(chat_id: int) -> tuple[bool, str]:
     """Проверка состояния чата на windowgram-стороне.
 
-    Возвращает (is_complete, note):
-      • is_complete=True если артем/володя в чате И клиент зашёл
-      • note — человекочитаемая причина если is_complete=False
+    is_complete=True требует выполнения ВСЕХ 4 условий:
+      • admin_in_chat — артем/володя в чате (artem_invited=True)
+      • client_joined — клиент зашёл (client_platform_user_id/username заполнен)
+      • offer_done — был выслан оффер (бот зарегистрировал /оффер)
+      • sozvon_done — был назначен созвон (бот зарегистрировал /созвон)
+
+    Возвращает (is_complete, note) — note человекочитаемая причина
+    если хотя бы одно условие не выполнено.
     """
     try:
         r = requests.get(
@@ -193,13 +198,21 @@ def validate_chat(chat_id: int) -> tuple[bool, str]:
     data = r.json() or {}
     admin_in_chat = bool(data.get("admin_in_chat"))
     client_joined = bool(data.get("client_joined"))
-    if admin_in_chat and client_joined:
-        return True, "Админ и клиент в чате."
+    offer_done = bool(data.get("offer_done"))
+    sozvon_done = bool(data.get("sozvon_done"))
+
+    if admin_in_chat and client_joined and offer_done and sozvon_done:
+        return True, "Все 4 этапа пройдены: админ и клиент в чате, оффер и созвон зарегистрированы."
+
     missing = []
     if not admin_in_chat:
         missing.append("админ ещё не в чате")
     if not client_joined:
         missing.append("клиент ещё не зашёл")
+    if not offer_done:
+        missing.append("/оффер не выполнен")
+    if not sozvon_done:
+        missing.append("/созвон не выполнен")
     return False, "; ".join(missing) + "."
 
 
