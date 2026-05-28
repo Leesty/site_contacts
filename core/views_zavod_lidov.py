@@ -293,6 +293,9 @@ def customer_dashboard(request: HttpRequest) -> HttpResponse:
 
         total_limit = _parse_int(request.POST.get("total_limit"))
         daily_limit = _parse_int(request.POST.get("daily_limit"))
+        # Кап дневного лимита — не больше 50/день на проект.
+        if daily_limit is not None and daily_limit > 50:
+            daily_limit = 50
         values = parse_values(raw_values)
 
         if not project_name:
