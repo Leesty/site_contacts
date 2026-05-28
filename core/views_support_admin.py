@@ -4066,7 +4066,9 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
         Lead as LeadModel,
         SearchReport,
         WithdrawalRequest as WR,
+        WorkerReport,
         WorkerSelfLead as WSL,
+        WorkerWithdrawalRequest as WWR,
         ManualSearchClaim,
         PartnerEarning,
     )
@@ -4150,6 +4152,12 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
     wsl_approved = wsl_qs.filter(status=WSL.Status.APPROVED).count()
     wsl_paid_sum = int(wsl_qs.filter(status=WSL.Status.APPROVED).aggregate(s=Sum("reward"))["s"] or 0)
 
+    # WorkerReport — отчёты воркера по заданиям от СС-админа (тоже worker-ветка).
+    # Тоже field `worker`, `reward`. Для не-воркеров будет 0.
+    wr_report_qs = WorkerReport.objects.filter(worker=u)
+    wr_report_approved = wr_report_qs.filter(status="approved").count()
+    wr_report_paid_sum = int(wr_report_qs.filter(status="approved").aggregate(s=Sum("reward"))["s"] or 0)
+
     # Партнёрские начисления (если @user — партнёр / рефовод).
     partner_earn_sum = int(
         PartnerEarning.objects.filter(partner=u).aggregate(s=Sum("amount"))["s"] or 0
@@ -4161,12 +4169,39 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
     msc_paid_sum = int(msc_qs.filter(status=ManualSearchClaim.Status.APPROVED).aggregate(s=Sum("paid_reward"))["s"] or 0)
 
     # ─── Заявки на вывод ──────────────────────────────────────────────────
+    # Обычные (user) + воркерские (СС-ветка) — мерджим в общие списки для отображения.
     wr_qs = WR.objects.filter(user=u).order_by("-created_at")
     wr_pending = list(wr_qs.filter(status="pending"))
     wr_approved = list(wr_qs.filter(status="approved"))
     wr_rejected = list(wr_qs.filter(status="rejected"))
-    wr_approved_sum = sum(int(w.amount or 0) for w in wr_approved)
-    wr_pending_sum = sum(int(w.amount or 0) for w in wr_pending)
+
+    wwr_qs = WWR.objects.filter(worker=u).order_by("-created_at")
+    wwr_pending = list(wwr_qs.filter(status="pending"))
+    wwr_approved = list(wwr_qs.filter(status="approved"))
+    wwr_rejected = list(wwr_qs.filter(status="rejected"))
+
+    wr_approved_sum = (
+        sum(int(w.amount or 0) for w in wr_approved)
+        + sum(int(w.amount or 0) for w in wwr_approved)
+    )
+    wr_pending_sum = (
+        sum(int(w.amount or 0) for w in wr_pending)
+        + sum(int(w.amount or 0) for w in wwr_pending)
+    )
+    # Объединяем для UI (по дате) — Worker-выводы помечаем флагом.
+    for w in wwr_approved:
+        w.is_worker_wr = True
+    for w in wwr_pending:
+        w.is_worker_wr = True
+    for w in wwr_rejected:
+        w.is_worker_wr = True
+    wr_approved = sorted(
+        wr_approved + wwr_approved,
+        key=lambda w: w.processed_at or w.created_at,
+        reverse=True,
+    )
+    wr_pending = wr_pending + wwr_pending
+    wr_rejected = wr_rejected + wwr_rejected
 
     # ─── BalanceLog: канонический источник истины ─────────────────────────
     logs = list(
@@ -4198,7 +4233,10 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
     # Прикидываем фактическую заработанную сумму (для аудита) — нужна чтобы
     # ловить случаи когда approve чего-то не залогировался в BalanceLog
     # (например, исторический баг с WorkerSelfLead approve).
-    expected_credited = sr_paid_sum + gr_paid_sum + wsl_paid_sum + partner_earn_sum + msc_paid_sum
+    expected_credited = (
+        sr_paid_sum + gr_paid_sum + wsl_paid_sum + wr_report_paid_sum
+        + partner_earn_sum + msc_paid_sum
+    )
     # NB: Lead.paid_reward не хранится, его вклад только в BalanceLog —
     # поэтому сравнение «expected vs log» работает только для не-Lead отчётов.
 
@@ -4230,7 +4268,9 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
     if gr_approved:
         lines.append(f"  – GroupReport одобрено: {gr_approved} шт. = {gr_paid_sum}₽")
     if wsl_approved:
-        lines.append(f"  – WorkerSelfLead одобрено: {wsl_approved} шт. = {wsl_paid_sum}₽")
+        lines.append(f"  – WorkerSelfLead (самост. лиды) одобрено: {wsl_approved} шт. = {wsl_paid_sum}₽")
+    if wr_report_approved:
+        lines.append(f"  – WorkerReport (отчёты по заданиям) одобрено: {wr_report_approved} шт. = {wr_report_paid_sum}₽")
     if partner_earn_count:
         lines.append(f"  – Партнёрские начисления: {partner_earn_count} шт. = {partner_earn_sum}₽")
     if msc_paid_sum:
@@ -4326,6 +4366,8 @@ def admin_user_finance_report(request: HttpRequest) -> HttpResponse:
         "wsl_total": wsl_total,
         "wsl_approved": wsl_approved,
         "wsl_paid_sum": wsl_paid_sum,
+        "wr_report_approved": wr_report_approved,
+        "wr_report_paid_sum": wr_report_paid_sum,
         "partner_earn_sum": partner_earn_sum,
         "partner_earn_count": partner_earn_count,
         "msc_paid_sum": msc_paid_sum,

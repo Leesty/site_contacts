@@ -128,9 +128,17 @@
             {% endif %}
             {% if wsl_total %}
               <tr>
-                <td class="text-muted">WorkerSelfLead (СС)</td>
+                <td class="text-muted">WorkerSelfLead (самост. лиды)</td>
                 <td class="text-end">
                   <span class="badge bg-success">{{ wsl_approved }} × ≈ {{ wsl_paid_sum }}₽</span>
+                </td>
+              </tr>
+            {% endif %}
+            {% if wr_report_approved %}
+              <tr>
+                <td class="text-muted">WorkerReport (отчёты по заданиям)</td>
+                <td class="text-end">
+                  <span class="badge bg-success">{{ wr_report_approved }} × ≈ {{ wr_report_paid_sum }}₽</span>
                 </td>
               </tr>
             {% endif %}
@@ -189,6 +197,7 @@
                 <tr>
                   <td class="ps-3 small text-muted">
                     {{ w.processed_at|default:w.created_at|date:"d.m.Y H:i" }}
+                    {% if w.is_worker_wr %}<span class="badge bg-secondary ms-1" style="font-size: 9px;">worker</span>{% endif %}
                   </td>
                   <td class="text-end fw-semibold">{{ w.amount }}₽</td>
                   <td class="pe-3 small text-muted">
