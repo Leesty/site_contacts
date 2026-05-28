@@ -39,15 +39,25 @@ def _bearer_headers() -> dict:
     return {"Authorization": f"Bearer {WINDOWGRAM_API_KEY}"}
 
 
+def _bridge_login_for_user(user) -> str:
+    """Уникальный manager-login на стороне windowgram для Django-юзера.
+
+    Формат `site_<id>` — стабильный, ≥6 символов, не зависит от того, какой
+    username юзер ввёл при регистрации (юзеры с username '5' падали с
+    string_too_short в Pydantic-валидаторе windowgram).
+    """
+    return f"site_{user.id}"
+
+
 def _manager_login_for_user(user) -> str:
     """Внутренний хелпер: логинимся под manager-аккаунтом пользователя, возвращаем JWT.
 
     Сценарий: при первом вызове `ensure_manager` сохраняет в User.windowgram_manager_*
-    логин (=user.username.lower()) и сгенерированный пароль. Здесь — просто берём их.
+    логин (site_<id>) и сгенерированный пароль. Здесь — просто берём их.
     """
-    login = (user.username or "").strip().lower()
+    login = _bridge_login_for_user(user)
     password = user.windowgram_manager_password
-    if not login or not password:
+    if not password:
         raise WindowgramError(
             "У вашего аккаунта не настроена связка с CRM. "
             "Попробуйте ещё раз — мы создадим её автоматически."
@@ -80,9 +90,7 @@ def ensure_manager(user) -> None:
         return
 
     password = user.windowgram_manager_password or secrets.token_urlsafe(24)
-    login = (user.username or "").strip().lower()
-    if not login:
-        raise WindowgramError("У аккаунта нет username — нельзя зарегистрировать в CRM.")
+    login = _bridge_login_for_user(user)
 
     try:
         r = requests.post(
