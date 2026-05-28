@@ -432,6 +432,12 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 ctx["zavod_lidov_pending_count"] = pending_admin_attention_count()
             except Exception:
                 ctx["zavod_lidov_pending_count"] = 0
+            # Прозвон-отчёты: ждут проверки (валидированные pending)
+            try:
+                from .views_call_reports import pending_call_reports_count
+                ctx["call_reports_pending_count"] = pending_call_reports_count()
+            except Exception:
+                ctx["call_reports_pending_count"] = 0
             return render(request, "core/dashboard_main_admin.html", ctx)
 
         return render(request, "core/dashboard_admin.html", ctx)

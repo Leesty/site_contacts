@@ -194,6 +194,16 @@ class User(AbstractUser):
         max_length=100, blank=True, default="",
         help_text="screen_name VK (последняя часть ссылки vk.com/...).",
     )
+    # Связка с ManagerUser на windowgram (создаётся автоматом при первой
+    # фиксации лида в воронке холодных контактов).
+    windowgram_manager_id = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="UUID ManagerUser в windowgram (для создания чатов через invite-pool).",
+    )
+    windowgram_manager_password = models.CharField(
+        max_length=128, blank=True, default="",
+        help_text="Авто-сгенерированный пароль для ManagerUser в windowgram.",
+    )
 
     def is_approved(self) -> bool:
         return self.status == self.Status.APPROVED
@@ -2068,6 +2078,22 @@ class ColdContact(TimeStampedModel):
     )
     lead_call_date = models.DateField(null=True, blank=True, help_text="Дата созвона (при статусе «лид»).")
     lead_call_time = models.TimeField(null=True, blank=True, help_text="Время созвона МСК (при статусе «лид»).")
+    # TG-аккаунт клиента (если известен) — для дальнейшей валидации (мы по нему
+    # ищем что клиент зашёл в созданный чат).
+    tg_username = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text="TG @username клиента (без @), либо ссылка t.me/...",
+    )
+    # Чат, созданный через windowgram invite-pool при фиксации лида.
+    chat_id = models.BigIntegerField(
+        null=True, blank=True, db_index=True,
+        help_text="TG chat_id созданного чата (отрицательный для basic group).",
+    )
+    chat_invite_link = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Invite-ссылка на чат для клиента.",
+    )
+    chat_created_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Холодный контакт"
@@ -2118,4 +2144,71 @@ class CallAttempt(TimeStampedModel):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Attempt#{self.attempt_no} of contact#{self.contact_id}: {self.status}"
+
+
+def call_report_upload_to(instance: "CallReport", filename: str) -> str:
+    """Путь для загрузки скринкастов отчётов «Прозвон»."""
+    ext = filename.split(".")[-1] if "." in filename else "bin"
+    return f"call_reports/contact_{instance.cold_contact_id}/{uuid4().hex}.{ext}"
+
+
+class CallReport(TimeStampedModel):
+    """Отчёт «Прозвон» по холодному контакту с автоматической валидацией
+    через windowgram-чат (админ в чате + клиент зашёл)."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "На проверке"
+        APPROVED = "approved", "Одобрен"
+        REJECTED = "rejected", "Отклонён"
+        REWORK = "rework", "На доработке"
+
+    cold_contact = models.OneToOneField(
+        ColdContact,
+        on_delete=models.CASCADE,
+        related_name="call_report",
+    )
+    screencast = models.FileField(
+        upload_to=call_report_upload_to,
+        help_text="Скринкаст переписки / звонка.",
+    )
+    source = models.CharField(
+        max_length=255, blank=True,
+        help_text="Откуда менеджер взял этот контакт (свободный текст).",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    is_complete = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Авто-валидация: админ (artem_tele2 / shaneli77) в чате И клиент зашёл.",
+    )
+    validation_note = models.TextField(
+        blank=True,
+        help_text="Что не хватило для is_complete.",
+    )
+    rejection_reason = models.TextField(blank=True)
+    rework_comment = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="reviewed_call_reports",
+    )
+    paid_reward = models.IntegerField(
+        default=0,
+        help_text="Сколько начислено менеджеру при approve (для аудита).",
+    )
+
+    class Meta:
+        verbose_name = "Отчёт «Прозвон»"
+        verbose_name_plural = "Отчёты «Прозвон»"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "is_complete"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"CallReport #{self.pk} contact#{self.cold_contact_id} {self.status}"
 

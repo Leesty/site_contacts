@@ -2,6 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 
 from . import views
+from . import views_call_reports
 from . import views_cold_contacts
 from . import views_group_reports
 from . import views_partner
@@ -408,7 +409,15 @@ urlpatterns = [
     path("cold-contacts/add/", views_cold_contacts.contacts_add, name="cold_contacts_add"),
     path("cold-contacts/<int:contact_id>/attempt/<int:n>/", views_cold_contacts.contact_attempt_update, name="cold_contact_attempt"),
     path("cold-contacts/<int:contact_id>/lead/", views_cold_contacts.contact_mark_lead, name="cold_contact_lead"),
+    path("cold-contacts/<int:contact_id>/create-chat/", views_cold_contacts.contact_create_chat, name="cold_contact_create_chat"),
+    path("cold-contacts/<int:contact_id>/call-report/", views_cold_contacts.contact_call_report_create, name="cold_contact_call_report"),
     path("cold-contacts/<int:contact_id>/delete/", views_cold_contacts.contact_delete, name="cold_contact_delete"),
+    # Прозвон-отчёты (админка)
+    path("staff/call-reports/", views_call_reports.admin_call_reports_list, name="admin_call_reports_list"),
+    path("staff/call-reports/<int:report_id>/approve/", views_call_reports.admin_call_report_approve, name="admin_call_report_approve"),
+    path("staff/call-reports/<int:report_id>/reject/", views_call_reports.admin_call_report_reject, name="admin_call_report_reject"),
+    path("staff/call-reports/<int:report_id>/rework/", views_call_reports.admin_call_report_rework, name="admin_call_report_rework"),
+    path("staff/call-reports/<int:report_id>/screencast/", views_call_reports.admin_call_report_screencast, name="admin_call_report_screencast"),
     path("staff/zavod-lidov/", views_zavod_lidov.admin_overview, name="admin_zavod_lidov_overview"),
     path("staff/zavod-lidov/pool/<int:customer_id>/", views_zavod_lidov.admin_pool, name="admin_zavod_lidov_pool"),
     path("staff/zavod-lidov/<int:project_id>/", views_zavod_lidov.admin_project_detail, name="admin_zavod_lidov_project"),

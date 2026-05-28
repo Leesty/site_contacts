@@ -25,7 +25,10 @@ from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from .models import CallAttempt, ColdContact
+from .models import CallAttempt, CallReport, ColdContact
+from .services.windowgram_api import (
+    WindowgramError, create_chat, format_chat_title, send_summary, validate_chat,
+)
 
 
 MSK = ZoneInfo("Europe/Moscow")
@@ -180,6 +183,13 @@ def contact_mark_lead(request: HttpRequest, contact_id: int) -> HttpResponse:
     contact = get_object_or_404(ColdContact, pk=contact_id, owner=request.user)
 
     name = (request.POST.get("name") or "").strip()[:255]
+    tg_username = (request.POST.get("tg_username") or "").strip()[:100]
+    # Чистим обвязки t.me/, @ — оставляем только сам username
+    for p in ("https://t.me/", "http://t.me/", "t.me/", "telegram.me/"):
+        if tg_username.lower().startswith(p):
+            tg_username = tg_username[len(p):]
+            break
+    tg_username = tg_username.lstrip("@").strip().rstrip("/")
     raw_date = (request.POST.get("call_date") or "").strip()
     raw_time = (request.POST.get("call_time") or "").strip()
     attempt_no = request.POST.get("attempt_no") or "1"
@@ -205,16 +215,129 @@ def contact_mark_lead(request: HttpRequest, contact_id: int) -> HttpResponse:
 
     with transaction.atomic():
         contact.name = name
+        contact.tg_username = tg_username
         contact.lead_call_date = call_date
         contact.lead_call_time = call_time
         contact.final_status = ColdContact.FinalStatus.LEAD
-        contact.save(update_fields=["name", "lead_call_date", "lead_call_time", "final_status", "updated_at"])
+        contact.save(update_fields=[
+            "name", "tg_username", "lead_call_date", "lead_call_time",
+            "final_status", "updated_at",
+        ])
         CallAttempt.objects.update_or_create(
             contact=contact, attempt_no=attempt_no,
             defaults={"status": CallAttempt.Status.LEAD, "callback_at": None},
         )
 
+    # Создаём чат через windowgram. Если падает — лид всё равно зафиксирован
+    # (менеджер увидит ошибку и сможет повторить через «создать чат»).
+    if not contact.chat_id:
+        title = format_chat_title(name, contact.contact)
+        try:
+            chat_data = create_chat(request.user, title)
+            contact.chat_id = chat_data["chat_id"]
+            contact.chat_invite_link = chat_data.get("invite_link") or ""
+            contact.chat_created_at = timezone.now()
+            contact.save(update_fields=["chat_id", "chat_invite_link", "chat_created_at", "updated_at"])
+            # Шлём в чат сводку (Номер / Дата / Время)
+            date_str = call_date.strftime("%d.%m") if call_date else ""
+            time_str = call_time.strftime("%H:%M") if call_time else ""
+            send_summary(
+                contact.chat_id, contact.contact, date_str, time_str,
+            )
+            messages.success(request, f"Лид зафиксирован, чат «{title}» создан.")
+        except WindowgramError as exc:
+            messages.warning(
+                request,
+                f"Лид зафиксирован, но создать чат не удалось: {exc}. "
+                "Попробуйте кнопку «Создать чат» позже.",
+            )
+
     return redirect("cold_contacts_list")
+
+
+# ─── Повторное создание чата (если первая попытка упала) ─────────────────
+
+@login_required
+def contact_create_chat(request: HttpRequest, contact_id: int) -> HttpResponse:
+    if not _is_minion(request.user):
+        return HttpResponseForbidden("Недоступно для вашей роли.")
+    if request.method != "POST":
+        return redirect("cold_contacts_list")
+
+    contact = get_object_or_404(ColdContact, pk=contact_id, owner=request.user)
+    if contact.chat_id:
+        messages.info(request, "Чат уже создан.")
+        return redirect("cold_contacts_list")
+    if contact.final_status != ColdContact.FinalStatus.LEAD:
+        messages.error(request, "Чат создаётся только для контактов со статусом «лид».")
+        return redirect("cold_contacts_list")
+
+    title = format_chat_title(contact.name, contact.contact)
+    try:
+        chat_data = create_chat(request.user, title)
+        contact.chat_id = chat_data["chat_id"]
+        contact.chat_invite_link = chat_data.get("invite_link") or ""
+        contact.chat_created_at = timezone.now()
+        contact.save(update_fields=["chat_id", "chat_invite_link", "chat_created_at", "updated_at"])
+        date_str = contact.lead_call_date.strftime("%d.%m") if contact.lead_call_date else ""
+        time_str = contact.lead_call_time.strftime("%H:%M") if contact.lead_call_time else ""
+        send_summary(contact.chat_id, contact.contact, date_str, time_str)
+        messages.success(request, f"Чат «{title}» создан.")
+    except WindowgramError as exc:
+        messages.error(request, f"Не удалось создать чат: {exc}")
+    return redirect("cold_contacts_list")
+
+
+# ─── Отчёт «Прозвон» — менеджер сдаёт ──────────────────────────────────
+
+@login_required
+def contact_call_report_create(request: HttpRequest, contact_id: int) -> HttpResponse:
+    if not _is_minion(request.user):
+        return HttpResponseForbidden("Недоступно для вашей роли.")
+
+    contact = get_object_or_404(ColdContact, pk=contact_id, owner=request.user)
+    if not contact.chat_id:
+        messages.error(request, "Сначала зафиксируйте лид и создайте чат.")
+        return redirect("cold_contacts_list")
+    if hasattr(contact, "call_report"):
+        messages.info(request, "Отчёт по этому контакту уже отправлен.")
+        return redirect("cold_contacts_list")
+
+    if request.method == "POST":
+        screencast = request.FILES.get("screencast")
+        source = (request.POST.get("source") or "").strip()[:255]
+        if not screencast:
+            messages.error(request, "Прикрепите скринкаст.")
+            return redirect("cold_contact_call_report", contact_id=contact.id)
+
+        # Авто-валидация: админ в чате + клиент зашёл
+        is_complete, note = validate_chat(contact.chat_id)
+
+        with transaction.atomic():
+            report = CallReport.objects.create(
+                cold_contact=contact,
+                screencast=screencast,
+                source=source,
+                status=CallReport.Status.PENDING,
+                is_complete=is_complete,
+                validation_note=note,
+            )
+        if is_complete:
+            messages.success(
+                request,
+                f"Отчёт #{report.id} принят. Валидация пройдена — отчёт ушёл на проверку.",
+            )
+        else:
+            messages.warning(
+                request,
+                f"Отчёт #{report.id} сохранён, но валидация не прошла: {note} "
+                "Отчёт пока не виден админам.",
+            )
+        return redirect("cold_contacts_list")
+
+    return render(request, "core/call_report_form.html", {
+        "contact": contact,
+    })
 
 
 # ─── Удалить контакт ──────────────────────────────────────────────────────

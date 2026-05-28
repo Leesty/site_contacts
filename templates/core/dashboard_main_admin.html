@@ -242,6 +242,16 @@
         </div>
       </div>
     </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(56,189,248,0.10) 0%, rgba(56,189,248,0.02) 100%); border: 1px solid rgba(56,189,248,0.25);">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 13px;">📞 Прозвон</span>
+            {% if call_reports_pending_count %}<span class="badge bg-danger" style="font-size:10px;">{{ call_reports_pending_count }}</span>{% endif %}
+          </div>
+          <p class="text-muted small mb-2" style="font-size: 10px;">Холодные контакты → лид → чат → отчёт. 80₽ менеджеру, 10₽ админу.</p>
+          <a class="btn btn-outline-info btn-sm mt-1 py-0" href="{% url 'admin_call_reports_list' %}">Открыть</a>
+    </div>
   </div>
 
   {# ═══ Статистика админов ═══ #}

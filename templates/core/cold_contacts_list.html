@@ -122,11 +122,36 @@
                 {% endif %}
               </td>
               <td>
-                <form method="post" action="{% url 'cold_contact_delete' c.id %}" class="m-0"
-                      onsubmit="return confirm('Удалить контакт {{ c.contact|escapejs }}?');">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-outline-danger btn-sm py-0" style="font-size: 11px;">🗑</button>
-                </form>
+                <div class="d-flex gap-1 align-items-center flex-wrap">
+                  {% if c.final_status == "lead" %}
+                    {% if c.chat_invite_link %}
+                      <a class="btn btn-outline-info btn-sm py-0" style="font-size: 11px;"
+                         href="{{ c.chat_invite_link }}" target="_blank" rel="noopener"
+                         title="Ссылка на чат">🔗</a>
+                    {% else %}
+                      <form method="post" action="{% url 'cold_contact_create_chat' c.id %}" class="m-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-warning btn-sm py-0"
+                                style="font-size: 11px;" title="Создать чат">＋ чат</button>
+                      </form>
+                    {% endif %}
+                    {% if c.chat_id %}
+                      {% if c.call_report %}
+                        <span class="badge bg-secondary" title="Отчёт уже сдан"
+                              style="font-size: 10px;">отчёт #{{ c.call_report.id }}</span>
+                      {% else %}
+                        <a class="btn btn-outline-success btn-sm py-0" style="font-size: 11px;"
+                           href="{% url 'cold_contact_call_report' c.id %}"
+                           title="Сдать отчёт">📋 отчёт</a>
+                      {% endif %}
+                    {% endif %}
+                  {% endif %}
+                  <form method="post" action="{% url 'cold_contact_delete' c.id %}" class="m-0"
+                        onsubmit="return confirm('Удалить контакт {{ c.contact|escapejs }}?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger btn-sm py-0" style="font-size: 11px;">🗑</button>
+                  </form>
+                </div>
               </td>
             </tr>
             {% endwith %}
@@ -158,6 +183,11 @@
             <label class="form-label small mb-1">Имя (необязательно)</label>
             <input type="text" name="name" class="form-control form-control-sm" maxlength="255">
           </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">TG-аккаунт клиента (необязательно)</label>
+            <input type="text" name="tg_username" id="leadTgUsername" class="form-control form-control-sm"
+                   maxlength="100" placeholder="@username или t.me/username">
+          </div>
           <div class="row g-2">
             <div class="col">
               <label class="form-label small mb-1">Дата созвона</label>
@@ -171,7 +201,7 @@
         </div>
         <div class="modal-footer border-secondary">
           <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
-          <button type="submit" class="btn btn-success btn-sm">Создать лид</button>
+          <button type="submit" class="btn btn-success btn-sm">Создать лид + чат</button>
         </div>
       </form>
     </div>
