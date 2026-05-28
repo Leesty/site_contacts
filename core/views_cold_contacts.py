@@ -37,7 +37,16 @@ ALLOWED_ROLES = ("user", "worker")
 
 
 def _is_minion(user) -> bool:
-    return getattr(user, "is_authenticated", False) and getattr(user, "role", None) in ALLOWED_ROLES
+    """Менеджер/воркер с явно выданным правом can_create_call_reports.
+
+    Только тем кому главный админ выдал право (через UI permissions),
+    видна вкладка «Списки контактов» и доступны связанные endpoint'ы.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "role", None) not in ALLOWED_ROLES:
+        return False
+    return bool(getattr(user, "can_create_call_reports", False))
 
 
 def _recompute_final_status(contact: ColdContact) -> None:
