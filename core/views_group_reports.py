@@ -498,41 +498,40 @@ def admin_group_report_revoke(request: HttpRequest, user_id: int) -> HttpRespons
         messages.info(request, f"У @{target.username} и так нет права.")
         return redirect("admin_group_report_permissions")
 
+    # Снимаем подадмина с бот-сервера на КАЖДОЙ привязанной платформе.
+    # Soft-fail — если бот недоступен, в нашей БД право снимем всё равно.
+    # NB: это право общее с «Прозвонами» (cold-contacts) — отзыв снимет
+    # доступ и к нему тоже.
+    bot_errors: list[str] = []
+    if target.bot_admin_tg_username:
+        ok, note = _windowgram_revoke_subadmin(
+            platform="telegram", platform_user_id=None,
+            username=target.bot_admin_tg_username,
+        )
+        if not ok:
+            bot_errors.append(f"TG: {note}")
+    if target.bot_admin_vk_screen_name:
+        ok, note = _windowgram_revoke_subadmin(
+            platform="vk", platform_user_id=None,
+            username=target.bot_admin_vk_screen_name,
+        )
+        if not ok:
+            bot_errors.append(f"VK: {note}")
+    if bot_errors:
+        messages.warning(
+            request,
+            f"Право у @{target.username} снято локально, но на бот-сервере не получилось: "
+            f"{'; '.join(bot_errors)}. Снимите вручную через /api/admins.",
+        )
+
     target.can_create_group_reports = False
-    update_fields = ["can_create_group_reports"]
-
-    # Снимаем подадмина с бот-сервера ТОЛЬКО если у юзера больше нет других
-    # прав требующих подадмина (например, can_create_call_reports). Иначе мы
-    # сломаем «Прозвоны» которые тоже работают через bot_admin_*.
-    still_needs_subadmin = bool(target.can_create_call_reports)
-    if not still_needs_subadmin:
-        bot_errors: list[str] = []
-        if target.bot_admin_tg_username:
-            ok, note = _windowgram_revoke_subadmin(
-                platform="telegram", platform_user_id=None,
-                username=target.bot_admin_tg_username,
-            )
-            if not ok:
-                bot_errors.append(f"TG: {note}")
-        if target.bot_admin_vk_screen_name:
-            ok, note = _windowgram_revoke_subadmin(
-                platform="vk", platform_user_id=None,
-                username=target.bot_admin_vk_screen_name,
-            )
-            if not ok:
-                bot_errors.append(f"VK: {note}")
-        if bot_errors:
-            messages.warning(
-                request,
-                f"Право у @{target.username} снято локально, но на бот-сервере не получилось: "
-                f"{'; '.join(bot_errors)}. Снимите вручную через /api/admins.",
-            )
-        target.bot_admin_tg_username = ""
-        target.bot_admin_vk_screen_name = ""
-        update_fields += ["bot_admin_tg_username", "bot_admin_vk_screen_name"]
-
-    target.save(update_fields=update_fields)
-    messages.success(request, f"У @{target.username} отозвано право на отчёты по группам.")
+    target.bot_admin_tg_username = ""
+    target.bot_admin_vk_screen_name = ""
+    target.save(update_fields=[
+        "can_create_group_reports",
+        "bot_admin_tg_username", "bot_admin_vk_screen_name",
+    ])
+    messages.success(request, f"У @{target.username} отозвано право на отчёты по группам и «Прозвоны».")
     return redirect("admin_group_report_permissions")
 
 

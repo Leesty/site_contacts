@@ -37,16 +37,18 @@ ALLOWED_ROLES = ("user", "worker")
 
 
 def _is_minion(user) -> bool:
-    """Менеджер/воркер с явно выданным правом can_create_call_reports.
+    """Менеджер/воркер с правом can_create_group_reports.
 
-    Только тем кому главный админ выдал право (через UI permissions),
-    видна вкладка «Списки контактов» и доступны связанные endpoint'ы.
+    Право на «Прозвоны» = право на «Группы» (одно общее право).
+    Выдаётся главным админом через `/staff/group-report-permissions/`
+    с регистрацией подадмина на windowgram. Те же люди могут и
+    группы делать, и прозвоны.
     """
     if not getattr(user, "is_authenticated", False):
         return False
     if getattr(user, "role", None) not in ALLOWED_ROLES:
         return False
-    return bool(getattr(user, "can_create_call_reports", False))
+    return bool(getattr(user, "can_create_group_reports", False))
 
 
 def _recompute_final_status(contact: ColdContact) -> None:

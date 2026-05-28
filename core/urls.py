@@ -2,7 +2,6 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 
 from . import views
-from . import views_call_report_permissions
 from . import views_call_reports
 from . import views_cold_contacts
 from . import views_group_reports
@@ -419,10 +418,6 @@ urlpatterns = [
     path("staff/call-reports/<int:report_id>/reject/", views_call_reports.admin_call_report_reject, name="admin_call_report_reject"),
     path("staff/call-reports/<int:report_id>/rework/", views_call_reports.admin_call_report_rework, name="admin_call_report_rework"),
     path("staff/call-reports/<int:report_id>/screencast/", views_call_reports.admin_call_report_screencast, name="admin_call_report_screencast"),
-    # Право на «Прозвоны» (выдаётся главным админом + регистрирует подадмина в windowgram)
-    path("staff/call-report-permissions/", views_call_report_permissions.admin_call_report_permissions, name="admin_call_report_permissions"),
-    path("staff/call-report-permissions/<int:user_id>/grant/", views_call_report_permissions.admin_call_report_grant, name="admin_call_report_grant"),
-    path("staff/call-report-permissions/<int:user_id>/revoke/", views_call_report_permissions.admin_call_report_revoke, name="admin_call_report_revoke"),
     path("staff/zavod-lidov/", views_zavod_lidov.admin_overview, name="admin_zavod_lidov_overview"),
     path("staff/zavod-lidov/pool/<int:customer_id>/", views_zavod_lidov.admin_pool, name="admin_zavod_lidov_pool"),
     path("staff/zavod-lidov/<int:project_id>/", views_zavod_lidov.admin_project_detail, name="admin_zavod_lidov_project"),
