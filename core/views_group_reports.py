@@ -652,13 +652,13 @@ def admin_group_reports_list(request: HttpRequest) -> HttpResponse:
     elif tab == "rejected":
         qs = qs.filter(status=GroupReport.Status.REJECTED)
     elif tab == "incomplete":
-        # «Не полные» — is_complete=False + только то что РЕАЛЬНО на проверке
-        # (pending или rework). Approved/rejected — уже разобраны и не должны
-        # висеть в этой вкладке, иначе админ их «одобряет повторно» и ловит
-        # «Отчёт #N уже одобрен».
+        # «Не полные» — только status=pending + is_complete=False.
+        # Rework-отчёты сюда НЕ попадают — после клика «На доработку» они
+        # должны исчезать со вкладки и появляться в «На доработке».
+        # Approved/rejected тоже исключаем — они в своих табах.
         qs = qs.filter(
             is_complete=False,
-            status__in=[GroupReport.Status.PENDING, GroupReport.Status.REWORK],
+            status=GroupReport.Status.PENDING,
         )
 
     q = (request.GET.get("q") or "").strip()
@@ -682,11 +682,10 @@ def admin_group_reports_list(request: HttpRequest) -> HttpResponse:
             is_complete=True,
         ).count(),
         "rework": GroupReport.objects.filter(status=GroupReport.Status.REWORK).count(),
-        # «Не полные» — pending+rework с is_complete=False, доступно ВСЕМ админам
-        # (ставка та же что и у обычных GroupReport approve).
+        # «Не полные» — только pending с is_complete=False. Rework — в свой таб.
         "incomplete": GroupReport.objects.filter(
             is_complete=False,
-            status__in=[GroupReport.Status.PENDING, GroupReport.Status.REWORK],
+            status=GroupReport.Status.PENDING,
         ).count(),
     }
 
