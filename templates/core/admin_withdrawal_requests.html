@@ -165,6 +165,54 @@
     {% endif %}
   </div>
 
+  {# ═══ Воркеры (СС-ветка) ═══ #}
+  <h6 class="text-uppercase mt-3 mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">
+    Воркеры (СС-ветка) {% if pending_workers %}({{ pending_workers|length }}){% endif %}
+  </h6>
+  <div class="card shadow-sm mb-3">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Воркер</th>
+              <th>СС-админ</th>
+              <th>Сумма</th>
+              <th>Реквизиты</th>
+              <th>Подана</th>
+              <th class="text-end">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for w in pending_workers %}
+              <tr>
+                <td>@{{ w.worker.username }}</td>
+                <td>{% if w.standalone_admin %}@{{ w.standalone_admin.username }}{% else %}—{% endif %}</td>
+                <td>{{ w.amount }} ₽</td>
+                <td class="small text-muted" style="max-width: 280px; word-break: break-word;">{{ w.payout_details|truncatechars:120 }}</td>
+                <td class="small text-muted">{{ w.created_at|date:"d.m.Y H:i" }}</td>
+                <td class="text-end">
+                  <form method="post" class="d-inline" onsubmit="return confirm('Одобрить вывод воркера @{{ w.worker.username }} на {{ w.amount }} ₽?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="worker_request_id" value="{{ w.id }}">
+                    <button type="submit" name="action" value="approve" class="btn btn-success btn-sm py-0">✓</button>
+                  </form>
+                  <form method="post" class="d-inline" onsubmit="return confirm('Отклонить и вернуть баланс воркеру @{{ w.worker.username }}?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="worker_request_id" value="{{ w.id }}">
+                    <button type="submit" name="action" value="reject" class="btn btn-outline-danger btn-sm py-0">✗</button>
+                  </form>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="text-muted text-center py-3">Нет заявок воркеров на проверке.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   {# ═══ История ═══ #}
   <h6 class="text-uppercase mt-3 mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">История заявок</h6>
   <div class="card shadow-sm">

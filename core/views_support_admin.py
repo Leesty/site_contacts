@@ -1507,11 +1507,51 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
-    """Список заявок на вывод. Только main_admin."""
+    """Список заявок на вывод (обычные + воркерские). Только main_admin."""
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
+    from .models import WorkerWithdrawalRequest
     if request.method == "POST":
         action = request.POST.get("action")
+        # ── Worker-заявка: approve / reject (СС-ветка, отдельная модель) ──
+        worker_req_id = request.POST.get("worker_request_id")
+        if worker_req_id and action in ("approve", "reject"):
+            with transaction.atomic():
+                wreq = (
+                    WorkerWithdrawalRequest.objects
+                    .select_for_update()
+                    .select_related("worker")
+                    .filter(pk=worker_req_id, status="pending")
+                    .first()
+                )
+                if not wreq:
+                    messages.warning(request, "Воркер-заявка уже обработана или не найдена.")
+                    return redirect("admin_withdrawal_requests")
+                now = timezone.now()
+                if action == "approve":
+                    wreq.status = "approved"
+                    messages.success(
+                        request,
+                        f"Вывод воркера @{wreq.worker.username} на {wreq.amount} руб. одобрен.",
+                    )
+                else:
+                    _old = wreq.worker.balance or 0
+                    wreq.worker.balance = _old + wreq.amount
+                    wreq.worker.save(update_fields=["balance"])
+                    log_balance_change(
+                        wreq.worker, "balance", _old, wreq.worker.balance,
+                        f"worker_withdrawal_reject#{wreq.pk} +{wreq.amount}",
+                        request.user,
+                    )
+                    wreq.status = "rejected"
+                    messages.info(
+                        request,
+                        f"Воркер-заявка @{wreq.worker.username} отклонена. Баланс восстановлен.",
+                    )
+                wreq.processed_at = now
+                wreq.processed_by = request.user
+                wreq.save(update_fields=["status", "processed_at", "processed_by"])
+            return redirect("admin_withdrawal_requests")
         # ── одиночное действие ──────────────────────────────────────────
         req_id = request.POST.get("request_id")
         if req_id and action in ("approve", "reject"):
@@ -1607,10 +1647,22 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
         .select_related("user", "processed_by")
         .order_by("-created_at")[:200]
     )
+    # Воркерские заявки (СС-ветка) — отдельная модель и отдельный список
+    pending_workers = list(
+        WorkerWithdrawalRequest.objects
+        .filter(status="pending")
+        .select_related("worker", "standalone_admin")
+        .order_by("created_at")
+    )
+    worker_history = list(
+        WorkerWithdrawalRequest.objects
+        .exclude(status="pending")
+        .select_related("worker", "processed_by", "standalone_admin")
+        .order_by("-created_at")[:200]
+    )
     total_user_withdrawals = (
         WithdrawalRequest.objects.filter(status="approved").aggregate(s=Sum("amount"))["s"] or 0
     )
-    from .models import WorkerWithdrawalRequest
     total_worker_withdrawals = (
         WorkerWithdrawalRequest.objects.filter(status="approved").aggregate(s=Sum("amount"))["s"] or 0
     )
@@ -1621,6 +1673,8 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
             "pending_regular": pending_regular,
             "pending_referrals": pending_referrals,
             "pending_requests": list(all_pending),
+            "pending_workers": pending_workers,
+            "worker_history": worker_history,
             "history_requests": history,
             "total_user_withdrawals": total_user_withdrawals,
             "total_worker_withdrawals": total_worker_withdrawals,

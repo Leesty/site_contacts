@@ -257,7 +257,13 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             Q(last_read_at__isnull=True) | Q(updated_at__gt=F("last_read_at"))
         ).count()
         contact_requests_pending_count = ContactRequest.objects.filter(status="pending").count()
-        withdrawal_requests_pending_count = WithdrawalRequest.objects.filter(status="pending").count()
+        # Включаем воркерские заявки в общий бейдж — теперь они тоже
+        # обрабатываются на /staff/withdrawal-requests/.
+        from .models import WorkerWithdrawalRequest as _WWR
+        withdrawal_requests_pending_count = (
+            WithdrawalRequest.objects.filter(status="pending").count()
+            + _WWR.objects.filter(status="pending").count()
+        )
         pending_leads_count = Lead.objects.filter(
             status=Lead.Status.PENDING
         ).exclude(lead_type__slug="dozhim").count()
