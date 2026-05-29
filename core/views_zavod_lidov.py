@@ -380,9 +380,8 @@ def customer_download_excel(request: HttpRequest, project_id: int) -> HttpRespon
     project = get_object_or_404(
         LidProject, pk=project_id, customer=request.user,
     )
-    # Скачать можно только когда проект закрыт (достиг total_limit).
-    if not project.is_closed:
-        return HttpResponseForbidden("Проект ещё в работе.")
+    # Скачать можно в любой момент — отдаём текущий snapshot.
+    # Закрытый проект просто перестаёт принимать дейли-раздачу из пула.
 
     user_vals = list(
         project.items.filter(is_admin=False)
