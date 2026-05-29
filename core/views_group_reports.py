@@ -44,6 +44,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import (
     GroupReportCreateForm,
+    GroupReportRedoForm,
     GroupReportRejectForm,
     GroupReportReworkForm,
 )
@@ -355,6 +356,91 @@ def manager_group_report_create(request: HttpRequest) -> HttpResponse:
 
     return render(request, "core/group_report_create.html", {
         "form": form,
+        "reward": GROUP_REPORT_APPROVE_REWARD,
+    })
+
+
+@login_required
+def manager_group_report_redo(request: HttpRequest, report_id: int) -> HttpResponse:
+    """Менеджер дорабатывает отчёт со статусом 'rework'.
+
+    Открывает форму с предзаполненными значениями (платформа, дата,
+    client_link, manager_link). Менеджер может изменить скринкаст
+    и/или поправить поля. На сабмите:
+      • поля и скринкаст обновляются
+      • статус → pending
+      • очищаются rework_comment / rejection_reason
+      • валидация перепроверяется (на случай если за это время
+        админ-таска по чату дозакрылась).
+    """
+    if not _is_manager_with_right(request.user):
+        return HttpResponseForbidden("У вас нет права на отчёты по группам.")
+
+    report = get_object_or_404(GroupReport, pk=report_id, user=request.user)
+    if report.status != GroupReport.Status.REWORK:
+        messages.warning(request, "Доработка возможна только для отчётов со статусом «Доработка».")
+        return redirect("manager_group_reports_list")
+
+    # Реконструируем исходные client_link / manager_link для предзаполнения
+    def _back_to_link(plat_id, uname):
+        if uname:
+            return f"@{uname}" if not uname.startswith("@") else uname
+        if plat_id:
+            return str(plat_id)
+        return ""
+
+    if request.method == "POST":
+        form = GroupReportRedoForm(request.POST, request.FILES, instance=report)
+        if form.is_valid():
+            updated: GroupReport = form.save(commit=False)
+            client_id, client_username = _parse_link(form.cleaned_data["client_link"])
+            manager_id, manager_username = _parse_link(form.cleaned_data["manager_link"])
+
+            updated.client_platform_id = client_id
+            updated.client_username = client_username or ""
+            updated.manager_platform_id = manager_id
+            updated.manager_username = manager_username or ""
+
+            is_complete, note = _validate_against_windowgram(
+                platform=updated.platform,
+                manager_id=manager_id,
+                manager_username=manager_username,
+                client_id=client_id,
+                client_username=client_username,
+            )
+            updated.is_complete = is_complete
+            updated.validation_note = note
+            # Возвращаем на проверку, чистим причину доработки
+            updated.status = GroupReport.Status.PENDING
+            updated.rework_comment = ""
+            updated.rejection_reason = ""
+            updated.reviewed_at = None
+            updated.reviewed_by = None
+            updated.save()
+
+            if is_complete:
+                messages.success(
+                    request,
+                    "Отчёт переотправлен на проверку. Все 4 этапа подтверждены ботом.",
+                )
+            else:
+                messages.warning(
+                    request,
+                    f"Отчёт переотправлен, но без авто-подтверждения: {note}",
+                )
+            return redirect("manager_group_reports_list")
+    else:
+        form = GroupReportRedoForm(
+            instance=report,
+            initial={
+                "client_link": _back_to_link(report.client_platform_id, report.client_username),
+                "manager_link": _back_to_link(report.manager_platform_id, report.manager_username),
+            },
+        )
+
+    return render(request, "core/group_report_redo.html", {
+        "form": form,
+        "report": report,
         "reward": GROUP_REPORT_APPROVE_REWARD,
     })
 

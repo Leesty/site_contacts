@@ -636,6 +636,37 @@ class GroupReportCreateForm(forms.ModelForm):
         return data
 
 
+class GroupReportRedoForm(GroupReportCreateForm):
+    """Форма доработки отчёта менеджером.
+
+    Отличие от Create: скринкаст НЕ обязателен — если менеджер не
+    загрузил новый файл, остаётся старый из instance.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["screencast"].required = False
+
+    def clean_screencast(self):
+        data = self.cleaned_data.get("screencast")
+        if not data:
+            # Без нового файла — сохраняем существующий
+            return self.instance.screencast if self.instance else None
+        # Если новый файл — те же правила валидации что и при create
+        name = getattr(data, "name", None) or ""
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in GROUP_REPORT_ALLOWED_EXT:
+            raise forms.ValidationError(
+                "Разрешены только видео (mp4/mov/webm/...) и изображения (jpg/png/...)."
+            )
+        size = getattr(data, "size", None)
+        if size is not None and size > GROUP_REPORT_VIDEO_MAX_SIZE:
+            raise forms.ValidationError(
+                "Скринкаст не должен превышать 50 МБ. Сожмите видео или сократите длину."
+            )
+        return data
+
+
 class GroupReportRejectForm(forms.Form):
     rejection_reason = forms.CharField(
         label="Причина отклонения",

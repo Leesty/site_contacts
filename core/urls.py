@@ -425,6 +425,7 @@ urlpatterns = [
     # Менеджер
     path("reports/groups/", views_group_reports.manager_group_reports_list, name="manager_group_reports_list"),
     path("reports/groups/create/", views_group_reports.manager_group_report_create, name="manager_group_report_create"),
+    path("reports/groups/<int:report_id>/redo/", views_group_reports.manager_group_report_redo, name="manager_group_report_redo"),
     path("reports/groups/<int:report_id>/attachment/", views_group_reports.manager_group_report_attachment, name="manager_group_report_attachment"),
     path("calendar/free-slots/", views_group_reports.free_slots_calendar, name="free_slots_calendar"),
     # Главный админ — управление правами

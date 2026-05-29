@@ -88,6 +88,12 @@
                 {% elif not r.is_complete %}
                   {{ r.validation_note|truncatewords:18 }}
                 {% endif %}
+                {% if r.status == 'rework' %}
+                  <div class="mt-2">
+                    <a href="{% url 'manager_group_report_redo' r.id %}"
+                       class="btn btn-warning btn-sm py-0">⟲ Доработать</a>
+                  </div>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}
