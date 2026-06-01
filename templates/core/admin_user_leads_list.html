@@ -17,27 +17,60 @@
     </div>
   </div>
 
-  <ul class="nav nav-tabs mb-3">
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all">Все</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?tab=new">Новые</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">В доработке</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Принятые</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">Отклонённые</a>
-    </li>
+  {# ═══ Табы по типам отчётов ═══ #}
+  <ul class="nav nav-tabs mb-2" style="font-size: 13px;">
+    <li class="nav-item"><a class="nav-link {% if kind == 'all' %}active{% endif %}" href="?kind=all">
+      Все типы
+    </a></li>
+    <li class="nav-item"><a class="nav-link {% if kind == 'lead' %}active{% endif %}" href="?kind=lead">
+      Lead (поиск+дожим)
+      {% if counts.lead %}<span class="badge bg-secondary ms-1">{{ counts.lead }}</span>{% endif %}
+    </a></li>
+    <li class="nav-item"><a class="nav-link {% if kind == 'sr' %}active{% endif %}" href="?kind=sr">
+      🔗 SearchLink
+      {% if counts.sr %}<span class="badge bg-secondary ms-1">{{ counts.sr }}</span>{% endif %}
+    </a></li>
+    <li class="nav-item"><a class="nav-link {% if kind == 'gr' %}active{% endif %}" href="?kind=gr">
+      📊 Группы
+      {% if counts.gr %}<span class="badge bg-secondary ms-1">{{ counts.gr }}</span>{% endif %}
+    </a></li>
+    <li class="nav-item"><a class="nav-link {% if kind == 'msc' %}active{% endif %}" href="?kind=msc">
+      🔍 Не в боте
+      {% if counts.msc %}<span class="badge bg-secondary ms-1">{{ counts.msc }}</span>{% endif %}
+    </a></li>
+    <li class="nav-item"><a class="nav-link {% if kind == 'cr' %}active{% endif %}" href="?kind=cr">
+      📞 Прозвон
+      {% if counts.cr %}<span class="badge bg-secondary ms-1">{{ counts.cr }}</span>{% endif %}
+    </a></li>
+    <li class="nav-item"><a class="nav-link {% if kind == 'wsl' %}active{% endif %}" href="?kind=wsl">
+      WSL (СС-самост.)
+      {% if counts.wsl %}<span class="badge bg-secondary ms-1">{{ counts.wsl }}</span>{% endif %}
+    </a></li>
+    <li class="nav-item"><a class="nav-link {% if kind == 'wr' %}active{% endif %}" href="?kind=wr">
+      WR (СС-задания)
+      {% if counts.wr %}<span class="badge bg-secondary ms-1">{{ counts.wr }}</span>{% endif %}
+    </a></li>
   </ul>
 
+  {# Статус-табы (только для Lead) #}
+  {% if kind == 'lead' %}
+  <ul class="nav nav-tabs mb-3" style="font-size: 12px;">
+    <li class="nav-item"><a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?kind=lead&tab=all">Все</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'new' %}active{% endif %}" href="?kind=lead&tab=new">Новые</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?kind=lead&tab=rework">В доработке</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?kind=lead&tab=approved">Принятые</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?kind=lead&tab=rejected">Отклонённые</a></li>
+  </ul>
+  {% endif %}
+
   <p class="text-muted small mb-3">
-    {% if tab == 'all' %}Все лиды пользователя.{% elif tab == 'new' %}Лиды на проверке.{% elif tab == 'rework' %}Лиды на доработке.{% elif tab == 'approved' %}Принятые лиды.{% else %}Отклонённые лиды.{% endif %}
-    Вложение — просмотр скриншота или видео. Периоды «сегодня»/«вчера» — граница 20:00 МСК.
+    Всего одобрено: Lead <strong>{{ counts.lead_approved }}</strong> ·
+    SR <strong>{{ counts.sr_approved }}</strong> ·
+    GR <strong>{{ counts.gr_approved }}</strong> ·
+    MSC <strong>{{ counts.msc_approved }}</strong> ·
+    Прозвон <strong>{{ counts.cr_approved }}</strong> ·
+    WSL <strong>{{ counts.wsl_approved }}</strong> ·
+    WR <strong>{{ counts.wr_approved }}</strong>
   </p>
 
   <div class="card shadow-sm">
@@ -67,93 +100,78 @@
         <table class="table table-sm mb-0 align-middle table-dark-site">
           <thead>
             <tr>
+              <th>Тип</th>
               <th>ID</th>
-              <th>Дата лида</th>
-              <th>Отправлен</th>
-              <th>Тип лида</th>
+              <th>Дата</th>
               <th>Статус</th>
               {% if tab == 'rework' %}<th>Причина доработки</th>{% elif tab == 'rejected' %}<th>Причина отклонения</th>{% endif %}
               <th>Вложение</th>
               <th>Контакт</th>
-              <th>Источник</th>
-              <th>Комментарий</th>
+              <th>Источник / Доп.</th>
+              <th>Награда</th>
               <th>Проверил</th>
             </tr>
           </thead>
           <tbody>
-            {% for lead in page_obj %}
+            {% for row in page_obj %}{% with lead=row.raw %}
               <tr>
-                <td>{{ lead.id }}{% if lead.needs_team_contact %} <span class="badge bg-info text-dark" title="Связаться самим">СС</span>{% endif %}</td>
-                <td>{{ lead.lead_date|date:"d.m.Y" }}</td>
-                <td class="small text-muted">{{ lead.created_at|date:"d.m.Y H:i" }}</td>
-                <td>{{ lead.lead_type.name|default:"—" }}</td>
                 <td>
-                  <div class="d-flex flex-wrap align-items-center gap-1">
-                    {% if lead.status == 'approved' %}
-                      <span class="badge bg-success">Одобрен</span>
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
-                              data-lead-id="{{ lead.id }}" data-user-id="{{ target_user.pk }}" data-approved="1">Отменить</button>
-                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-btn"
-                              data-lead-id="{{ lead.id }}" data-user-id="{{ target_user.pk }}" data-approved="1">На доработку</button>
-                    {% elif lead.status == 'rejected' %}
-                      <span class="badge bg-danger">Отклонён</span>
-                    {% elif lead.status == 'rework' %}
-                      <span class="badge bg-warning text-dark">На доработке</span>
-                      <button type="button" class="btn btn-success btn-sm js-approve-btn"
-                              data-lead-id="{{ lead.id }}" data-user-id="{{ target_user.pk }}">Одобрить</button>
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
-                              data-lead-id="{{ lead.id }}" data-user-id="{{ target_user.pk }}">Отклонить</button>
-                    {% else %}
-                      <span class="badge bg-secondary">На проверке</span>
-                      <button type="button" class="btn btn-success btn-sm js-approve-btn"
-                              data-lead-id="{{ lead.id }}" data-user-id="{{ target_user.pk }}">Одобрить</button>
-                      <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
-                              data-lead-id="{{ lead.id }}" data-user-id="{{ target_user.pk }}">Отклонить</button>
-                      <button type="button" class="btn btn-warning btn-sm text-dark js-rework-btn"
-                              data-lead-id="{{ lead.id }}" data-user-id="{{ target_user.pk }}">На доработку</button>
-                    {% endif %}
-                  </div>
+                  {% if row.kind == 'lead' %}<span class="badge bg-secondary">Lead</span>
+                  {% elif row.kind == 'sr' %}<span class="badge" style="background:#0088cc;color:#fff">🔗 SR</span>
+                  {% elif row.kind == 'gr' %}<span class="badge bg-info text-dark">📊 GR</span>
+                  {% elif row.kind == 'msc' %}<span class="badge bg-warning text-dark">🔍 не в боте</span>
+                  {% elif row.kind == 'cr' %}<span class="badge" style="background:#38bdf8;color:#0f172a">📞 прозвон</span>
+                  {% elif row.kind == 'wsl' %}<span class="badge bg-secondary">WSL</span>
+                  {% elif row.kind == 'wr' %}<span class="badge bg-secondary">WR</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">#{{ row.id }}</td>
+                <td class="small text-muted">{{ row.date|date:"d.m.Y H:i" }}</td>
+                <td>
+                  {% if row.status == 'approved' %}<span class="badge bg-success">Одобрен</span>
+                  {% elif row.status == 'rejected' %}<span class="badge bg-danger">Отклонён</span>
+                  {% elif row.status == 'rework' %}<span class="badge bg-warning text-dark">Доработка</span>
+                  {% elif row.status == 'pending' %}<span class="badge bg-secondary">Pending</span>
+                  {% else %}<span class="badge bg-secondary">{{ row.status }}</span>{% endif %}
                 </td>
                 {% if tab == 'rework' or tab == 'rejected' %}
                 <td class="text-break small">
-                  {% if tab == 'rework' %}
-                    {% if lead.rework_comment and lead.rework_comment|length > 80 %}
-                      <span class="js-truncated">{{ lead.rework_comment|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
-                      <span class="js-full d-none">{{ lead.rework_comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
-                    {% else %}{{ lead.rework_comment|default:"—" }}{% endif %}
-                  {% else %}
-                    {% if lead.rejection_reason and lead.rejection_reason|length > 80 %}
-                      <span class="js-truncated">{{ lead.rejection_reason|truncatechars:80 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
-                      <span class="js-full d-none">{{ lead.rejection_reason }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
-                    {% else %}{{ lead.rejection_reason|default:"—" }}{% endif %}
-                  {% endif %}
+                  {% if tab == 'rework' %}{{ lead.rework_comment|default:"—"|truncatechars:80 }}
+                  {% else %}{{ lead.rejection_reason|default:"—"|truncatechars:80 }}{% endif %}
                 </td>
                 {% endif %}
                 <td>
-                  {% if lead.attachment %}
+                  {% if row.kind == 'lead' and lead.attachment %}
                     {% if lead.attachment|lead_attachment_is_video %}
-                      <button type="button" class="btn btn-outline-primary btn-sm js-video-preview" data-video-url="{% url 'admin_lead_attachment' lead.user_id lead.id %}" data-s3-url="{{ lead.attachment|attachment_s3_url }}" data-lead-id="{{ lead.id }}">Видео</button>
+                      <button type="button" class="btn btn-outline-primary btn-sm py-0 js-video-preview" data-video-url="{% url 'admin_lead_attachment' lead.user_id lead.id %}" data-s3-url="{{ lead.attachment|attachment_s3_url }}" data-lead-id="{{ lead.id }}">▶</button>
                     {% else %}
-                      <a href="{% url 'admin_lead_attachment' lead.user_id lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Открыть</a>
+                      <a href="{% url 'admin_lead_attachment' lead.user_id lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm py-0">📎</a>
                     {% endif %}
-                  {% else %}
-                    <span class="text-muted">—</span>
+                  {% elif row.kind == 'sr' and lead.attachment %}
+                    <a href="{% url 'admin_search_report_attachment' lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm py-0">📎</a>
+                  {% elif row.kind == 'gr' and lead.screencast %}
+                    <a href="{% url 'admin_group_report_attachment' lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm py-0">📎</a>
+                  {% elif row.kind == 'cr' and lead.screencast %}
+                    <a href="{% url 'admin_call_report_screencast' lead.id %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm py-0">📎</a>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="small" style="max-width: 200px; word-break: break-all;">{{ row.contact|default:"—" }}</td>
+                <td class="small text-muted" style="max-width: 200px;">
+                  {% if row.kind == 'lead' %}{{ lead.lead_type.name|default:"—" }}{% if lead.source %} · {{ lead.source|truncatechars:30 }}{% endif %}
+                  {% elif row.kind == 'sr' %}{% if lead.search_link %}link #{{ lead.search_link.display_id|default:lead.search_link.id }}{% endif %}
+                  {% elif row.kind == 'gr' %}{{ lead.get_platform_display|default:"—" }}{% if not lead.is_complete %} · <span class="text-warning">⚠ не полный</span>{% endif %}
+                  {% elif row.kind == 'msc' %}{{ lead.get_platform_display|default:"—" }}
+                  {% elif row.kind == 'cr' %}{{ lead.source|default:"—"|truncatechars:30 }}{% if not lead.is_complete %} · <span class="text-warning">⚠ не валидный</span>{% endif %}
+                  {% elif row.kind == 'wsl' or row.kind == 'wr' %}{{ lead.comment|default:"—"|truncatechars:30 }}
                   {% endif %}
                 </td>
-                <td>{{ lead.raw_contact|default:"—"|contact_link }}</td>
-                <td>{{ lead.source|truncatechars:40|default:"—" }}</td>
-                <td class="text-break small">
-                  {% if lead.comment and lead.comment|length > 60 %}
-                    <span class="js-truncated">{{ lead.comment|truncatechars:60 }} <a href="#" class="js-expand-btn text-decoration-none">▸</a></span>
-                    <span class="js-full d-none">{{ lead.comment }} <a href="#" class="js-collapse-btn text-decoration-none">◂</a></span>
-                  {% else %}{{ lead.comment|default:"—" }}{% endif %}
-                </td>
-                <td>{% if lead.reviewed_by %}<a href="{% url 'admin_moderation_by_admin_detail' lead.reviewed_by.id %}?kind=lead&tab={{ tab }}" class="text-decoration-none">@{{ lead.reviewed_by.username }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="small">{% if row.reward %}{{ row.reward }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="small">{% if row.reviewed_by %}@{{ row.reviewed_by.username }}{% if row.reviewed_at %}<br><span class="text-muted">{{ row.reviewed_at|date:"d.m H:i" }}</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
               </tr>
-            {% empty %}
+            {% endwith %}{% empty %}
               <tr>
-                <td colspan="{% if tab == 'rework' or tab == 'rejected' %}11{% else %}10{% endif %}" class="text-muted py-4 text-center">
-                  {% if tab == 'all' %}Лидов пока нет.{% elif tab == 'new' %}Нет новых лидов.{% elif tab == 'rework' %}Нет лидов на доработке.{% elif tab == 'approved' %}Нет принятых лидов.{% else %}Нет отклонённых лидов.{% endif %}
+                <td colspan="{% if tab == 'rework' or tab == 'rejected' %}10{% else %}9{% endif %}" class="text-muted py-4 text-center">
+                  Отчётов этого типа пока нет.
                 </td>
               </tr>
             {% endfor %}

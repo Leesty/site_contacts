@@ -452,27 +452,132 @@ def admin_user_lead_stats(request: HttpRequest, user_id: int) -> HttpResponse:
 
 @login_required
 def admin_user_leads_list(request: HttpRequest, user_id: int) -> HttpResponse:
-    """Список лидов (отчётов) пользователя по вкладкам: новые, в доработке, принятые, отклонённые."""
+    """История ВСЕХ отчётов пользователя по типам:
+    Lead (поиск+дожим), SearchReport (SL), GroupReport (Группы),
+    ManualSearchClaim (Не в боте), WorkerSelfLead (СС-самост.),
+    WorkerReport (СС-задания), CallReport (Прозвон).
+
+    Tab выбирает тип. Tab=all — табличка-сводка по всем типам с
+    бейджем-типом и общим списком (50 последних, отсортировано по дате).
+    """
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
     target_user = get_object_or_404(User, pk=user_id)
-    tab = request.GET.get("tab", "all")
+
+    from .models import (
+        SearchReport, GroupReport, ManualSearchClaim,
+        WorkerSelfLead, WorkerReport, CallReport,
+    )
+
+    # ── Счётчики по типам (общий + approved) ────────────────────────────
+    counts = {
+        "lead": Lead.objects.filter(user=target_user).count(),
+        "lead_approved": Lead.objects.filter(user=target_user, status=Lead.Status.APPROVED).count(),
+        "sr": SearchReport.objects.filter(user=target_user).count(),
+        "sr_approved": SearchReport.objects.filter(user=target_user, status=SearchReport.Status.APPROVED).count(),
+        "gr": GroupReport.objects.filter(user=target_user).count(),
+        "gr_approved": GroupReport.objects.filter(user=target_user, status=GroupReport.Status.APPROVED).count(),
+        "msc": ManualSearchClaim.objects.filter(user=target_user).count(),
+        "msc_approved": ManualSearchClaim.objects.filter(user=target_user, status=ManualSearchClaim.Status.APPROVED).count(),
+        "wsl": WorkerSelfLead.objects.filter(worker=target_user).count(),
+        "wsl_approved": WorkerSelfLead.objects.filter(worker=target_user, status=WorkerSelfLead.Status.APPROVED).count(),
+        "wr": WorkerReport.objects.filter(worker=target_user).count(),
+        "wr_approved": WorkerReport.objects.filter(worker=target_user, status="approved").count(),
+        "cr": CallReport.objects.filter(cold_contact__owner=target_user).count(),
+        "cr_approved": CallReport.objects.filter(
+            cold_contact__owner=target_user, status=CallReport.Status.APPROVED,
+        ).count(),
+    }
+
+    kind = (request.GET.get("kind") or "all").lower()
+    tab = (request.GET.get("tab") or "all").lower()  # для Lead: new/rework/approved/rejected
     if tab not in ("all", "new", "rework", "approved", "rejected"):
         tab = "all"
-    base = Lead.objects.filter(user=target_user).select_related("lead_type", "base_type", "reviewed_by")
-    if tab == "all":
-        qs = base.order_by("-created_at")
-    elif tab == "new":
-        qs = base.filter(status=Lead.Status.PENDING).order_by("created_at")
-    elif tab == "rework":
-        qs = base.filter(status=Lead.Status.REWORK).order_by("created_at")
-    elif tab == "approved":
-        qs = base.filter(status=Lead.Status.APPROVED).order_by("-reviewed_at")
-    else:
-        qs = base.filter(status=Lead.Status.REJECTED).order_by("-reviewed_at")
-    paginator = Paginator(qs, 50)
-    page_number = request.GET.get("page", 1)
-    page_obj = paginator.get_page(page_number)
+
+    # ── Унифицированные строки для отображения ──────────────────────────
+    rows: list[dict] = []
+
+    def _add(model_kind: str, qs, contact_field: str, reward_field: str | None,
+             status_attr: str = "status", date_attr: str = "created_at"):
+        for r in qs:
+            contact = getattr(r, contact_field, "") or ""
+            reward = getattr(r, reward_field, 0) if reward_field else 0
+            rows.append({
+                "kind": model_kind,
+                "id": r.pk,
+                "contact": contact,
+                "status": getattr(r, status_attr, ""),
+                "reward": reward,
+                "date": getattr(r, date_attr, None),
+                "reviewed_by": getattr(r, "reviewed_by", None),
+                "reviewed_at": getattr(r, "reviewed_at", None),
+                "raw": r,
+            })
+
+    LIMIT_PER_KIND = 200 if kind == "all" else 1000
+
+    if kind in ("all", "lead"):
+        lead_qs = Lead.objects.filter(user=target_user).select_related(
+            "lead_type", "base_type", "reviewed_by",
+        ).order_by("-created_at")[:LIMIT_PER_KIND]
+        _add("lead", lead_qs, "raw_contact", None)
+    if kind in ("all", "sr"):
+        sr_qs = SearchReport.objects.filter(user=target_user).select_related(
+            "search_link", "reviewed_by",
+        ).order_by("-created_at")[:LIMIT_PER_KIND]
+        _add("sr", sr_qs, "raw_contact", "paid_reward")
+    if kind in ("all", "gr"):
+        gr_qs = GroupReport.objects.filter(user=target_user).select_related(
+            "reviewed_by",
+        ).order_by("-created_at")[:LIMIT_PER_KIND]
+        _add("gr", gr_qs, "client_username", "paid_reward")
+    if kind in ("all", "msc"):
+        msc_qs = ManualSearchClaim.objects.filter(user=target_user).select_related(
+            "reviewed_by",
+        ).order_by("-created_at")[:LIMIT_PER_KIND]
+        _add("msc", msc_qs, "raw_input", "paid_reward")
+    if kind in ("all", "wsl"):
+        wsl_qs = WorkerSelfLead.objects.filter(worker=target_user).select_related(
+            "reviewed_by",
+        ).order_by("-created_at")[:LIMIT_PER_KIND]
+        _add("wsl", wsl_qs, "raw_contact", "reward")
+    if kind in ("all", "wr"):
+        wr_qs = WorkerReport.objects.filter(worker=target_user).select_related(
+            "reviewed_by",
+        ).order_by("-created_at")[:LIMIT_PER_KIND]
+        _add("wr", wr_qs, "raw_contact", "reward")
+    if kind in ("all", "cr"):
+        cr_qs = CallReport.objects.filter(cold_contact__owner=target_user).select_related(
+            "cold_contact", "reviewed_by",
+        ).order_by("-created_at")[:LIMIT_PER_KIND]
+        for r in cr_qs:
+            rows.append({
+                "kind": "cr",
+                "id": r.pk,
+                "contact": r.cold_contact.contact if r.cold_contact else "",
+                "status": r.status,
+                "reward": r.paid_reward,
+                "date": r.created_at,
+                "reviewed_by": r.reviewed_by,
+                "reviewed_at": r.reviewed_at,
+                "raw": r,
+            })
+
+    # Сортируем по дате убывания
+    rows.sort(key=lambda x: x["date"] or timezone.now(), reverse=True)
+    # Tab фильтр (только если kind=lead — оригинальные табы)
+    if kind == "lead" and tab != "all":
+        if tab == "new":
+            rows = [r for r in rows if r["status"] == Lead.Status.PENDING]
+        elif tab == "rework":
+            rows = [r for r in rows if r["status"] == Lead.Status.REWORK]
+        elif tab == "approved":
+            rows = [r for r in rows if r["status"] == Lead.Status.APPROVED]
+        elif tab == "rejected":
+            rows = [r for r in rows if r["status"] == Lead.Status.REJECTED]
+
+    paginator = Paginator(rows, 50)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
     lead_approve_reward = getattr(settings, "LEAD_APPROVE_REWARD", 40)
     return render(
         request,
@@ -481,6 +586,8 @@ def admin_user_leads_list(request: HttpRequest, user_id: int) -> HttpResponse:
             "target_user": target_user,
             "page_obj": page_obj,
             "tab": tab,
+            "kind": kind,
+            "counts": counts,
             "lead_approve_reward": lead_approve_reward,
         },
     )
