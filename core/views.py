@@ -1569,6 +1569,51 @@ def leads_stats_placeholder(request: HttpRequest) -> HttpResponse:
     )
     total_count = Lead.objects.filter(user=user, status=Lead.Status.APPROVED).exclude(_exclude_dozhim).count()
 
+    # ── Разбивка по типам отчётов (approved) ────────────────────────────
+    from .models import (
+        SearchReport, GroupReport, ManualSearchClaim,
+        WorkerSelfLead, WorkerReport, CallReport,
+    )
+
+    def _bucket(qs, status_field, status_approved):
+        q_appr = qs.filter(**{status_field: status_approved})
+        return (
+            q_appr.filter(created_at__gte=today_start, created_at__lt=today_end).count(),
+            q_appr.filter(created_at__gte=yesterday_start, created_at__lt=yesterday_end).count(),
+            q_appr.count(),
+        )
+
+    lead_dozhim_qs = Lead.objects.filter(user=user, lead_type__slug="dozhim")
+    sr_qs = SearchReport.objects.filter(user=user)
+    gr_qs = GroupReport.objects.filter(user=user)
+    msc_qs = ManualSearchClaim.objects.filter(user=user)
+    cr_qs = CallReport.objects.filter(cold_contact__owner=user)
+    wsl_qs = WorkerSelfLead.objects.filter(worker=user)
+    wr_qs = WorkerReport.objects.filter(worker=user)
+
+    dz_t, dz_y, dz_tot = _bucket(lead_dozhim_qs, "status", Lead.Status.APPROVED)
+    sr_t, sr_y, sr_tot = _bucket(sr_qs, "status", SearchReport.Status.APPROVED)
+    gr_t, gr_y, gr_tot = _bucket(gr_qs, "status", GroupReport.Status.APPROVED)
+    msc_t, msc_y, msc_tot = _bucket(msc_qs, "status", ManualSearchClaim.Status.APPROVED)
+    cr_t, cr_y, cr_tot = _bucket(cr_qs, "status", CallReport.Status.APPROVED)
+    wsl_t, wsl_y, wsl_tot = _bucket(wsl_qs, "status", WorkerSelfLead.Status.APPROVED)
+    wr_t, wr_y, wr_tot = _bucket(wr_qs, "status", "approved")
+
+    stats_by_type = [
+        {"label": "Lead — Поиск", "today": today_count, "yesterday": yesterday_count, "total": total_count},
+        {"label": "Lead — Дожим", "today": dz_t, "yesterday": dz_y, "total": dz_tot},
+        {"label": "🔗 SearchLink", "today": sr_t, "yesterday": sr_y, "total": sr_tot},
+        {"label": "📊 Группы", "today": gr_t, "yesterday": gr_y, "total": gr_tot},
+        {"label": "🔍 Не в боте", "today": msc_t, "yesterday": msc_y, "total": msc_tot},
+        {"label": "📞 Прозвон", "today": cr_t, "yesterday": cr_y, "total": cr_tot},
+        {"label": "WSL (СС-самост.)", "today": wsl_t, "yesterday": wsl_y, "total": wsl_tot},
+        {"label": "WR (СС-задания)", "today": wr_t, "yesterday": wr_y, "total": wr_tot},
+    ]
+    # Итог across all
+    today_total_all = sum(s["today"] for s in stats_by_type)
+    yesterday_total_all = sum(s["yesterday"] for s in stats_by_type)
+    total_all = sum(s["total"] for s in stats_by_type)
+
     return render(
         request,
         "core/leads_stats.html",
@@ -1576,6 +1621,10 @@ def leads_stats_placeholder(request: HttpRequest) -> HttpResponse:
             "today_count": today_count,
             "yesterday_count": yesterday_count,
             "total_count": total_count,
+            "stats_by_type": stats_by_type,
+            "today_total_all": today_total_all,
+            "yesterday_total_all": yesterday_total_all,
+            "total_all": total_all,
         },
     )
 

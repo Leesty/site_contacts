@@ -420,24 +420,68 @@ def _day_bounds_lead_stats():
 
 @login_required
 def admin_user_lead_stats(request: HttpRequest, user_id: int) -> HttpResponse:
-    """Статистика лидов по выбранному пользователю (для админа)."""
+    """Статистика отчётов по выбранному пользователю (для админа).
+
+    Считает approved за сегодня/вчера/всего по 7 моделям:
+    Lead, SearchReport, GroupReport, ManualSearchClaim, CallReport,
+    WorkerSelfLead, WorkerReport.
+    """
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
     target_user = get_object_or_404(User, pk=user_id)
     today_start, today_end, yesterday_start, yesterday_end = _day_bounds_lead_stats()
-    today_count = Lead.objects.filter(
-        user=target_user,
-        status=Lead.Status.APPROVED,
-        created_at__gte=today_start,
-        created_at__lt=today_end,
-    ).count()
-    yesterday_count = Lead.objects.filter(
-        user=target_user,
-        status=Lead.Status.APPROVED,
-        created_at__gte=yesterday_start,
-        created_at__lt=yesterday_end,
-    ).count()
-    total_count = Lead.objects.filter(user=target_user, status=Lead.Status.APPROVED).count()
+
+    from .models import (
+        SearchReport, GroupReport, ManualSearchClaim,
+        WorkerSelfLead, WorkerReport, CallReport,
+    )
+
+    def _counts(qs, status_attr_name, status_approved):
+        """Возвращает (today, yesterday, total) approved по qs.
+        Использует created_at + поле статуса с заданным значением."""
+        approved_qs = qs.filter(**{status_attr_name: status_approved})
+        return (
+            approved_qs.filter(
+                created_at__gte=today_start, created_at__lt=today_end,
+            ).count(),
+            approved_qs.filter(
+                created_at__gte=yesterday_start, created_at__lt=yesterday_end,
+            ).count(),
+            approved_qs.count(),
+        )
+
+    # Базовые qs по user_id (для большинства моделей)
+    base_lead = Lead.objects.filter(user=target_user)
+    base_sr = SearchReport.objects.filter(user=target_user)
+    base_gr = GroupReport.objects.filter(user=target_user)
+    base_msc = ManualSearchClaim.objects.filter(user=target_user)
+    base_cr = CallReport.objects.filter(cold_contact__owner=target_user)
+    # Воркерские — через worker_id
+    base_wsl = WorkerSelfLead.objects.filter(worker=target_user)
+    base_wr = WorkerReport.objects.filter(worker=target_user)
+
+    lead_t, lead_y, lead_tot = _counts(base_lead, "status", Lead.Status.APPROVED)
+    sr_t, sr_y, sr_tot = _counts(base_sr, "status", SearchReport.Status.APPROVED)
+    gr_t, gr_y, gr_tot = _counts(base_gr, "status", GroupReport.Status.APPROVED)
+    msc_t, msc_y, msc_tot = _counts(base_msc, "status", ManualSearchClaim.Status.APPROVED)
+    cr_t, cr_y, cr_tot = _counts(base_cr, "status", CallReport.Status.APPROVED)
+    wsl_t, wsl_y, wsl_tot = _counts(base_wsl, "status", WorkerSelfLead.Status.APPROVED)
+    wr_t, wr_y, wr_tot = _counts(base_wr, "status", "approved")
+
+    stats_by_type = [
+        {"label": "Lead (поиск+дожим)", "today": lead_t, "yesterday": lead_y, "total": lead_tot},
+        {"label": "🔗 SearchLink", "today": sr_t, "yesterday": sr_y, "total": sr_tot},
+        {"label": "📊 Группы", "today": gr_t, "yesterday": gr_y, "total": gr_tot},
+        {"label": "🔍 Не в боте", "today": msc_t, "yesterday": msc_y, "total": msc_tot},
+        {"label": "📞 Прозвон", "today": cr_t, "yesterday": cr_y, "total": cr_tot},
+        {"label": "WSL (СС-самост.)", "today": wsl_t, "yesterday": wsl_y, "total": wsl_tot},
+        {"label": "WR (СС-задания)", "today": wr_t, "yesterday": wr_y, "total": wr_tot},
+    ]
+    # Итог по всем типам
+    today_count = lead_t + sr_t + gr_t + msc_t + cr_t + wsl_t + wr_t
+    yesterday_count = lead_y + sr_y + gr_y + msc_y + cr_y + wsl_y + wr_y
+    total_count = lead_tot + sr_tot + gr_tot + msc_tot + cr_tot + wsl_tot + wr_tot
+
     return render(
         request,
         "core/admin_user_lead_stats.html",
@@ -445,6 +489,7 @@ def admin_user_lead_stats(request: HttpRequest, user_id: int) -> HttpResponse:
             "target_user": target_user,
             "today_count": today_count,
             "yesterday_count": yesterday_count,
+            "stats_by_type": stats_by_type,
             "total_count": total_count,
         },
     )
