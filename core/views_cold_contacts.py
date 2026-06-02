@@ -201,6 +201,13 @@ def contact_mark_lead(request: HttpRequest, contact_id: int) -> HttpResponse:
             tg_username = tg_username[len(p):]
             break
     tg_username = tg_username.lstrip("@").strip().rstrip("/")
+    # TG-аккаунт ОБЯЗАТЕЛЕН — без него мы не отследим что клиент вошёл в чат.
+    if not tg_username:
+        messages.error(
+            request,
+            "Укажите TG-аккаунт клиента — без него отчёт не пройдёт автовалидацию.",
+        )
+        return redirect("cold_contacts_list")
     raw_date = (request.POST.get("call_date") or "").strip()
     raw_time = (request.POST.get("call_time") or "").strip()
     attempt_no = request.POST.get("attempt_no") or "1"
