@@ -1235,8 +1235,19 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     tab = request.GET.get("tab", "pending")
 
     q = (request.GET.get("q") or "").strip().lstrip("@")[:100]
-    # Только отчёты где бот реально стартовал (вебхук подтвердил)
-    reports_qs = SearchReport.objects.filter(search_link__bot_started=True).select_related("user", "search_link", "reviewed_by")
+    # Видимы админу:
+    #  • Отчёты где бот реально стартовал (webhook подтвердил)
+    #  • Phone-callback с подтверждённой «1» — клиент нажал, робот зафиксировал.
+    #    Без этой ветки 26+ phone-callback отчётов невидимы и менеджеры не
+    #    получают свои 65₽ за подтверждённый робозвон.
+    from django.db.models import Q as _Q
+    reports_qs = SearchReport.objects.filter(
+        _Q(search_link__bot_started=True)
+        | _Q(
+            report_type=SearchReport.ReportType.PHONE_CALLBACK,
+            callback_confirmed_at__isnull=False,
+        )
+    ).select_related("user", "search_link", "reviewed_by")
 
     # Дубликаты вообще не показываем — они авто-rejected при создании.
     # Раньше была отдельная вкладка «Дубликаты», убрали (см. комментарий
@@ -1294,9 +1305,14 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
     paginator = Paginator(reports_qs.order_by("-created_at"), 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
-    # Счётчики — pending включает ВСЕ (включая manual_unverified, см. выше)
+    # Счётчики — pending включает ВСЕ (включая manual_unverified) + phone-callback
+    # с подтверждённой «1». Совпадает с фильтром в reports_qs выше.
     pending_count = SearchReport.objects.filter(
-        search_link__bot_started=True,
+        _Q(search_link__bot_started=True)
+        | _Q(
+            report_type=SearchReport.ReportType.PHONE_CALLBACK,
+            callback_confirmed_at__isnull=False,
+        ),
         search_link__duplicate_of__isnull=True,
         status=SearchReport.Status.PENDING,
     ).count()
