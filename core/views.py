@@ -1085,6 +1085,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 if current_balance < withdrawal_min:
                     messages.warning(request, f"Заявка на вывод доступна при балансе от {withdrawal_min} руб.")
                     return redirect("dashboard")
+                withdraw_amount = current_balance
                 WithdrawalRequest.objects.create(
                     user=user_refresh,
                     amount=current_balance,
@@ -1142,7 +1143,14 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     requested_amount = int(request.POST.get("amount") or 0)
                 except (TypeError, ValueError):
                     requested_amount = 0
-                if requested_amount >= withdrawal_min and requested_amount <= current_balance:
+                if requested_amount > 0:
+                    # Явно указана сумма — валидируем её, не подменяем молча на весь баланс.
+                    if requested_amount < withdrawal_min:
+                        messages.warning(request, f"Минимальная сумма вывода: {withdrawal_min} руб.")
+                        return redirect("dashboard")
+                    if requested_amount > current_balance:
+                        messages.error(request, "Сумма превышает баланс.")
+                        return redirect("dashboard")
                     withdraw_amount = requested_amount
                 else:
                     withdraw_amount = current_balance
@@ -1168,7 +1176,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     user_refresh.balance = current_balance - withdraw_amount
                     user_refresh.save(update_fields=["balance"])
                     log_balance_change(user_refresh, "balance", current_balance, user_refresh.balance, f"withdrawal -{withdraw_amount}", None)
-        _withdrawn_amount = withdraw_amount if _role in ("admin", "main_admin") else withdraw_amount
+        _withdrawn_amount = withdraw_amount
         messages.success(
             request,
             f"Заявка на вывод {_withdrawn_amount} руб. отправлена. {'Баланс обнулён. ' if _role not in ('balance_admin', 'admin', 'main_admin') else ''}Ожидайте решения администратора.",

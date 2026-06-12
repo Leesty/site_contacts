@@ -175,18 +175,17 @@ def admin_call_report_reject(request: HttpRequest, report_id: int) -> HttpRespon
     if request.method != "POST":
         return _resp(request, False, "Только POST.", status=405)
 
-    report = CallReport.objects.filter(pk=report_id).first()
-    if not report:
-        return _resp(request, False, "Отчёт не найден.", status=404)
-    if report.status == CallReport.Status.REJECTED:
-        return _resp(request, True, f"Отчёт #{report_id} уже отклонён.")
-
     reason = (request.POST.get("reason") or "").strip()[:1000]
     if not reason:
         return _resp(request, False, "Укажите причину отклонения.", status=400)
 
     with transaction.atomic():
-        # Если отчёт был approved — откат начислений
+        report = CallReport.objects.select_for_update().select_related("cold_contact").filter(pk=report_id).first()
+        if not report:
+            return _resp(request, False, "Отчёт не найден.", status=404)
+        if report.status == CallReport.Status.REJECTED:
+            return _resp(request, True, f"Отчёт #{report_id} уже отклонён.")
+        # Откат начислений — условие проверяется ПОД локом (защита от double-submit).
         if report.status == CallReport.Status.APPROVED and report.paid_reward:
             manager = User.objects.select_for_update().get(pk=report.cold_contact.owner_id)
             _old_m = manager.balance or 0
@@ -217,16 +216,15 @@ def admin_call_report_rework(request: HttpRequest, report_id: int) -> HttpRespon
     if request.method != "POST":
         return _resp(request, False, "Только POST.", status=405)
 
-    report = CallReport.objects.filter(pk=report_id).first()
-    if not report:
-        return _resp(request, False, "Отчёт не найден.", status=404)
-    if report.status == CallReport.Status.REWORK:
-        return _resp(request, True, f"Отчёт #{report_id} уже на доработке.")
-
     comment = (request.POST.get("comment") or "").strip()[:1000]
 
     with transaction.atomic():
-        # Если был approved — откат
+        report = CallReport.objects.select_for_update().select_related("cold_contact").filter(pk=report_id).first()
+        if not report:
+            return _resp(request, False, "Отчёт не найден.", status=404)
+        if report.status == CallReport.Status.REWORK:
+            return _resp(request, True, f"Отчёт #{report_id} уже на доработке.")
+        # Откат — под локом.
         if report.status == CallReport.Status.APPROVED and report.paid_reward:
             manager = User.objects.select_for_update().get(pk=report.cold_contact.owner_id)
             _old_m = manager.balance or 0

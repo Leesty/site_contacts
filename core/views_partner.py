@@ -343,8 +343,11 @@ def partner_withdrawal(request: HttpRequest) -> HttpResponse:
                 payout_details=payout_details,
                 status="pending",
             )
+            from .models import log_balance_change
+            _old_bal = user_refresh.balance or 0
             user_refresh.balance = 0
             user_refresh.save(update_fields=["balance"])
+            log_balance_change(user_refresh, "balance", _old_bal, 0, f"partner_withdrawal -{current_balance}", None)
 
         messages.success(request, f"Заявка на вывод {current_balance} руб. отправлена. Баланс обнулён.")
         return redirect("partner_dashboard")

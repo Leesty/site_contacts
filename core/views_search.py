@@ -1475,12 +1475,17 @@ def admin_search_report_reject(request: HttpRequest, report_id: int) -> HttpResp
         report = SearchReport.objects.select_for_update().select_related("user").filter(pk=report_id).first()
         if not report:
             return redirect("admin_search_reports_list")
+        # Идемпотентность: уже отклонён — не создаём дубль-лог (фарм +10₽) и
+        # не списываем второй раз.
+        if report.status == SearchReport.Status.REJECTED:
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"success": True, "message": f"Отчёт #{report_id} уже отклонён."})
+            return redirect("admin_search_reports_list")
         was_approved = report.status == SearchReport.Status.APPROVED
         report.status = SearchReport.Status.REJECTED
         report.rejection_reason = reason
         report.reviewed_at = timezone.now()
         report.reviewed_by = request.user
-        report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by"])
         if was_approved:
             from .models import PartnerEarning, log_balance_change
             pe = PartnerEarning.objects.filter(search_report=report).select_related("partner").first()
@@ -1490,15 +1495,17 @@ def admin_search_report_reject(request: HttpRequest, report_id: int) -> HttpResp
                 partner.balance = _old_pb - pe.amount
                 partner.save(update_fields=["balance"])
                 log_balance_change(partner, "balance", _old_pb, partner.balance, f"search_reject#{report_id} partner_rollback -{pe.amount}", request.user)
-                _ref_reward = SEARCH_REPORT_REWARD - pe.amount
                 pe.delete()
-            else:
-                _ref_reward = SEARCH_REPORT_REWARD
+            # Откатываем РОВНО ту сумму, что начислили юзеру при approve
+            # (report.paid_reward — учитывает phone 65₽ vs bot 150₽ и cut).
+            _ref_reward = report.paid_reward or 0
             lead_owner = User.objects.select_for_update().get(pk=report.user_id)
             _old = lead_owner.balance or 0
             lead_owner.balance = _old - _ref_reward
             lead_owner.save(update_fields=["balance"])
             log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"search_reject#{report_id} -{_ref_reward}", request.user)
+            report.paid_reward = 0
+        report.save(update_fields=["status", "rejection_reason", "reviewed_at", "reviewed_by", "paid_reward"])
 
         # Лог модерации (+10 ₽ админу)
         from .models import SearchReportReviewLog
@@ -1520,12 +1527,16 @@ def admin_search_report_rework(request: HttpRequest, report_id: int) -> HttpResp
         report = SearchReport.objects.select_for_update().select_related("user").filter(pk=report_id).first()
         if not report:
             return redirect("admin_search_reports_list")
+        # Идемпотентность: уже на доработке — не дублируем лог/списание.
+        if report.status == SearchReport.Status.REWORK:
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"success": True, "message": f"Отчёт #{report_id} уже на доработке."})
+            return redirect("admin_search_reports_list")
         was_approved = report.status == SearchReport.Status.APPROVED
         report.status = SearchReport.Status.REWORK
         report.rework_comment = comment
         report.reviewed_at = timezone.now()
         report.reviewed_by = request.user
-        report.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by"])
         if was_approved:
             from .models import PartnerEarning, log_balance_change
             pe = PartnerEarning.objects.filter(search_report=report).select_related("partner").first()
@@ -1535,15 +1546,15 @@ def admin_search_report_rework(request: HttpRequest, report_id: int) -> HttpResp
                 partner.balance = _old_pb - pe.amount
                 partner.save(update_fields=["balance"])
                 log_balance_change(partner, "balance", _old_pb, partner.balance, f"search_rework#{report_id} partner_rollback -{pe.amount}", request.user)
-                _ref_reward = SEARCH_REPORT_REWARD - pe.amount
                 pe.delete()
-            else:
-                _ref_reward = SEARCH_REPORT_REWARD
+            _ref_reward = report.paid_reward or 0
             lead_owner = User.objects.select_for_update().get(pk=report.user_id)
             _old = lead_owner.balance or 0
             lead_owner.balance = _old - _ref_reward
             lead_owner.save(update_fields=["balance"])
             log_balance_change(lead_owner, "balance", _old, lead_owner.balance, f"search_rework#{report_id} -{_ref_reward}", request.user)
+            report.paid_reward = 0
+        report.save(update_fields=["status", "rework_comment", "reviewed_at", "reviewed_by", "paid_reward"])
 
         # Лог модерации (+10 ₽ админу)
         from .models import SearchReportReviewLog

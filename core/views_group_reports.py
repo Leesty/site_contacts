@@ -735,11 +735,13 @@ def _split_group_report_payout(manager: "User") -> tuple[int, int, "User | None"
     if is_subreferrer(owner):
         # Sub-рефовод: pool полностью рефу, owner получает только milestone
         return pool, 0, owner
+    # Поля non-null с дефолтом 20; UI разрешает 0 («всё рефу»). НЕ применяем
+    # `or 50` — иначе ставка 0 молча превращалась бы в 50, реф недополучал.
     if owner.role == "partner":
-        cut = owner.partner_group_report_cut or 50
+        cut = owner.partner_group_report_cut
     else:
-        cut = owner.ref_group_report_cut or 50
-    cut = max(0, min(pool, int(cut)))
+        cut = owner.ref_group_report_cut
+    cut = max(0, min(pool, int(cut if cut is not None else 50)))
     return pool - cut, cut, owner
 
 
@@ -881,6 +883,13 @@ def admin_group_report_reject(request: HttpRequest, report_id: int) -> HttpRespo
 
         from .models import PartnerEarning
         with transaction.atomic():
+            # Перечитываем ПОД локом — защита от double-submit (двойной откат).
+            report = GroupReport.objects.select_for_update().get(pk=report_id)
+            if report.status == GroupReport.Status.REJECTED:
+                if is_ajax:
+                    return JsonResponse({"success": True, "message": f"Отчёт #{report_id} уже отклонён."})
+                messages.info(request, f"Отчёт #{report_id} уже отклонён.")
+                return _redirect_back_to_list(request)
             if report.status == GroupReport.Status.APPROVED and report.paid_reward:
                 owner = User.objects.select_for_update().get(pk=report.user_id)
                 _old = owner.balance or 0
@@ -957,6 +966,12 @@ def admin_group_report_rework(request: HttpRequest, report_id: int) -> HttpRespo
 
         from .models import PartnerEarning
         with transaction.atomic():
+            report = GroupReport.objects.select_for_update().get(pk=report_id)
+            if report.status == GroupReport.Status.REWORK:
+                if is_ajax:
+                    return JsonResponse({"success": True, "message": f"Отчёт #{report_id} уже на доработке."})
+                messages.info(request, f"Отчёт #{report_id} уже на доработке.")
+                return _redirect_back_to_list(request)
             if report.status == GroupReport.Status.APPROVED and report.paid_reward:
                 owner = User.objects.select_for_update().get(pk=report.user_id)
                 _old = owner.balance or 0

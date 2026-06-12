@@ -889,6 +889,13 @@ def admin_lead_reject(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
         if form.is_valid():
             with transaction.atomic():
                 lead_refresh = Lead.objects.select_for_update().select_related("user").get(pk=lead_id, user_id=user_id)
+                # Идемпотентность: уже отклонён — не создаём дубль LeadReviewLog
+                # (иначе админ фармит комиссию повторными reject).
+                if lead_refresh.status == Lead.Status.REJECTED:
+                    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                        return JsonResponse({"success": True, "message": f"Лид #{lead_id} уже отклонён."})
+                    messages.info(request, f"Лид #{lead_id} уже отклонён.")
+                    return redirect("admin_user_leads_list", user_id=user_id)
                 was_approved = lead_refresh.status == Lead.Status.APPROVED
                 lead_refresh.status = Lead.Status.REJECTED
                 lead_refresh.rejection_reason = form.cleaned_data["rejection_reason"].strip()
@@ -957,6 +964,12 @@ def admin_lead_rework(request: HttpRequest, user_id: int, lead_id: int) -> HttpR
         if form.is_valid():
             with transaction.atomic():
                 lead_refresh = Lead.objects.select_for_update().select_related("user").get(pk=lead_id, user_id=user_id)
+                # Идемпотентность: уже на доработке — без дубль-лога (анти-фарм).
+                if lead_refresh.status == Lead.Status.REWORK:
+                    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                        return JsonResponse({"success": True, "message": f"Лид #{lead_id} уже на доработке."})
+                    messages.info(request, f"Лид #{lead_id} уже на доработке.")
+                    return redirect("admin_user_leads_list", user_id=user_id)
                 was_approved = lead_refresh.status == Lead.Status.APPROVED
                 lead_refresh.status = Lead.Status.REWORK
                 lead_refresh.rework_comment = form.cleaned_data["rework_comment"].strip()
@@ -1182,22 +1195,19 @@ def admin_user_balance(request: HttpRequest, user_id: int) -> HttpResponse:
             dept = request.POST.get("dept", "search")
             with transaction.atomic():
                 user_locked = User.objects.select_for_update().get(pk=user_id)
+                _delta = amount if action == "add" else -amount
                 if dept == "dozhim":
                     current = user_locked.dozhim_balance or 0
-                    if action == "add":
-                        user_locked.dozhim_balance = current + amount
-                    else:
-                        user_locked.dozhim_balance = current - amount
+                    user_locked.dozhim_balance = current + _delta
                     user_locked.save(update_fields=["dozhim_balance"])
                     new_bal = user_locked.dozhim_balance
+                    log_balance_change(user_locked, "dozhim_balance", current, new_bal, f"admin_manual {'+' if _delta>=0 else ''}{_delta}", request.user)
                 else:
                     current = user_locked.balance or 0
-                    if action == "add":
-                        user_locked.balance = current + amount
-                    else:
-                        user_locked.balance = current - amount
+                    user_locked.balance = current + _delta
                     user_locked.save(update_fields=["balance"])
                     new_bal = user_locked.balance
+                    log_balance_change(user_locked, "balance", current, new_bal, f"admin_manual {'+' if _delta>=0 else ''}{_delta}", request.user)
             dept_label = "Дожим" if dept == "dozhim" else "Поиск"
             msg = f"Начислено {amount} руб." if action == "add" else f"Списано {amount} руб."
             messages.success(request, f"[{dept_label}] @{target_user.username}: {msg}. Баланс: {new_bal} руб.")
@@ -2587,11 +2597,15 @@ def standalone_admin_report_approve(request: HttpRequest, report_id: int) -> Htt
     if request.method != "POST":
         return redirect("standalone_admin_worker_reports")
     report = get_object_or_404(WorkerReport, pk=report_id, standalone_admin=request.user)
-    if report.status not in (WorkerReport.Status.PENDING, WorkerReport.Status.REWORK):
-        messages.warning(request, "Отчёт уже обработан.")
-        return redirect("standalone_admin_worker_reports")
     with transaction.atomic():
         report_refresh = WorkerReport.objects.select_for_update().get(pk=report_id, standalone_admin=request.user)
+        # Перепроверяем статус ПОД локом — иначе double-submit начислит дважды.
+        if report_refresh.status == WorkerReport.Status.APPROVED:
+            messages.info(request, "Отчёт уже одобрен.")
+            return redirect("standalone_admin_worker_reports")
+        if report_refresh.status not in (WorkerReport.Status.PENDING, WorkerReport.Status.REWORK):
+            messages.warning(request, "Отчёт уже обработан.")
+            return redirect("standalone_admin_worker_reports")
         report_refresh.status = WorkerReport.Status.APPROVED
         report_refresh.reviewed_at = timezone.now()
         report_refresh.reviewed_by = request.user
@@ -2600,8 +2614,10 @@ def standalone_admin_report_approve(request: HttpRequest, report_id: int) -> Htt
         report_refresh.save(update_fields=["status", "reviewed_at", "reviewed_by", "rework_comment", "rejection_reason", "updated_at"])
         reward = report_refresh.reward or 40
         worker = User.objects.select_for_update().get(pk=report_refresh.worker_id)
-        worker.balance = (worker.balance or 0) + reward
+        _old = worker.balance or 0
+        worker.balance = _old + reward
         worker.save(update_fields=["balance"])
+        log_balance_change(worker, "balance", _old, worker.balance, f"worker_report_approve#{report_id} +{reward}", request.user)
     messages.success(request, f"Отчёт одобрен. @{report_refresh.worker.username} +{reward} руб.")
     return redirect("standalone_admin_worker_reports")
 
@@ -2617,12 +2633,25 @@ def standalone_admin_report_reject(request: HttpRequest, report_id: int) -> Http
     if request.method == "POST":
         form = LeadRejectForm(request.POST)
         if form.is_valid():
-            report.status = WorkerReport.Status.REJECTED
-            report.rejection_reason = form.cleaned_data["rejection_reason"].strip()
-            report.rework_comment = ""
-            report.reviewed_at = timezone.now()
-            report.reviewed_by = request.user
-            report.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by", "updated_at"])
+            with transaction.atomic():
+                report_locked = WorkerReport.objects.select_for_update().get(pk=report_id, standalone_admin=request.user)
+                if report_locked.status == WorkerReport.Status.REJECTED:
+                    messages.info(request, "Отчёт уже отклонён.")
+                    return redirect("standalone_admin_worker_reports")
+                # Если был одобрен — откатываем начисление воркеру.
+                if report_locked.status == WorkerReport.Status.APPROVED:
+                    reward = report_locked.reward or 40
+                    worker = User.objects.select_for_update().get(pk=report_locked.worker_id)
+                    _old = worker.balance or 0
+                    worker.balance = _old - reward
+                    worker.save(update_fields=["balance"])
+                    log_balance_change(worker, "balance", _old, worker.balance, f"worker_report_reject#{report_id} -{reward}", request.user)
+                report_locked.status = WorkerReport.Status.REJECTED
+                report_locked.rejection_reason = form.cleaned_data["rejection_reason"].strip()
+                report_locked.rework_comment = ""
+                report_locked.reviewed_at = timezone.now()
+                report_locked.reviewed_by = request.user
+                report_locked.save(update_fields=["status", "rejection_reason", "rework_comment", "reviewed_at", "reviewed_by", "updated_at"])
             messages.success(request, f"Отчёт #{report_id} отклонён.")
             return redirect("standalone_admin_worker_reports")
     else:
@@ -2641,12 +2670,25 @@ def standalone_admin_report_rework(request: HttpRequest, report_id: int) -> Http
     if request.method == "POST":
         form = LeadReworkForm(request.POST)
         if form.is_valid():
-            report.status = WorkerReport.Status.REWORK
-            report.rework_comment = form.cleaned_data["rework_comment"].strip()
-            report.rejection_reason = ""
-            report.reviewed_at = timezone.now()
-            report.reviewed_by = request.user
-            report.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by", "updated_at"])
+            with transaction.atomic():
+                report_locked = WorkerReport.objects.select_for_update().get(pk=report_id, standalone_admin=request.user)
+                if report_locked.status == WorkerReport.Status.REWORK:
+                    messages.info(request, "Отчёт уже на доработке.")
+                    return redirect("standalone_admin_worker_reports")
+                # Если был одобрен — откатываем начисление воркеру.
+                if report_locked.status == WorkerReport.Status.APPROVED:
+                    reward = report_locked.reward or 40
+                    worker = User.objects.select_for_update().get(pk=report_locked.worker_id)
+                    _old = worker.balance or 0
+                    worker.balance = _old - reward
+                    worker.save(update_fields=["balance"])
+                    log_balance_change(worker, "balance", _old, worker.balance, f"worker_report_rework#{report_id} -{reward}", request.user)
+                report_locked.status = WorkerReport.Status.REWORK
+                report_locked.rework_comment = form.cleaned_data["rework_comment"].strip()
+                report_locked.rejection_reason = ""
+                report_locked.reviewed_at = timezone.now()
+                report_locked.reviewed_by = request.user
+                report_locked.save(update_fields=["status", "rework_comment", "rejection_reason", "reviewed_at", "reviewed_by", "updated_at"])
             messages.success(request, f"Отчёт #{report_id} отправлен на доработку.")
             return redirect("standalone_admin_worker_reports")
     else:
@@ -2696,8 +2738,12 @@ def standalone_admin_worker_withdrawal_requests(request: HttpRequest) -> HttpRes
                         wreq.save()
                         messages.success(request, f"Вывод @{wreq.worker.username} на {wreq.amount} руб. одобрен.")
                     else:
-                        wreq.worker.balance = (wreq.worker.balance or 0) + wreq.amount
-                        wreq.worker.save(update_fields=["balance"])
+                        # Лочим воркера (не stale-инстанс) + логируем возврат.
+                        worker = User.objects.select_for_update().get(pk=wreq.worker_id)
+                        _old = worker.balance or 0
+                        worker.balance = _old + wreq.amount
+                        worker.save(update_fields=["balance"])
+                        log_balance_change(worker, "balance", _old, worker.balance, f"worker_withdrawal_reject#{wreq.pk} +{wreq.amount}", request.user)
                         wreq.status = "rejected"
                         wreq.processed_at = now
                         wreq.processed_by = request.user
@@ -2821,14 +2867,16 @@ def standalone_admin_worker_self_lead_approve(request: HttpRequest, self_lead_id
     if request.method != "POST":
         return HttpResponseForbidden("Только POST.")
     self_lead = get_object_or_404(WorkerSelfLead, pk=self_lead_id, standalone_admin=request.user)
-    if self_lead.status not in (WorkerSelfLead.Status.PENDING, WorkerSelfLead.Status.REWORK, WorkerSelfLead.Status.REJECTED):
-        from django.contrib import messages
-        messages.warning(request, "Лид уже обработан.")
-        return redirect("standalone_admin_worker_self_leads")
 
     from django.db import transaction
     from django.utils import timezone
     with transaction.atomic():
+        # Перечитываем ПОД локом — иначе double-submit начислит дважды.
+        self_lead = WorkerSelfLead.objects.select_for_update().get(pk=self_lead_id, standalone_admin=request.user)
+        if self_lead.status == WorkerSelfLead.Status.APPROVED:
+            from django.contrib import messages
+            messages.info(request, "Лид уже одобрен.")
+            return redirect("standalone_admin_worker_self_leads")
         self_lead.status = WorkerSelfLead.Status.APPROVED
         self_lead.rejection_reason = ""
         self_lead.rework_comment = ""
