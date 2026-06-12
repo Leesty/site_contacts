@@ -142,6 +142,18 @@
       </div>
     </div>
     <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">💰 Заявки на вывод</span>
+            {% if withdrawal_requests_pending_count %}<span class="badge bg-danger" style="font-size:10px;">{{ withdrawal_requests_pending_count }}</span>{% endif %}
+          </div>
+          <p class="text-muted small mb-2" style="font-size:11px;">Одобрение, отклонение, отмена, история.</p>
+          <a class="btn btn-outline-primary btn-sm mt-1 py-0" href="{% url 'admin_withdrawal_requests' %}">Управление</a>
+        </div>
+      </div>
+    </div>
+    <div class="col">
       <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.02) 100%); border: 1px solid rgba(99,102,241,0.25);">
         <div class="card-body py-3">
           <div class="d-flex align-items-center justify-content-between mb-1">

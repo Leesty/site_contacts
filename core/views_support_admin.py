@@ -1530,8 +1530,8 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
     баланса (обычный/дожим), рефовод, Telegram ID, дата подачи, дата
     одобрения, кто одобрил.
     """
-    if getattr(request.user, "role", None) not in ("main_admin", "balance_admin"):
-        return HttpResponseForbidden("Только для главного админа или баланс-админа.")
+    if getattr(request.user, "role", None) not in ("main_admin", "admin", "balance_admin"):
+        return HttpResponseForbidden("Недостаточно прав.")
 
     from datetime import timedelta, datetime as _dt
 
@@ -1661,13 +1661,14 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
 def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
     """Список заявок на вывод (обычные + воркерские). main_admin + balance_admin.
 
-    balance_admin работает с выплатами, поэтому ему тоже доступны
-    approve/reject/история — раньше страница была main_admin-only,
-    из-за чего баланс-админ не мог отменить вывод и не видел историю.
+    Заявки обрабатывают обычные админы (role=admin), баланс-админы и
+    главный админ — всем им доступны approve/reject/отмена/история.
+    Раньше страница была main_admin-only, из-за чего обычный админ
+    не мог отменить вывод и не видел историю.
     """
     _role = getattr(request.user, "role", None)
-    if _role not in ("main_admin", "balance_admin"):
-        return HttpResponseForbidden("Только для главного админа или баланс-админа.")
+    if _role not in ("main_admin", "admin", "balance_admin"):
+        return HttpResponseForbidden("Недостаточно прав для управления выводами.")
     from .models import WorkerWithdrawalRequest
     if request.method == "POST":
         action = request.POST.get("action")
