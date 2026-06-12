@@ -45,6 +45,7 @@
                 <th>Сумма</th>
                 <th>Статус</th>
                 <th>Обработано</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -58,6 +59,15 @@
                     {% else %}<span class="badge bg-warning text-dark">На рассмотрении</span>{% endif %}
                   </td>
                   <td class="small text-muted">{{ w.processed_at|date:"d.m.Y H:i"|default:"—" }}</td>
+                  <td>
+                    {% if w.status == 'pending' %}
+                      <form method="post" action="{% url 'withdrawal_cancel_own' w.pk %}" class="m-0"
+                            onsubmit="return confirm('Отменить заявку на вывод {{ w.amount }} ₽? Средства вернутся на баланс.');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger btn-sm py-0" style="font-size:11px;">Отменить</button>
+                      </form>
+                    {% else %}<span class="text-muted">—</span>{% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>

@@ -882,6 +882,42 @@ def smz_registration(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@require_http_methods(["POST"])
+def withdrawal_cancel_own(request: HttpRequest, wr_id: int) -> HttpResponse:
+    """Пользователь отменяет СВОЮ заявку на вывод, пока она на рассмотрении.
+
+    role=user — баланс был обнулён при создании, поэтому возвращаем сумму
+    на balance/dozhim_balance (определяем отдел по префиксу payout_details).
+    Остальные роли (admin/main_admin/balance_admin) — баланс вычисляемый
+    (earned − withdrawn), поле трогать не нужно: достаточно сменить статус.
+    """
+    user = request.user
+    wr = get_object_or_404(WithdrawalRequest, pk=wr_id, user=user, status="pending")
+    from .models import log_balance_change as _log
+    with transaction.atomic():
+        wr_locked = WithdrawalRequest.objects.select_for_update().get(pk=wr.pk, status="pending")
+        _role = getattr(user, "role", None)
+        if _role == "user":
+            u = User.objects.select_for_update().get(pk=user.pk)
+            is_dozhim = wr_locked.payout_details and wr_locked.payout_details.startswith("[Дожим]")
+            if is_dozhim:
+                _old = u.dozhim_balance or 0
+                u.dozhim_balance = _old + wr_locked.amount
+                u.save(update_fields=["dozhim_balance"])
+                _log(u, "dozhim_balance", _old, u.dozhim_balance, f"withdrawal_cancel_own#{wr_locked.pk} +{wr_locked.amount}", user)
+            else:
+                _old = u.balance or 0
+                u.balance = _old + wr_locked.amount
+                u.save(update_fields=["balance"])
+                _log(u, "balance", _old, u.balance, f"withdrawal_cancel_own#{wr_locked.pk} +{wr_locked.amount}", user)
+        wr_locked.status = "rejected"
+        wr_locked.processed_at = timezone.now()
+        wr_locked.save(update_fields=["status", "processed_at"])
+    messages.success(request, f"Заявка на вывод {wr.amount} ₽ отменена. Средства снова доступны.")
+    return redirect("request_withdrawal_create")
+
+
+@login_required
 def receipt_upload(request: HttpRequest, wr_id: int) -> HttpResponse:
     """Загрузка чеков для выплаты. Теперь поддерживает несколько файлов разом
     (выплата может быть частями)."""
@@ -927,8 +963,9 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard")
     user = request.user
 
-    # СМЗ-гейт: для всех кроме main_admin
-    if getattr(user, "role", None) != "main_admin":
+    # Гейты СМЗ и чека применяем только к POST (созданию заявки).
+    # GET — это просмотр истории своих выводов, его не блокируем.
+    if request.method == "POST" and getattr(user, "role", None) != "main_admin":
         if getattr(user, "smz_status", "none") != "approved":
             _smz = getattr(user, "smz_status", "none")
             if _smz == "pending":

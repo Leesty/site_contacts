@@ -82,6 +82,7 @@ urlpatterns = [
     path("balance/smz/", views.smz_registration, name="smz_registration"),
     path("balance/withdraw/", views.request_withdrawal_create, name="request_withdrawal_create"),
     path("balance/withdraw/<int:wr_id>/receipt/", views.receipt_upload, name="receipt_upload"),
+    path("balance/withdraw/<int:wr_id>/cancel/", views.withdrawal_cancel_own, name="withdrawal_cancel_own"),
     path("leads/report/", views.leads_report_placeholder, name="leads_report"),
     path("leads/my/", views.leads_my_list, name="leads_my_list"),
     path("leads/<int:lead_id>/redo/", views.lead_redo, name="lead_redo"),
