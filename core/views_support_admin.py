@@ -1857,12 +1857,12 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
             if rejected_count:
                 messages.info(request, f"Отклонено заявок: {rejected_count}. Балансы восстановлены.")
             return redirect("admin_withdrawal_requests")
-    all_pending = WithdrawalRequest.objects.filter(status="pending").select_related("user").order_by("created_at")
+    all_pending = WithdrawalRequest.objects.filter(status="pending").select_related("user", "user__partner_owner").order_by("created_at")
     pending_regular = [r for r in all_pending if not r.user.partner_owner_id]
     pending_referrals = [r for r in all_pending if r.user.partner_owner_id]
     history = (
         WithdrawalRequest.objects.exclude(status="pending")
-        .select_related("user", "processed_by")
+        .select_related("user", "user__partner_owner", "processed_by")
         .order_by("-created_at")[:200]
     )
     # Воркерские заявки (СС-ветка) — отдельная модель и отдельный список

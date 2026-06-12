@@ -100,20 +100,28 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
     if q:
         from django.db.models import Q
         links_qs = links_qs.filter(Q(lead_name__icontains=q) | Q(code__icontains=q))
-    links_qs = links_qs.order_by("-created_at")
+    # select_related на reverse OneToOne `report` — убирает N+1 при выводе статусов.
+    links_qs = links_qs.select_related("report").order_by("-created_at")
 
-    # Счётчики для бейджей
-    user_links = SearchLink.objects.filter(user=request.user)
-    rework_count = user_links.filter(report__status=SearchReport.Status.REWORK).count()
-    rejected_count = user_links.filter(report__status=SearchReport.Status.REJECTED).count()
-    pending_count = user_links.filter(report__status=SearchReport.Status.PENDING).count()
-    bot_waiting_count = user_links.filter(bot_started=False).count()
-    bot_started_count = user_links.filter(bot_started=True).count()
+    # Счётчики для бейджей — одним aggregate вместо 5 отдельных COUNT'ов.
+    from django.db.models import Count, Q as _Q
+    _c = SearchLink.objects.filter(user=request.user).aggregate(
+        rework=Count("id", filter=_Q(report__status=SearchReport.Status.REWORK)),
+        rejected=Count("id", filter=_Q(report__status=SearchReport.Status.REJECTED)),
+        pending=Count("id", filter=_Q(report__status=SearchReport.Status.PENDING)),
+        bot_waiting=Count("id", filter=_Q(bot_started=False)),
+        bot_started=Count("id", filter=_Q(bot_started=True)),
+    )
+    rework_count = _c["rework"]
+    rejected_count = _c["rejected"]
+    pending_count = _c["pending"]
+    bot_waiting_count = _c["bot_waiting"]
+    bot_started_count = _c["bot_started"]
 
     paginator = Paginator(links_qs, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
-    # Подгрузить отчёты для отображения статусов
+    # Подгрузить отчёты для отображения статусов (уже в select_related, без N+1).
     for link in page_obj:
         try:
             link.report_obj = link.report

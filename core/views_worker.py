@@ -88,7 +88,7 @@ def worker_tasks(request: HttpRequest) -> HttpResponse:
     user = request.user
     assignments_qs = (
         LeadAssignment.objects.filter(worker=user)
-        .select_related("lead", "lead__lead_type")
+        .select_related("lead", "lead__lead_type", "report")
         .order_by("-created_at")
     )
     q = (request.GET.get("q") or "").strip()

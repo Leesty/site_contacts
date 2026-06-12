@@ -43,12 +43,14 @@ class User(AbstractUser):
         max_length=20,
         choices=Role.choices,
         default=Role.USER,
+        db_index=True,
         help_text="Роль в системе (права доступа).",
     )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
         default=Status.PENDING,
+        db_index=True,
         help_text="Статус модерации пользователя.",
     )
     telegram_id = models.BigIntegerField(
@@ -517,6 +519,11 @@ class Lead(TimeStampedModel):
     class Meta:
         verbose_name = "Лид"
         verbose_name_plural = "Лиды"
+        indexes = [
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["user", "status"]),
+            models.Index(fields=["reviewed_at"]),
+        ]
 
     def __str__(self) -> str:  # pragma: no cover - простое представление
         return f"Лид #{self.pk} от {self.user}"
@@ -542,7 +549,7 @@ class LeadReviewLog(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="lead_review_logs",
     )
-    action = models.CharField(max_length=20, choices=Action.choices)
+    action = models.CharField(max_length=20, choices=Action.choices, db_index=True)
     balance_admin_rate_snapshot = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,
         help_text="Ставка баланс-админа на момент одобрения (руб.). NULL = старая ставка 5 руб.",
@@ -640,6 +647,7 @@ class ContactRequest(TimeStampedModel):
         max_length=20,
         choices=[("pending", "Ожидает"), ("resolved", "Обработано")],
         default="pending",
+        db_index=True,
     )
     resolved_at = models.DateTimeField(null=True, blank=True)
     resolved_by = models.ForeignKey(
@@ -676,6 +684,7 @@ class WithdrawalRequest(TimeStampedModel):
         max_length=20,
         choices=[("pending", "На рассмотрении"), ("approved", "Выполнено"), ("rejected", "Отклонено")],
         default="pending",
+        db_index=True,
     )
     processed_at = models.DateTimeField(null=True, blank=True)
     processed_by = models.ForeignKey(
@@ -966,6 +975,7 @@ class WorkerWithdrawalRequest(TimeStampedModel):
         max_length=20,
         choices=[("pending", "На рассмотрении"), ("approved", "Выплачено"), ("rejected", "Отклонено")],
         default="pending",
+        db_index=True,
     )
     processed_at = models.DateTimeField(null=True, blank=True)
     processed_by = models.ForeignKey(
@@ -1585,6 +1595,9 @@ class SearchReport(TimeStampedModel):
         verbose_name = "Отчёт SearchLink"
         verbose_name_plural = "Отчёты SearchLink"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"SearchReport #{self.pk} (link={self.search_link.code})"
