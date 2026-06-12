@@ -29,4 +29,43 @@
       </form>
     </div>
   </div>
+
+  {# История выводов пользователя #}
+  <div class="card shadow-sm mt-3">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>История выводов</strong>
+    </div>
+    <div class="card-body p-0">
+      {% if my_withdrawals %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Сумма</th>
+                <th>Статус</th>
+                <th>Обработано</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for w in my_withdrawals %}
+                <tr>
+                  <td class="small text-muted">{{ w.created_at|date:"d.m.Y H:i" }}</td>
+                  <td>{{ w.amount }} ₽</td>
+                  <td>
+                    {% if w.status == 'approved' %}<span class="badge bg-success">Выполнено</span>
+                    {% elif w.status == 'rejected' %}<span class="badge bg-secondary">Отклонено</span>
+                    {% else %}<span class="badge bg-warning text-dark">На рассмотрении</span>{% endif %}
+                  </td>
+                  <td class="small text-muted">{{ w.processed_at|date:"d.m.Y H:i"|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted small p-3 mb-0">Выводов ещё не было.</p>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}

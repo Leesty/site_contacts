@@ -1138,7 +1138,11 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         )
         return redirect("dashboard")
 
-    # GET — показать форму c реквизитами
+    # GET — показать форму c реквизитами + история выводов юзера
+    my_withdrawals = (
+        WithdrawalRequest.objects.filter(user=user)
+        .order_by("-created_at")[:50]
+    )
     return render(
         request,
         "core/withdrawal_request.html",
@@ -1148,6 +1152,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             "withdrawal_min_balance": withdrawal_min,
             "payout_details": getattr(user, "smz_fio", "") or "",
             "dept": dept,
+            "my_withdrawals": my_withdrawals,
         },
     )
 

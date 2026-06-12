@@ -1530,8 +1530,8 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
     баланса (обычный/дожим), рефовод, Telegram ID, дата подачи, дата
     одобрения, кто одобрил.
     """
-    if getattr(request.user, "role", None) != "main_admin":
-        return HttpResponseForbidden("Только для главного админа.")
+    if getattr(request.user, "role", None) not in ("main_admin", "balance_admin"):
+        return HttpResponseForbidden("Только для главного админа или баланс-админа.")
 
     from datetime import timedelta, datetime as _dt
 
@@ -1659,9 +1659,15 @@ def admin_withdrawal_requests_export(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
-    """Список заявок на вывод (обычные + воркерские). Только main_admin."""
-    if getattr(request.user, "role", None) != "main_admin":
-        return HttpResponseForbidden("Только для главного админа.")
+    """Список заявок на вывод (обычные + воркерские). main_admin + balance_admin.
+
+    balance_admin работает с выплатами, поэтому ему тоже доступны
+    approve/reject/история — раньше страница была main_admin-only,
+    из-за чего баланс-админ не мог отменить вывод и не видел историю.
+    """
+    _role = getattr(request.user, "role", None)
+    if _role not in ("main_admin", "balance_admin"):
+        return HttpResponseForbidden("Только для главного админа или баланс-админа.")
     from .models import WorkerWithdrawalRequest
     if request.method == "POST":
         action = request.POST.get("action")
@@ -1750,6 +1756,57 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                 wreq.processed_at = now
                 wreq.processed_by = request.user
                 wreq.save(update_fields=["status", "receipt_status", "processed_at", "processed_by"])
+            return redirect("admin_withdrawal_requests")
+        # ── Отмена уже одобренной заявки (вернуть деньги на баланс) ───────
+        if req_id and action == "cancel_approved":
+            with transaction.atomic():
+                wreq = (
+                    WithdrawalRequest.objects.select_for_update()
+                    .select_related("user")
+                    .filter(pk=req_id, status="approved")
+                    .first()
+                )
+                if not wreq:
+                    messages.warning(request, "Заявка не найдена или не в статусе «одобрено».")
+                    return redirect("admin_withdrawal_requests")
+                _is_dozhim_wr = wreq.payout_details and wreq.payout_details.startswith("[Дожим]")
+                if _is_dozhim_wr:
+                    _old = wreq.user.dozhim_balance or 0
+                    wreq.user.dozhim_balance = _old + wreq.amount
+                    wreq.user.save(update_fields=["dozhim_balance"])
+                    log_balance_change(wreq.user, "dozhim_balance", _old, wreq.user.dozhim_balance, f"withdrawal_cancel_approved#{wreq.pk} +{wreq.amount}", request.user)
+                else:
+                    _old = wreq.user.balance or 0
+                    wreq.user.balance = _old + wreq.amount
+                    wreq.user.save(update_fields=["balance"])
+                    log_balance_change(wreq.user, "balance", _old, wreq.user.balance, f"withdrawal_cancel_approved#{wreq.pk} +{wreq.amount}", request.user)
+                wreq.status = "rejected"
+                wreq.processed_at = timezone.now()
+                wreq.processed_by = request.user
+                wreq.save(update_fields=["status", "processed_at", "processed_by"])
+            messages.success(request, f"Одобренный вывод @{wreq.user.username} на {wreq.amount} ₽ отменён. Баланс восстановлен.")
+            return redirect("admin_withdrawal_requests")
+        # Отмена одобренной воркер-заявки
+        if worker_req_id and action == "cancel_approved":
+            with transaction.atomic():
+                wreq = (
+                    WorkerWithdrawalRequest.objects.select_for_update()
+                    .select_related("worker")
+                    .filter(pk=worker_req_id, status="approved")
+                    .first()
+                )
+                if not wreq:
+                    messages.warning(request, "Воркер-заявка не найдена или не одобрена.")
+                    return redirect("admin_withdrawal_requests")
+                _old = wreq.worker.balance or 0
+                wreq.worker.balance = _old + wreq.amount
+                wreq.worker.save(update_fields=["balance"])
+                log_balance_change(wreq.worker, "balance", _old, wreq.worker.balance, f"worker_withdrawal_cancel_approved#{wreq.pk} +{wreq.amount}", request.user)
+                wreq.status = "rejected"
+                wreq.processed_at = timezone.now()
+                wreq.processed_by = request.user
+                wreq.save(update_fields=["status", "processed_at", "processed_by"])
+            messages.success(request, f"Одобренный вывод воркера @{wreq.worker.username} на {wreq.amount} ₽ отменён. Баланс восстановлен.")
             return redirect("admin_withdrawal_requests")
         # ── массовое действие ───────────────────────────────────────────
         bulk_ids = request.POST.getlist("bulk_ids")
