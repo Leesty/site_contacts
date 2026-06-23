@@ -9,7 +9,6 @@ from . import views_partner
 from . import views_search
 from . import views_support_admin
 from . import views_worker
-from . import views_zavod_lidov
 
 
 urlpatterns = [
@@ -401,10 +400,6 @@ urlpatterns = [
     path("api/curators/", views_support_admin.api_curators_list, name="api_curators_list"),
     path("api/curators/<int:curator_id>/referrals/", views_support_admin.api_curator_referrals, name="api_curator_referrals"),
     path("api/users-stats/", views_support_admin.api_users_with_stats, name="api_users_with_stats"),
-    # Завод-лидов: обмен по проектам клиент ↔ главный админ
-    path("zavod/", views_zavod_lidov.customer_dashboard, name="zavod_lidov_customer"),
-    path("zavod/download/<int:project_id>/", views_zavod_lidov.customer_download_excel, name="zavod_lidov_download"),
-    path("zavod/finish/<int:project_id>/", views_zavod_lidov.customer_finish_project, name="zavod_lidov_finish"),
     # Списки холодных контактов (user / worker) — воронка 3 попыток
     path("cold-contacts/", views_cold_contacts.contacts_list, name="cold_contacts_list"),
     path("cold-contacts/add/", views_cold_contacts.contacts_add, name="cold_contacts_add"),
@@ -419,9 +414,6 @@ urlpatterns = [
     path("staff/call-reports/<int:report_id>/reject/", views_call_reports.admin_call_report_reject, name="admin_call_report_reject"),
     path("staff/call-reports/<int:report_id>/rework/", views_call_reports.admin_call_report_rework, name="admin_call_report_rework"),
     path("staff/call-reports/<int:report_id>/screencast/", views_call_reports.admin_call_report_screencast, name="admin_call_report_screencast"),
-    path("staff/zavod-lidov/", views_zavod_lidov.admin_overview, name="admin_zavod_lidov_overview"),
-    path("staff/zavod-lidov/pool/<int:customer_id>/", views_zavod_lidov.admin_pool, name="admin_zavod_lidov_pool"),
-    path("staff/zavod-lidov/<int:project_id>/", views_zavod_lidov.admin_project_detail, name="admin_zavod_lidov_project"),
     # ═══ GroupReport (бета) ═══
     # Менеджер
     path("reports/groups/", views_group_reports.manager_group_reports_list, name="manager_group_reports_list"),

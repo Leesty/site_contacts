@@ -1,16 +1,18 @@
 <div class="support-panel-inner">
   <div class="support-panel-header d-flex align-items-center justify-content-between">
     <span>Чат с поддержкой</span>
-    <button type="button" class="support-panel-close btn btn-link btn-sm p-0 text-white-50" aria-label="Закрыть">×</button>
+    <button type="button" class="support-panel-close btn btn-link btn-sm p-0" style="color: #cbd5e1;" aria-label="Закрыть чат поддержки">×</button>
   </div>
-  <div class="support-panel-body">
+  <div class="support-panel-body" role="log" aria-live="polite">
     {% include "core/partials/support_messages.html" with support_messages=support_messages %}
   </div>
   <form id="support-form" class="support-panel-form" enctype="multipart/form-data" method="post" action="{% url 'support_widget' %}">
     {% csrf_token %}
-    <textarea name="text" class="form-control form-control-sm mb-1" rows="2" placeholder="Сообщение..."></textarea>
+    <label for="support-msg-input" class="visually-hidden">Сообщение в поддержку</label>
+    <textarea name="text" id="support-msg-input" class="form-control form-control-sm mb-1" rows="2" placeholder="Сообщение..." aria-label="Текст сообщения в поддержку"></textarea>
     <div class="d-flex align-items-center gap-2">
-      <input type="file" name="attachment" class="form-control form-control-sm" accept="image/*,.pdf" style="max-width: 180px;">
+      <label for="support-file-input" class="visually-hidden">Приложить файл</label>
+      <input type="file" name="attachment" id="support-file-input" class="form-control form-control-sm" accept="image/*,.pdf" style="max-width: 180px;" aria-label="Приложить файл">
       <button type="submit" class="btn btn-primary btn-sm">Отправить</button>
     </div>
   </form>

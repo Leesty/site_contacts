@@ -163,8 +163,6 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         return redirect("worker_dashboard")
     if _is_partner(user):
         return redirect("partner_dashboard")
-    if getattr(user, "role", None) == "lid_customer":
-        return redirect("zavod_lidov_customer")
     if _is_balance_admin(user):
         from django.db.models import Sum, Q as _Q
         from .models import LeadReviewLog, SearchReport
@@ -439,12 +437,6 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                     ctx["calendar_today_count"] = _cur.fetchone()[0]
             except Exception:
                 ctx["calendar_today_count"] = 0
-            # Завод-лидов: сколько клиентов сегодня ждут ответ
-            try:
-                from .views_zavod_lidov import pending_admin_attention_count
-                ctx["zavod_lidov_pending_count"] = pending_admin_attention_count()
-            except Exception:
-                ctx["zavod_lidov_pending_count"] = 0
             return render(request, "core/dashboard_main_admin.html", ctx)
 
         return render(request, "core/dashboard_admin.html", ctx)
