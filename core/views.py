@@ -45,6 +45,11 @@ def index(request: HttpRequest) -> HttpResponse:
     return render(request, "core/index.html")
 
 
+def commercial_offer(request: HttpRequest) -> HttpResponse:
+    """Публичная страница коммерческого предложения — белый фон + видео-плеер."""
+    return render(request, "core/commercial_offer.html")
+
+
 def register(request: HttpRequest) -> HttpResponse:
     """Регистрация нового пользователя.
 
