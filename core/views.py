@@ -50,6 +50,11 @@ def commercial_offer(request: HttpRequest) -> HttpResponse:
     return render(request, "core/commercial_offer.html")
 
 
+def contract_template(request: HttpRequest) -> HttpResponse:
+    """Публичная страница: просмотр шаблона договора + кнопки скачать (вверху и внизу)."""
+    return render(request, "core/contract_template.html")
+
+
 def register(request: HttpRequest) -> HttpResponse:
     """Регистрация нового пользователя.
 
