@@ -16,6 +16,9 @@
       {% else %}
         <span class="badge bg-primary fs-6 px-3 py-2">Баланс: {{ user.balance|default:0 }} ₽</span>
       {% endif %}
+      {% if user.legacy_balance %}
+        <span class="badge bg-secondary fs-6 px-3 py-2" title="Замороженный баланс прошлой системы. Вывод станет доступен позже.">Легаси: {{ user.legacy_balance }} ₽</span>
+      {% endif %}
     </div>
   </div>
   {% if user.smz_status == 'none' or user.smz_status == 'rejected' %}

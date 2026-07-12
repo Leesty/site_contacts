@@ -70,6 +70,11 @@ class User(AbstractUser):
         default=0,
         help_text="Баланс пользователя за Отдел дожима (руб.).",
     )
+    legacy_balance = models.IntegerField(
+        default=0,
+        help_text="Легаси-баланс (руб.): замороженный положительный баланс старой "
+                  "системы на 2026-07. Вывод пока недоступен — выплатим позже.",
+    )
     balance_admin_searchlink_rate = models.DecimalField(
         max_digits=6, decimal_places=2, default=15,
         help_text="Ставка баланс-админа за каждый одобренный SearchLink-отчёт от не-реферала.",
