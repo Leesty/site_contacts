@@ -311,6 +311,9 @@ def manager_group_reports_list(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def manager_group_report_create(request: HttpRequest) -> HttpResponse:
+    # Отчёты по группам сняты (2026-07): приём закрыт, начисляем через новую воронку.
+    if not getattr(settings, "LEGACY_REWARDS_ENABLED", False):
+        return redirect("dashboard")
     if not _is_manager_with_right(request.user):
         return HttpResponseForbidden("У вас нет права на отчёты по группам.")
 

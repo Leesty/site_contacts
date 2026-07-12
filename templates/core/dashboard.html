@@ -262,7 +262,8 @@
     </div>
 
     {% if user.can_create_group_reports %}
-      {# ═══ Отчёты по группам ═══ #}
+      {# ═══ Отчёты по группам — отчётов больше нет (2026-07), скрыто за legacy_rewards_enabled ═══ #}
+      {% if legacy_rewards_enabled %}
       <div class="col">
         <div class="card h-100 shadow-sm" style="border:1px solid rgba(99,102,241,0.3); background: linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(99,102,241,0.02) 100%);">
           <div class="card-body">
@@ -281,6 +282,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
 
       {% if user.status == 'approved' %}
       <div class="col">
