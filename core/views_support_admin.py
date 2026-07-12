@@ -651,7 +651,12 @@ def admin_leads_all_new(request: HttpRequest) -> HttpResponse:
         base = Lead.objects.select_related("user", "lead_type", "base_type", "reviewed_by")
         # Исключить дожим-лиды рефов Nastya_Partner (id=260) — она проверяет их сама
         base = base.exclude(lead_type__slug="dozhim", user__partner_owner_id=260)
-        if dept == "dozhim":
+        dozhim_enabled = getattr(settings, "DOZHIM_ENABLED", False)
+        if not dozhim_enabled:
+            # Отдел дожима скрыт (2026-07) — админы не видят дожим-лиды нигде,
+            # даже при dept=dozhim в URL. Код сохранён; вернуть = DOZHIM_ENABLED=true.
+            base = base.exclude(lead_type__slug="dozhim")
+        elif dept == "dozhim":
             base = base.filter(lead_type__slug="dozhim")
         elif dept == "search":
             base = base.exclude(lead_type__slug="dozhim")

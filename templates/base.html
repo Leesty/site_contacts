@@ -28,8 +28,8 @@
         <div class="collapse navbar-collapse" id="navbarMain">
           <ul class="navbar-nav me-auto mb-2 mb-lg-0 align-items-lg-center">
             {% if user.is_authenticated %}
-              {# — Переключатель отделов (только role=user, approved) — #}
-              {% if user.role == 'user' and user.status == 'approved' %}
+              {# — Переключатель отделов (только role=user, approved; скрыт при выключенном дожиме) — #}
+              {% if user.role == 'user' and user.status == 'approved' and dozhim_enabled %}
               <li class="nav-item me-lg-3 my-1 my-lg-0">
                 <form method="post" action="{% url 'switch_department' %}" class="d-inline" id="dept-switch-form">
                   {% csrf_token %}

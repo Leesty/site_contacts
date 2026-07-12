@@ -13,11 +13,14 @@
     </div>
   </div>
 
+  {# Фильтр по отделам — только когда дожим включён. Скрыт (2026-07): один отдел. #}
+  {% if dozhim_enabled %}
   <div class="btn-group btn-group-sm mb-2">
     <a class="btn {% if dept == '' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?tab={{ tab }}">Все отделы</a>
     <a class="btn {% if dept == 'search' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?tab={{ tab }}&dept=search">Поиск</a>
     <a class="btn {% if dept == 'dozhim' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?tab={{ tab }}&dept=dozhim">Дожим</a>
   </div>
+  {% endif %}
 
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item">

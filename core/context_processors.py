@@ -44,12 +44,24 @@ def admin_balance_context(request):
 
 
 def department_context(request):
-    """Текущий отдел (поиск/дожим) для переключателя в навбаре."""
+    """Текущий отдел (поиск/дожим) для переключателя в навбаре.
+
+    Флаг DOZHIM_ENABLED (settings) глобально скрывает отдел дожима: когда он
+    выключен, отдел всегда «search» независимо от сессии, а шаблоны прячут
+    переключатель/навигацию по `dozhim_enabled`.
+    """
+    from django.conf import settings
+    dozhim_enabled = getattr(settings, "DOZHIM_ENABLED", False)
+    if not dozhim_enabled:
+        return {"department": "search", "dozhim_enabled": False}
     if not getattr(request, "user", None) or not request.user.is_authenticated:
-        return {"department": "search"}
+        return {"department": "search", "dozhim_enabled": True}
     if getattr(request.user, "role", None) != "user":
-        return {"department": "search"}
-    return {"department": request.session.get("department", "search")}
+        return {"department": "search", "dozhim_enabled": True}
+    return {
+        "department": request.session.get("department", "search"),
+        "dozhim_enabled": True,
+    }
 
 
 def site_url(request):

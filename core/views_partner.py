@@ -1,5 +1,6 @@
 """Вьюхи для партнёрского кабинета."""
 import logging
+from functools import wraps
 from uuid import uuid4
 
 from django.conf import settings
@@ -20,6 +21,20 @@ LEAD_APPROVE_REWARD = getattr(settings, "LEAD_APPROVE_REWARD", 40)
 logger = logging.getLogger(__name__)
 
 PARTNER_EARN_PER_LEAD_DEFAULT = 10  # руб. за каждый одобренный лид (по умолчанию)
+
+
+def dozhim_required(view_func):
+    """Гард: партнёрские дожим-вьюхи доступны только при DOZHIM_ENABLED=true.
+
+    Отдел дожима скрыт на проде (2026-07); код сохранён. Вернуть = env
+    DOZHIM_ENABLED=true. При скрытом отделе — редирект на партнёрский дашборд.
+    """
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, "DOZHIM_ENABLED", False):
+            return redirect("partner_dashboard")
+        return view_func(request, *args, **kwargs)
+    return _wrapped
 
 
 def _require_partner(request: HttpRequest) -> bool:
@@ -445,6 +460,7 @@ from django.views.decorators.http import require_http_methods
 
 
 @login_required
+@dozhim_required
 def partner_dozhim_leads(request: HttpRequest) -> HttpResponse:
     """Список дожим-лидов рефералов партнёра для модерации."""
     if not _require_partner(request):
@@ -487,6 +503,7 @@ def partner_dozhim_leads(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@dozhim_required
 @require_http_methods(["POST"])
 def partner_dozhim_lead_approve(request: HttpRequest, lead_id: int) -> HttpResponse:
     """Партнёр одобряет дожим-лид своего реферала."""
@@ -543,6 +560,7 @@ def partner_dozhim_lead_approve(request: HttpRequest, lead_id: int) -> HttpRespo
 
 
 @login_required
+@dozhim_required
 @require_http_methods(["POST"])
 def partner_dozhim_lead_reject(request: HttpRequest, lead_id: int) -> HttpResponse:
     """Партнёр отклоняет дожим-лид."""
@@ -591,6 +609,7 @@ def partner_dozhim_lead_reject(request: HttpRequest, lead_id: int) -> HttpRespon
 
 
 @login_required
+@dozhim_required
 @require_http_methods(["POST"])
 def partner_dozhim_lead_rework(request: HttpRequest, lead_id: int) -> HttpResponse:
     """Партнёр отправляет дожим-лид на доработку."""
@@ -639,6 +658,7 @@ def partner_dozhim_lead_rework(request: HttpRequest, lead_id: int) -> HttpRespon
 
 
 @login_required
+@dozhim_required
 def partner_dozhim_lead_attachment(request: HttpRequest, lead_id: int) -> HttpResponse:
     """Просмотр вложения дожим-лида."""
     if not _require_partner(request):

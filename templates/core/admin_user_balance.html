@@ -12,8 +12,8 @@
   </div>
 
   <div class="d-flex gap-3 mb-3">
-    <span class="badge bg-primary fs-6 px-3 py-2">Поиск: {{ target_user.balance|default:0 }} ₽</span>
-    <span class="badge bg-info text-dark fs-6 px-3 py-2">Дожим: {{ target_user.dozhim_balance|default:0 }} ₽</span>
+    <span class="badge bg-primary fs-6 px-3 py-2">{% if dozhim_enabled %}Поиск: {% endif %}{{ target_user.balance|default:0 }} ₽</span>
+    {% if dozhim_enabled %}<span class="badge bg-info text-dark fs-6 px-3 py-2">Дожим: {{ target_user.dozhim_balance|default:0 }} ₽</span>{% endif %}
   </div>
 
   <div class="card shadow-sm" style="max-width: 28rem;">
@@ -21,6 +21,7 @@
       <h2 class="h6 mb-3">Начислить или списать (руб.)</h2>
       <form method="post" action="">
         {% csrf_token %}
+        {% if dozhim_enabled %}
         <div class="mb-3">
           <label class="form-label">Отдел</label>
           <div class="d-flex gap-3">
@@ -34,6 +35,9 @@
             </div>
           </div>
         </div>
+        {% else %}
+        <input type="hidden" name="dept" value="search">
+        {% endif %}
         <div class="mb-3">
           <label for="id_amount" class="form-label">Сумма (руб.)</label>
           <input type="number" name="amount" id="id_amount" class="form-control" min="1" step="1" required placeholder="0">

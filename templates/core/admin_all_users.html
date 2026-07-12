@@ -47,7 +47,7 @@
               <th>Статус</th>
               <th>Аккр.</th>
               <th>Поиск</th>
-              <th>Дожим</th>
+              {% if dozhim_enabled %}<th>Дожим</th>{% endif %}
               <th>Регистрация</th>
               <th style="width: 1%; white-space: nowrap;">Действия</th>
             </tr>
@@ -78,7 +78,7 @@
                   {% endif %}
                 </td>
                 <td>{{ u.balance|default:0 }}</td>
-                <td>{{ u.dozhim_balance|default:0 }}</td>
+                {% if dozhim_enabled %}<td>{{ u.dozhim_balance|default:0 }}</td>{% endif %}
                 <td>{{ u.date_joined|date:"d.m.Y H:i" }}</td>
                 <td>
                   <div class="d-flex flex-wrap gap-1">

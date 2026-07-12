@@ -213,6 +213,10 @@ WITHDRAWAL_MIN_BALANCE = int(os.getenv("WITHDRAWAL_MIN_BALANCE", "500"))
 # Отдел дожима
 DOZHIM_APPROVE_REWARD = int(os.getenv("DOZHIM_APPROVE_REWARD", "40"))
 DOZHIM_BATCH_SIZE = int(os.getenv("DOZHIM_BATCH_SIZE", "10"))
+# Фиче-флаг: отдел дожима скрыт на проде (2026-07). Код целиком сохранён —
+# чтобы вернуть отдел, выставить переменную окружения DOZHIM_ENABLED=true.
+# Скрывает переключатель отдела, все дожим-вьюхи (юзер/партнёр) и админ-вкладку.
+DOZHIM_ENABLED = os.getenv("DOZHIM_ENABLED", "false").lower() == "true"
 
 # SearchLink система
 SEARCH_BOT_WEBHOOK_SECRET = os.getenv("SEARCH_BOT_WEBHOOK_SECRET", "")

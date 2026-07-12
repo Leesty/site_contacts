@@ -129,8 +129,8 @@
         </div>
         <div class="card-body py-3">
           <p class="small text-muted mb-2">
-            SearchLink: вы <strong>{{ partner_searchlink_cut }} ₽</strong> / реф {{ partner_searchlink_ref_share }} ₽<br>
-            Дожим: вы <strong>{{ partner_dozhim_cut }} ₽</strong> / реф {{ partner_dozhim_ref_share }} ₽
+            SearchLink: вы <strong>{{ partner_searchlink_cut }} ₽</strong> / реф {{ partner_searchlink_ref_share }} ₽{% if dozhim_enabled %}<br>
+            Дожим: вы <strong>{{ partner_dozhim_cut }} ₽</strong> / реф {{ partner_dozhim_ref_share }} ₽{% endif %}
           </p>
           <a href="{% url 'partner_ref_rates' %}" class="btn btn-outline-primary btn-sm w-100">⚙ Настроить</a>
         </div>
@@ -208,7 +208,8 @@
     </div>
   </div>
 
-  {# ═══ Проверка дожим-отчётов ═══ #}
+  {# ═══ Проверка дожим-отчётов (скрыто при выключенном дожиме, 2026-07) ═══ #}
+  {% if dozhim_enabled %}
   <div class="card shadow-sm mb-4">
     <div class="card-body d-flex align-items-center justify-content-between py-3">
       <div>
@@ -220,6 +221,7 @@
       <a class="btn btn-outline-primary btn-sm" href="{% url 'partner_dozhim_leads' %}">Проверить</a>
     </div>
   </div>
+  {% endif %}
 
   {# ═══ Инструменты админа ═══ #}
   <h6 class="text-uppercase mt-4 mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Управление базами</h6>

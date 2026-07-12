@@ -1,4 +1,5 @@
 import logging
+from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone as dt_utc
 from zoneinfo import ZoneInfo
@@ -988,6 +989,9 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
 
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     dept = request.GET.get("dept") or request.POST.get("dept") or "search"
+    # Отдел дожима скрыт (2026-07) → выводы всегда из «Поиска», даже при ?dept=dozhim.
+    if not getattr(settings, "DOZHIM_ENABLED", False):
+        dept = "search"
 
     # Специальная логика для баланс‑админа: баланс считается по логу одобренных лидов
     # + по одобренным SearchReport-отчётам от не-рефералов.
@@ -1808,18 +1812,35 @@ def ref_register(request: HttpRequest, code: str) -> HttpResponse:
 #  Отдел дожима
 # ──────────────────────────────────────────────────────────
 
+def dozhim_required(view_func):
+    """Гард: отдел дожима доступен только при DOZHIM_ENABLED=true.
+
+    Когда отдел скрыт (по умолчанию на проде) — любой прямой заход на
+    дожим-маршрут молча редиректит на дашборд. Код вьюх сохранён целиком;
+    вернуть отдел = выставить env DOZHIM_ENABLED=true.
+    """
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, "DOZHIM_ENABLED", False):
+            return redirect("dashboard")
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
 @login_required
 @require_http_methods(["POST"])
 def switch_department(request: HttpRequest) -> HttpResponse:
     """Переключение между «Отдел поиска» и «Отдел дожима» (session)."""
     dept = request.POST.get("department", "search")
-    if dept not in ("search", "dozhim"):
+    # Дожим скрыт → всегда «search» (защита от прямого POST мимо шаблона).
+    if dept not in ("search", "dozhim") or not getattr(settings, "DOZHIM_ENABLED", False):
         dept = "search"
     request.session["department"] = dept
     return redirect("dashboard")
 
 
 @login_required
+@dozhim_required
 def dozhim_contacts(request: HttpRequest) -> HttpResponse:
     """Выдача 10 одобренных лидов из Отдела поиска для дожима с фильтром по категории."""
     user = request.user
@@ -1888,6 +1909,7 @@ def dozhim_contacts(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@dozhim_required
 def dozhim_leads_report(request: HttpRequest) -> HttpResponse:
     """Отправка отчёта в Отделе дожима."""
     user = request.user
@@ -1939,6 +1961,7 @@ def dozhim_leads_report(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@dozhim_required
 def dozhim_leads_my_list(request: HttpRequest) -> HttpResponse:
     """Список дожим-лидов пользователя."""
     user = request.user
@@ -1959,6 +1982,7 @@ def dozhim_leads_my_list(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@dozhim_required
 def dozhim_leads_stats(request: HttpRequest) -> HttpResponse:
     """Статистика дожим-лидов."""
     user = request.user
@@ -1999,6 +2023,7 @@ def dozhim_leads_stats(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@dozhim_required
 def dozhim_lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
     """Доработка дожим-лида."""
     user = request.user
@@ -2043,6 +2068,7 @@ def dozhim_lead_redo(request: HttpRequest, lead_id: int) -> HttpResponse:
 
 
 @login_required
+@dozhim_required
 def dozhim_download_txt(request: HttpRequest) -> HttpResponse:
     """Скачать выданные лиды для дожима в виде .txt (один контакт на строку)."""
     user = request.user

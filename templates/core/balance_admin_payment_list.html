@@ -27,7 +27,7 @@
               <tr>
                 <th>Пользователь</th>
                 <th>Поиск</th>
-                <th>Дожим</th>
+                {% if dozhim_enabled %}<th>Дожим</th>{% endif %}
                 <th>Статус</th>
                 <th></th>
               </tr>
@@ -37,7 +37,7 @@
                 <tr>
                   <td>@{{ u.username }}</td>
                   <td>{{ u.balance }} ₽</td>
-                  <td>{{ u.dozhim_balance }} ₽</td>
+                  {% if dozhim_enabled %}<td>{{ u.dozhim_balance }} ₽</td>{% endif %}
                   <td>
                     {% if u.status == 'approved' %}<span class="badge bg-success" style="font-size:10px;">Одобрен</span>
                     {% elif u.status == 'banned' %}<span class="badge bg-danger" style="font-size:10px;">Забанен</span>
