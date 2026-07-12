@@ -233,6 +233,21 @@ SEARCH_PHONE_REPORT_REWARD = 65
 SEARCHLINK_ENABLED = os.getenv("SEARCHLINK_ENABLED", "true").lower() == "true"
 SEARCHLINK_REPORTS_ENABLED = os.getenv("SEARCHLINK_REPORTS_ENABLED", "false").lower() == "true"
 
+# ── Новая воронка SearchLink (windowgram-driven, 2026-07) ──
+# Начисления менеджеру по статусу клиента в CRM windowgram:
+#   • Созвон (status ∈ waiting_payment/waiting_no_date/answer_date): всего 150 ₽.
+#   • Успешная сделка (status = paid): всего 4000 ₽ (за вычетом уже выданных 150).
+# Реф-сплит (если у менеджера есть partner_owner): рефовод получает REFERRER-долю,
+# менеджер — остаток. Если рефовода НЕТ — менеджер берёт всё, а Варвара (varvara_lead,
+# balance_admin) снимает фикс-фи сверху.
+SEARCH_SOZVON_REWARD = int(os.getenv("SEARCH_SOZVON_REWARD", "150"))       # всего за созвон
+SEARCH_SOZVON_REFERRER = int(os.getenv("SEARCH_SOZVON_REFERRER", "50"))    # рефоводу с созвона (менеджер: 150-50=100)
+SEARCH_DEAL_REWARD = int(os.getenv("SEARCH_DEAL_REWARD", "4000"))          # всего за сделку
+SEARCH_DEAL_REFERRER = int(os.getenv("SEARCH_DEAL_REFERRER", "1000"))      # рефоводу со сделки (менеджер: 4000-1000=3000)
+SEARCH_VARVARA_SOZVON_FEE = int(os.getenv("SEARCH_VARVARA_SOZVON_FEE", "10"))    # Варваре с созвона (только если у менеджера НЕТ рефовода)
+SEARCH_VARVARA_DEAL_FEE = int(os.getenv("SEARCH_VARVARA_DEAL_FEE", "100"))       # Варваре со сделки (только если НЕТ рефовода)
+VARVARA_USER_ID = int(os.getenv("VARVARA_USER_ID", "123"))                 # varvara_lead (balance_admin, получатель фи)
+
 # Лимит загрузки файлов: вложения лидов (скрин/видео) до 30 МБ
 _DATA_UPLOAD_MAX = 33 * 1024 * 1024  # 33 МБ, чтобы 30 МБ файл проходил
 DATA_UPLOAD_MAX_MEMORY_SIZE = _DATA_UPLOAD_MAX

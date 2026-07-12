@@ -117,72 +117,44 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
 
     tab = request.GET.get("tab", "all")
     q = (request.GET.get("q") or "").strip()
+    from django.db.models import Q, Count, Q as _Q
     links_qs = SearchLink.objects.filter(user=request.user)
 
-    if tab == "rework":
-        links_qs = links_qs.filter(report__status=SearchReport.Status.REWORK)
-    elif tab == "rejected":
-        links_qs = links_qs.filter(report__status=SearchReport.Status.REJECTED)
-    elif tab == "pending":
-        links_qs = links_qs.filter(report__status=SearchReport.Status.PENDING)
-    elif tab == "approved":
-        links_qs = links_qs.filter(report__status=SearchReport.Status.APPROVED)
-    elif tab == "bot_waiting":
-        links_qs = links_qs.filter(bot_started=False)
-    elif tab == "bot_started":
-        links_qs = links_qs.filter(bot_started=True)
+    # Вкладки новой воронки (по funnel_stage): бот / чат / созвон / сделка.
+    if tab == "bot":
+        links_qs = links_qs.filter(bot_started=True, funnel_stage__lt=2)
+    elif tab == "chat":
+        links_qs = links_qs.filter(funnel_stage=2)
+    elif tab == "sozvon":
+        links_qs = links_qs.filter(funnel_stage=3)
+    elif tab == "deal":
+        links_qs = links_qs.filter(funnel_stage=4)
 
     if q:
-        from django.db.models import Q
         links_qs = links_qs.filter(Q(lead_name__icontains=q) | Q(code__icontains=q))
-    # select_related на reverse OneToOne `report` — убирает N+1 при выводе статусов.
-    links_qs = links_qs.select_related("report").order_by("-created_at")
+    links_qs = links_qs.order_by("-created_at")
 
-    # Счётчики для бейджей — одним aggregate вместо 5 отдельных COUNT'ов.
-    from django.db.models import Count, Q as _Q
+    # Счётчики вкладок — одним aggregate.
     _c = SearchLink.objects.filter(user=request.user).aggregate(
-        rework=Count("id", filter=_Q(report__status=SearchReport.Status.REWORK)),
-        rejected=Count("id", filter=_Q(report__status=SearchReport.Status.REJECTED)),
-        pending=Count("id", filter=_Q(report__status=SearchReport.Status.PENDING)),
-        bot_waiting=Count("id", filter=_Q(bot_started=False)),
-        bot_started=Count("id", filter=_Q(bot_started=True)),
+        bot=Count("id", filter=_Q(bot_started=True, funnel_stage__lt=2)),
+        chat=Count("id", filter=_Q(funnel_stage=2)),
+        sozvon=Count("id", filter=_Q(funnel_stage=3)),
+        deal=Count("id", filter=_Q(funnel_stage=4)),
     )
-    rework_count = _c["rework"]
-    rejected_count = _c["rejected"]
-    pending_count = _c["pending"]
-    bot_waiting_count = _c["bot_waiting"]
-    bot_started_count = _c["bot_started"]
 
     paginator = Paginator(links_qs, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
-
-    # Подгрузить отчёты для отображения статусов (уже в select_related, без N+1).
-    for link in page_obj:
-        try:
-            link.report_obj = link.report
-        except SearchReport.DoesNotExist:
-            link.report_obj = None
-
-    search_reward = SEARCH_REPORT_REWARD
-    if request.user.partner_owner_id:
-        owner = request.user.partner_owner
-        if owner:
-            owner_cut = (
-                owner.partner_searchlink_cut if owner.role == "partner"
-                else owner.ref_searchlink_cut
-            )
-            search_reward = max(0, SEARCH_REPORT_REWARD - owner_cut)
 
     return render(request, "search/my_links.html", {
         "page_obj": page_obj,
         "q": q,
         "tab": tab,
-        "rework_count": rework_count,
-        "rejected_count": rejected_count,
-        "pending_count": pending_count,
-        "bot_waiting_count": bot_waiting_count,
-        "bot_started_count": bot_started_count,
-        "search_reward": search_reward,
+        "bot_count": _c["bot"],
+        "chat_count": _c["chat"],
+        "sozvon_count": _c["sozvon"],
+        "deal_count": _c["deal"],
+        "sozvon_reward": getattr(settings, "SEARCH_SOZVON_REWARD", 150),
+        "deal_reward": getattr(settings, "SEARCH_DEAL_REWARD", 4000),
         "can_use_vk": _can_use_vk_platform(request.user),
     })
 

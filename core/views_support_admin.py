@@ -3634,7 +3634,20 @@ def zvonok_poll_cron(request: HttpRequest) -> HttpResponse:
     except Exception as e:
         sl_summary = {"error": str(e)}
 
-    return JsonResponse({"poll": _zv_poll_incoming(), "searchlink_match": sl_summary})
+    # Синхронизатор воронки SearchLink: читает статусы клиентов из windowgram и
+    # начисляет менеджерам за созвон/сделку на переходах (форвард-онли, идемпотентно).
+    funnel_summary = {}
+    try:
+        from .searchlink_sync import sync_searchlink_funnel
+        funnel_summary = sync_searchlink_funnel()
+    except Exception as e:
+        funnel_summary = {"error": str(e)}
+
+    return JsonResponse({
+        "poll": _zv_poll_incoming(),
+        "searchlink_match": sl_summary,
+        "funnel_sync": funnel_summary,
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -32,37 +32,29 @@
     </div>
   </div>
 
-  {# Вкладки #}
+  {# Вкладки воронки: все / бот / чат / созвон / сделка #}
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
       <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all">Все ссылки</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'pending' %}active{% endif %}" href="?tab=pending">
-        На проверке {% if pending_count %}<span class="badge bg-secondary">{{ pending_count }}</span>{% endif %}
+      <a class="nav-link {% if tab == 'bot' %}active{% endif %}" href="?tab=bot">
+        Запустил бота {% if bot_count %}<span class="badge bg-secondary">{{ bot_count }}</span>{% endif %}
       </a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rework' %}active{% endif %}" href="?tab=rework">
-        На доработке {% if rework_count %}<span class="badge bg-warning text-dark">{{ rework_count }}</span>{% endif %}
+      <a class="nav-link {% if tab == 'chat' %}active{% endif %}" href="?tab=chat">
+        Создан чат {% if chat_count %}<span class="badge bg-info text-dark">{{ chat_count }}</span>{% endif %}
       </a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'rejected' %}active{% endif %}" href="?tab=rejected">
-        Отклонённые {% if rejected_count %}<span class="badge bg-danger">{{ rejected_count }}</span>{% endif %}
+      <a class="nav-link {% if tab == 'sozvon' %}active{% endif %}" href="?tab=sozvon">
+        Проведён созвон {% if sozvon_count %}<span class="badge bg-primary">{{ sozvon_count }}</span>{% endif %}
       </a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if tab == 'approved' %}active{% endif %}" href="?tab=approved">Одобренные</a>
-    </li>
-    <li class="nav-item ms-2 border-start ps-2">
-      <a class="nav-link {% if tab == 'bot_waiting' %}active{% endif %}" href="?tab=bot_waiting">
-        Бот ожидает {% if bot_waiting_count %}<span class="badge bg-secondary">{{ bot_waiting_count }}</span>{% endif %}
-      </a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'bot_started' %}active{% endif %}" href="?tab=bot_started">
-        Бот запущен {% if bot_started_count %}<span class="badge bg-success">{{ bot_started_count }}</span>{% endif %}
+      <a class="nav-link {% if tab == 'deal' %}active{% endif %}" href="?tab=deal">
+        Успешная сделка {% if deal_count %}<span class="badge bg-success">{{ deal_count }}</span>{% endif %}
       </a>
     </li>
   </ul>
@@ -107,11 +99,7 @@
                 <th>Имя лида</th>
                 <th>Ссылка</th>
                 <th class="d-none d-lg-table-cell">Создано</th>
-                <th>Бот</th>
-                <th class="d-none d-md-table-cell">Контакт</th>
-                <th class="d-none d-md-table-cell">Вложение</th>
-                <th>Статус</th>
-                <th></th>
+                <th>Стадия</th>
               </tr>
             </thead>
             <tbody>
@@ -157,17 +145,17 @@
                   <td class="text-muted small text-nowrap d-none d-lg-table-cell">{{ link.created_at|date:"d.m H:i" }}</td>
                   <td>
                     {% if link.duplicate_of_id %}
-                      <span class="badge bg-danger" title="Этот клиент уже был привлечён по другой ссылке">Дубликат</span>
-                    {% elif link.report_obj.report_type == 'phone_callback' %}
-                      {% if link.report_obj.callback_confirmed_at %}
-                        <span class="badge bg-success">Звонок получен</span>
-                      {% else %}
-                        <span class="badge bg-secondary">Ожидание звонка</span>
-                      {% endif %}
+                      <span class="badge bg-danger" title="Клиент уже привлечён по другой ссылке">Дубликат</span>
+                    {% elif link.funnel_stage >= 4 %}
+                      <span class="badge bg-success">✅ Успешная сделка</span>
+                    {% elif link.funnel_stage == 3 %}
+                      <span class="badge bg-primary">📞 Проведён созвон</span>
+                    {% elif link.funnel_stage == 2 %}
+                      <span class="badge bg-info text-dark">💬 Создан чат</span>
                     {% elif link.bot_started %}
-                      <span class="badge bg-success">Запущен</span>
+                      <span class="badge bg-success">🤖 Бот запущен</span>
                     {% else %}
-                      <span class="badge bg-secondary">Ожидание</span>
+                      <span class="badge bg-secondary">Ждём бота</span>
                       {% if user.role == 'admin' or user.role == 'main_admin' or user.role == 'support' %}
                         <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 ms-1 js-force-confirm-btn"
                                 data-code="{{ link.code }}" style="font-size: 11px;"
@@ -175,50 +163,6 @@
                       {% endif %}
                     {% endif %}
                   </td>
-                  {% with report=link.report_obj %}
-                  <td class="small text-break d-none d-md-table-cell" style="max-width: 150px;">
-                    {% if report and report.raw_contact %}{{ report.raw_contact|truncatechars:40 }}{% else %}<span class="text-muted">—</span>{% endif %}
-                  </td>
-                  <td class="d-none d-md-table-cell">
-                    {% if report and report.attachment %}
-                      <a href="{% url 'search_report_attachment' link.code %}" target="_blank" class="btn btn-outline-primary btn-sm py-0">Файл</a>
-                    {% else %}<span class="text-muted">—</span>{% endif %}
-                  </td>
-                  <td>
-                    {% if report %}
-                      {% if report.status == 'pending' %}
-                        <span class="badge bg-secondary">На проверке</span>
-                      {% elif report.status == 'approved' %}
-                        <span class="badge bg-success">Одобрен +{% if report.paid_reward %}{{ report.paid_reward }}{% else %}{{ search_reward }}{% endif %}₽</span>
-                      {% elif report.status == 'rejected' %}
-                        <span class="badge bg-danger">Отклонён</span>
-                        {% if report.rejection_reason %}
-                          <div class="small text-danger mt-1">{{ report.rejection_reason|truncatechars:80 }}</div>
-                        {% endif %}
-                      {% elif report.status == 'rework' %}
-                        <span class="badge bg-warning text-dark">Доработка</span>
-                        {% if report.rework_comment %}
-                          <div class="small text-warning mt-1">{{ report.rework_comment|truncatechars:80 }}</div>
-                        {% endif %}
-                      {% endif %}
-                    {% else %}
-                      <span class="text-muted small">—</span>
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% if searchlink_reports_enabled %}
-                      {% if not report %}
-                        <a href="{% url 'search_report_create' link.code %}" class="btn btn-primary btn-sm py-0">Отчёт</a>
-                      {% elif report.status == 'rework' %}
-                        <a href="{% url 'search_report_redo' link.code %}" class="btn btn-warning btn-sm py-0">Доработать</a>
-                      {% elif report.status == 'pending' or report.status == 'pending_callback' %}
-                        <a href="{% url 'search_report_redo' link.code %}" class="btn btn-outline-secondary btn-sm py-0" title="Изменить контакт или переключить бот↔телефон">Изменить</a>
-                      {% endif %}
-                    {% else %}
-                      <span class="text-muted small">—</span>
-                    {% endif %}
-                  </td>
-                  {% endwith %}
                 </tr>
               {% endfor %}
             </tbody>

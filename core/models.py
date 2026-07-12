@@ -1352,6 +1352,33 @@ class SearchLink(TimeStampedModel):
         blank=True,
         help_text="Когда лид запустил бота.",
     )
+    # ── Воронка windowgram (2026-07): стадия клиента + идемпотентные начисления ──
+    # 0=нет/ждём бота, 1=бот запущен, 2=создан чат, 3=созвон, 4=успешная сделка.
+    funnel_stage = models.PositiveSmallIntegerField(
+        default=0,
+        db_index=True,
+        help_text="Стадия воронки: 0 ждём бота, 1 бот, 2 чат, 3 созвон, 4 сделка. Обновляется синхронизатором из windowgram.",
+    )
+    chat_created = models.BooleanField(
+        default=False,
+        help_text="Под клиента создан групповой чат в windowgram (conversations.group_chat_id).",
+    )
+    wg_conversation_id = models.UUIDField(
+        null=True, blank=True,
+        help_text="Сматченный conversation в windowgram (для чтения статуса).",
+    )
+    wg_status = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Последний известный CRM-статус клиента в windowgram (кэш для отображения).",
+    )
+    sozvon_credited_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Когда начислен «созвон» (150 ₽). NULL = ещё не начислен.",
+    )
+    deal_credited_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Когда начислена «успешная сделка» (до 4000 ₽). NULL = ещё не начислен.",
+    )
     telegram_id = models.BigIntegerField(
         null=True,
         blank=True,
