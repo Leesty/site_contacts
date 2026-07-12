@@ -89,6 +89,23 @@ def searchlink_required(view_func):
     return _wrapped
 
 
+def searchlink_reports_required(view_func):
+    """Гард: подача отчётов SearchLink (SEARCHLINK_REPORTS_ENABLED, по умолч. off).
+
+    Переходный режим (2026-07): менеджеры создают ссылки и видят проверку бота,
+    но «кидать отчёты» / добавлять клиентов в работу пока нельзя. Требует и
+    SEARCHLINK_ENABLED, и SEARCHLINK_REPORTS_ENABLED. Иначе — редирект на «Мои ссылки».
+    """
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, "SEARCHLINK_ENABLED", False):
+            return redirect("dashboard")
+        if not getattr(settings, "SEARCHLINK_REPORTS_ENABLED", False):
+            return redirect("search_links_my")
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
 # ─── Менеджер: список ссылок ──────────────────────────────────────────────────
 
 @login_required
@@ -280,7 +297,7 @@ def search_link_fallback_redirect(request: HttpRequest, code: str, junk: str = "
 # ─── Менеджер: отчёт ─────────────────────────────────────────────────────────
 
 @login_required
-@searchlink_required
+@searchlink_reports_required
 def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
     """Отправить отчёт по SearchLink."""
     if not _require_approved_user(request):
@@ -401,7 +418,7 @@ def search_report_attachment(request: HttpRequest, code: str) -> HttpResponse:
 
 
 @login_required
-@searchlink_required
+@searchlink_reports_required
 def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     """Редактирование отчёта по SearchLink (доработка + переключение bot↔phone).
 

@@ -176,7 +176,7 @@
     </div>
     {% endif %}
 
-    {# SearchLink — отжившая система (2026-07), скрыта для менеджеров (searchlink_enabled). #}
+    {# SearchLink — доступ по флагу searchlink_enabled (создание ссылок + проверка бота). #}
     {% if searchlink_enabled and department != 'dozhim' %}{% if not user.partner_owner_id or user.ref_searchlink_enabled %}
     <div class="col">
       <div class="card h-100 shadow-sm">
@@ -184,7 +184,11 @@
           <div class="card-icon mb-2" aria-hidden="true">🔗</div>
           <h2 class="h5 mb-2">SearchLink</h2>
           <p class="text-muted small mb-3">
-            Создавайте ссылки для лидов, отправляйте их клиентам. Оплата за одобренный отчёт — {{ search_reward }} руб.
+            {% if searchlink_reports_enabled %}
+              Создавайте ссылки для лидов, отправляйте их клиентам. Оплата за одобренный отчёт — {{ search_reward }} руб.
+            {% else %}
+              Создавайте ссылки и проверяйте старт бота клиентом. Подача отчётов временно приостановлена.
+            {% endif %}
           </p>
           <a class="btn btn-outline-primary btn-sm" href="{% url 'search_links_my' %}">Перейти</a>
         </div>

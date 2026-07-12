@@ -223,11 +223,15 @@ SEARCH_BOT_WEBHOOK_SECRET = os.getenv("SEARCH_BOT_WEBHOOK_SECRET", "")
 SEARCH_REPORT_REWARD = 150
 # Phone-callback вариант SearchLink (клиент оставил номер, робот прозванивает)
 SEARCH_PHONE_REPORT_REWARD = 65
-# Фиче-флаг: SearchLink — отжившая система (2026-07). По умолчанию выключена:
-# юзеры не могут создавать ссылки и заливать отчёты; у админов раздел уезжает
-# в «Легаси» (очередь проверки остаётся для разбора истории). Код сохранён —
-# вернуть = переменная окружения SEARCHLINK_ENABLED=true.
-SEARCHLINK_ENABLED = os.getenv("SEARCHLINK_ENABLED", "false").lower() == "true"
+# Фиче-флаги SearchLink (2026-07, переходный режим на новую систему):
+#  • SEARCHLINK_ENABLED (по умолч. true) — базовый доступ менеджеров: создание
+#    ссылок, страница «Мои ссылки»/статистика, проверка старта бота (bot_started).
+#  • SEARCHLINK_REPORTS_ENABLED (по умолч. false) — подача отчётов (SearchReport)
+#    и оплата. Пока выключено: менеджеры создают ссылки и видят проверку бота +
+#    старую статистику, но не «кидают отчёты» / не добавляют клиентов в работу.
+#    У админов раздел проверки отчётов остаётся в «Легаси», пока reports off.
+SEARCHLINK_ENABLED = os.getenv("SEARCHLINK_ENABLED", "true").lower() == "true"
+SEARCHLINK_REPORTS_ENABLED = os.getenv("SEARCHLINK_REPORTS_ENABLED", "false").lower() == "true"
 
 # Лимит загрузки файлов: вложения лидов (скрин/видео) до 30 МБ
 _DATA_UPLOAD_MAX = 33 * 1024 * 1024  # 33 МБ, чтобы 30 МБ файл проходил
