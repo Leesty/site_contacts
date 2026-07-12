@@ -197,6 +197,7 @@
         </div>
       </div>
     </div>
+    {% if searchlink_enabled %}
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body py-3">
@@ -211,6 +212,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body py-3">
@@ -234,6 +236,27 @@
       </div>
     </div>
   </div>
+
+  {# ═══ Легаси: отжившие системы (2026-07). Приём закрыт, доступно для разбора. ═══ #}
+  {% if not searchlink_enabled %}
+  <div class="mb-2">
+    <span style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #94a3b8;">🗄 Легаси (архив)</span>
+  </div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3 mb-4">
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="opacity: 0.9;">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="fw-semibold" style="font-size: 14px;">🔗 SearchLink · легаси</span>
+            {% if search_pending_count %}<span class="badge bg-secondary">{{ search_pending_count }}</span>{% endif %}
+          </div>
+          <p class="text-muted mb-2" style="font-size: 11px;">Приём отчётов закрыт. Доступно для разбора истории.</p>
+          <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_search_reports_list' %}">Отчёты (разбор)</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {# ═══ Секция 4: Инструменты (свёрнуты) ═══ #}
   <div class="mb-3">

@@ -173,8 +173,8 @@
     </div>
     {% endif %}
 
-    {# SearchLink — только в отделе «Поиск», на баланс «Поиска». Скрыт в Дожиме. #}
-    {% if department != 'dozhim' %}{% if not user.partner_owner_id or user.ref_searchlink_enabled %}
+    {# SearchLink — отжившая система (2026-07), скрыта для менеджеров (searchlink_enabled). #}
+    {% if searchlink_enabled and department != 'dozhim' %}{% if not user.partner_owner_id or user.ref_searchlink_enabled %}
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">

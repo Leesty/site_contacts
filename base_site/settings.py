@@ -223,6 +223,11 @@ SEARCH_BOT_WEBHOOK_SECRET = os.getenv("SEARCH_BOT_WEBHOOK_SECRET", "")
 SEARCH_REPORT_REWARD = 150
 # Phone-callback вариант SearchLink (клиент оставил номер, робот прозванивает)
 SEARCH_PHONE_REPORT_REWARD = 65
+# Фиче-флаг: SearchLink — отжившая система (2026-07). По умолчанию выключена:
+# юзеры не могут создавать ссылки и заливать отчёты; у админов раздел уезжает
+# в «Легаси» (очередь проверки остаётся для разбора истории). Код сохранён —
+# вернуть = переменная окружения SEARCHLINK_ENABLED=true.
+SEARCHLINK_ENABLED = os.getenv("SEARCHLINK_ENABLED", "false").lower() == "true"
 
 # Лимит загрузки файлов: вложения лидов (скрин/видео) до 30 МБ
 _DATA_UPLOAD_MAX = 33 * 1024 * 1024  # 33 МБ, чтобы 30 МБ файл проходил

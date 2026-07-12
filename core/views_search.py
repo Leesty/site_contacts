@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+from functools import wraps
 
 from django.conf import settings
 from django.contrib import messages
@@ -72,9 +73,26 @@ def _require_support(request: HttpRequest) -> bool:
     return False
 
 
+def searchlink_required(view_func):
+    """Гард: SearchLink — отжившая система (2026-07), приём закрыт.
+
+    Когда SEARCHLINK_ENABLED выключен (по умолчанию) — создание ссылок и подача
+    отчётов недоступны никому, любой заход молча редиректит на дашборд. Очередь
+    проверки у админов не гейтится (осталась в «Легаси» для разбора истории).
+    Код сохранён; вернуть = env SEARCHLINK_ENABLED=true.
+    """
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, "SEARCHLINK_ENABLED", False):
+            return redirect("dashboard")
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
 # ─── Менеджер: список ссылок ──────────────────────────────────────────────────
 
 @login_required
+@searchlink_required
 def search_links_my(request: HttpRequest) -> HttpResponse:
     """Список SearchLink-ов менеджера с формой создания и вкладками по статусу."""
     if not _can_manage_searchlinks(request):
@@ -155,6 +173,7 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
 # ─── Менеджер: создание ссылки ────────────────────────────────────────────────
 
 @login_required
+@searchlink_required
 @require_http_methods(["POST"])
 def search_link_create(request: HttpRequest) -> HttpResponse:
     """Создать новый SearchLink."""
@@ -261,6 +280,7 @@ def search_link_fallback_redirect(request: HttpRequest, code: str, junk: str = "
 # ─── Менеджер: отчёт ─────────────────────────────────────────────────────────
 
 @login_required
+@searchlink_required
 def search_report_create(request: HttpRequest, code: str) -> HttpResponse:
     """Отправить отчёт по SearchLink."""
     if not _require_approved_user(request):
@@ -381,6 +401,7 @@ def search_report_attachment(request: HttpRequest, code: str) -> HttpResponse:
 
 
 @login_required
+@searchlink_required
 def search_report_redo(request: HttpRequest, code: str) -> HttpResponse:
     """Редактирование отчёта по SearchLink (доработка + переключение bot↔phone).
 

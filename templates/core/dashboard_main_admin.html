@@ -44,6 +44,7 @@
         </div>
       </div>
     </div>
+    {% if searchlink_enabled %}
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
@@ -60,6 +61,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
     <div class="col">
       <div class="card h-100 shadow-sm" style="background: linear-gradient(135deg, rgba(234,179,8,0.1) 0%, rgba(234,179,8,0.02) 100%); border: 1px solid rgba(234,179,8,0.25);">
         <div class="card-body">
@@ -86,6 +88,30 @@
       </div>
     </div>
   </div>
+
+  {# ═══ Легаси: отжившие системы (2026-07). Приём закрыт, доступно для разбора. ═══ #}
+  {% if not searchlink_enabled %}
+  <div class="mb-2">
+    <span style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #94a3b8;">🗄 Легаси (архив)</span>
+  </div>
+  <div class="row row-cols-1 row-cols-md-3 row-cols-lg-5 g-3 mb-4">
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="opacity: 0.9;">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 mb-0">🔗 SearchLink · легаси</h2>
+            {% if search_pending_count %}<span class="badge bg-secondary">{{ search_pending_count }}</span>{% endif %}
+          </div>
+          <p class="text-muted small mb-2">Приём отчётов закрыт. Доступно для разбора истории.</p>
+          <div class="d-flex gap-1 flex-wrap">
+            <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_search_reports_list' %}">Отчёты (разбор)</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_search_stats' %}">Стат.</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {# ═══ Управление ═══ #}
   <h6 class="text-uppercase mb-2" style="font-size: 11px; letter-spacing: 1px; color: #94a3b8;">Управление</h6>

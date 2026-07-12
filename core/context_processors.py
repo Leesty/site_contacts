@@ -52,16 +52,18 @@ def department_context(request):
     """
     from django.conf import settings
     dozhim_enabled = getattr(settings, "DOZHIM_ENABLED", False)
-    if not dozhim_enabled:
-        return {"department": "search", "dozhim_enabled": False}
-    if not getattr(request, "user", None) or not request.user.is_authenticated:
-        return {"department": "search", "dozhim_enabled": True}
-    if getattr(request.user, "role", None) != "user":
-        return {"department": "search", "dozhim_enabled": True}
-    return {
-        "department": request.session.get("department", "search"),
-        "dozhim_enabled": True,
+    # Глобальные фиче-флаги для шаблонов (дожим + SearchLink-легаси).
+    flags = {
+        "dozhim_enabled": dozhim_enabled,
+        "searchlink_enabled": getattr(settings, "SEARCHLINK_ENABLED", False),
     }
+    if not dozhim_enabled:
+        return {"department": "search", **flags}
+    if not getattr(request, "user", None) or not request.user.is_authenticated:
+        return {"department": "search", **flags}
+    if getattr(request.user, "role", None) != "user":
+        return {"department": "search", **flags}
+    return {"department": request.session.get("department", "search"), **flags}
 
 
 def site_url(request):
