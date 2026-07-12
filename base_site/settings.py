@@ -248,6 +248,12 @@ SEARCH_VARVARA_SOZVON_FEE = int(os.getenv("SEARCH_VARVARA_SOZVON_FEE", "10"))   
 SEARCH_VARVARA_DEAL_FEE = int(os.getenv("SEARCH_VARVARA_DEAL_FEE", "100"))       # Варваре со сделки (только если НЕТ рефовода)
 VARVARA_USER_ID = int(os.getenv("VARVARA_USER_ID", "123"))                 # varvara_lead (balance_admin, получатель фи)
 
+# Фиче-флаг: старая система начислений (партнёрско-affiliate рефералка + подача
+# Lead/GroupReport-отчётов и их % -начисления). По умолчанию ВЫКЛ (2026-07):
+# начисляем только через новую воронку windowgram. Данные и связи partner_owner
+# СОХРАНЕНЫ (ничего не дропаем) — вернуть = LEGACY_REWARDS_ENABLED=true.
+LEGACY_REWARDS_ENABLED = os.getenv("LEGACY_REWARDS_ENABLED", "false").lower() == "true"
+
 # Лимит загрузки файлов: вложения лидов (скрин/видео) до 30 МБ
 _DATA_UPLOAD_MAX = 33 * 1024 * 1024  # 33 МБ, чтобы 30 МБ файл проходил
 DATA_UPLOAD_MAX_MEMORY_SIZE = _DATA_UPLOAD_MAX

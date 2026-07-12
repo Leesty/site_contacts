@@ -57,6 +57,7 @@ def department_context(request):
         "dozhim_enabled": dozhim_enabled,
         "searchlink_enabled": getattr(settings, "SEARCHLINK_ENABLED", False),
         "searchlink_reports_enabled": getattr(settings, "SEARCHLINK_REPORTS_ENABLED", False),
+        "legacy_rewards_enabled": getattr(settings, "LEGACY_REWARDS_ENABLED", False),
     }
     if not dozhim_enabled:
         return {"department": "search", **flags}

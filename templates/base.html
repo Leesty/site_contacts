@@ -46,7 +46,7 @@
               <li class="nav-item"><a class="nav-link px-2" href="{% url 'worker_tasks' %}">Задания</a></li>
               <li class="nav-item"><a class="nav-link px-2" href="{% url 'worker_available_leads' %}">Найти лиды</a></li>
               {% elif user.role == 'partner' %}
-              <li class="nav-item"><a class="nav-link px-2" href="{% url 'partner_referrals' %}">Рефералы</a></li>
+              {% if legacy_rewards_enabled %}<li class="nav-item"><a class="nav-link px-2" href="{% url 'partner_referrals' %}">Рефералы</a></li>{% endif %}
               {% elif user.role == 'user' and user.status == 'approved' %}
                 {% if department == 'dozhim' %}
               <li class="nav-item"><a class="nav-link px-2" href="{% url 'dozhim_contacts' %}">Контакты</a></li>

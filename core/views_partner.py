@@ -37,6 +37,20 @@ def dozhim_required(view_func):
     return _wrapped
 
 
+def legacy_rewards_required(view_func):
+    """Гард: старые реф-кабинеты/настройки ставок доступны только при
+    LEGACY_REWARDS_ENABLED=true. По умолчанию выключено (2026-07) — начисляем
+    только через новую воронку. Данные/связи partner_owner сохранены; вернуть =
+    env LEGACY_REWARDS_ENABLED=true. Иначе — редирект на дашборд.
+    """
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, "LEGACY_REWARDS_ENABLED", False):
+            return redirect("dashboard")
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
 def _require_partner(request: HttpRequest) -> bool:
     """Только роль «partner» со статусом approved. Забаненный партнёр теряет доступ."""
     user = request.user
@@ -186,6 +200,7 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@legacy_rewards_required
 @require_http_methods(["POST"])
 def partner_update_rates(request: HttpRequest) -> HttpResponse:
     """Партнёр меняет свои ставки (партнёрский cut с SearchLink и с дожим-лида).
@@ -230,6 +245,7 @@ def partner_update_rates(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@legacy_rewards_required
 def partner_ref_rates(request: HttpRequest) -> HttpResponse:
     """Отдельная страница «Реф-ставки» партнёра. SearchLink + GroupReport.
 
@@ -417,6 +433,7 @@ def partner_ref_register(request: HttpRequest, code: str) -> HttpResponse:
 # ─── Рефералы партнёра ─────────────────────────────────────────────────────────
 
 @login_required
+@legacy_rewards_required
 def partner_referrals(request: HttpRequest) -> HttpResponse:
     """Список пользователей, зарегистрированных по реферальной ссылке партнёра."""
     if not _require_partner(request):
@@ -692,6 +709,7 @@ def _require_user_approved(request: HttpRequest) -> bool:
 
 
 @login_required
+@legacy_rewards_required
 def user_referrals(request: HttpRequest) -> HttpResponse:
     """Реферальная система менеджера. Одна общая ссылка + общие ставки
     (SearchLink + GroupReport) на всех рефералов."""
@@ -808,6 +826,7 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@legacy_rewards_required
 @require_http_methods(["POST"])
 def user_update_ref_rates(request: HttpRequest) -> HttpResponse:
     """Менеджер меняет общие реф-ставки (SearchLink + GroupReport)."""
@@ -900,6 +919,7 @@ def user_referral_toggle_link(request: HttpRequest, link_id: int) -> HttpRespons
 
 
 @login_required
+@legacy_rewards_required
 def user_referral_list(request: HttpRequest) -> HttpResponse:
     """Список рефералов менеджера (только просмотр) с разбивкой дохода.
 
