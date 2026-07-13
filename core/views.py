@@ -1590,6 +1590,11 @@ def leads_stats_placeholder(request: HttpRequest) -> HttpResponse:
     if not _ensure_user_approved(request):
         return redirect("dashboard")
 
+    # Старая статистика по лидам выведена из эксплуатации (2026-07): у менеджеров
+    # актуальная статистика теперь в SearchLink «Мои ссылки». Код ниже сохранён
+    # (revertible) — убрать редирект, чтобы вернуть страницу.
+    return redirect("search_links_my")
+
     # Логика «дня» с границей 20:00 по Москве, аналогичная боту
     tz = ZoneInfo("Europe/Moscow")
     now = datetime.now(tz)

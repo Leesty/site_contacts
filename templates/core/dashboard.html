@@ -161,19 +161,7 @@
         </div>
       </div>
     </div>
-    {# Карточки «Мои лиды» и «Отчёт по лидам» (старая Lead-система) скрыты для менеджеров. #}
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body">
-          <div class="card-icon stats mb-2" aria-hidden="true">📊</div>
-          <h2 class="h5 mb-2">Статистика лидов</h2>
-          <p class="text-muted small mb-3">
-            Сводка по вашим лидам за сегодня, вчера и всё время с учётом «сдвинутого» дня.
-          </p>
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'leads_stats' %}">Перейти</a>
-        </div>
-      </div>
-    </div>
+    {# «Мои лиды», «Отчёт по лидам», «Статистика лидов» (старая Lead-система) скрыты — статистика в SearchLink. #}
     {% endif %}
 
     {# SearchLink — доступ по флагу searchlink_enabled (создание ссылок + проверка бота). #}
