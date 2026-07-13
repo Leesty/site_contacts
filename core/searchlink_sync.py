@@ -46,28 +46,39 @@ def _fetch_wg_state(links: list) -> dict:
     """Батч-чтение состояния клиентов из windowgram.
 
     Возвращает {link_id: {"conv_id", "status", "has_chat", "rank"}} — лучший
-    (максимальной стадии) conversation на каждый link. Матч по telegram_id →
-    telegram_username → vk_user_id (в таком приоритете).
+    (максимальной стадии) conversation на каждый link. Приоритет матча:
+    telegram_id → telegram_username → vk_user_id → vk_screen_name.
+
+    VK-клиент может быть привязан к ссылке двумя способами: по числовому
+    vk_user_id (надёжно, из вебхука бота) ИЛИ только по vk_screen_name (когда
+    менеджер завёл клиента вручную по тегу, а бот не прислал числовой id).
+    В windowgram VK-юзер лежит в telegram_users с platform='vk', где
+    username = screen_name, vk_id = числовой id. Поэтому screen_name матчим
+    строго по platform='vk', чтобы не пересечься с telegram-username.
     """
     tg_ids = sorted({l.telegram_id for l in links if l.telegram_id})
     unames = sorted({l.telegram_username.lower() for l in links if l.telegram_username})
     vk_ids = sorted({l.vk_user_id for l in links if l.vk_user_id})
-    if not (tg_ids or unames or vk_ids):
+    vk_screens = sorted({l.vk_screen_name.lower() for l in links
+                         if l.vk_screen_name and not l.vk_user_id})
+    if not (tg_ids or unames or vk_ids or vk_screens):
         return {}
 
     rows = []
     with connections["windowgram"].cursor() as wg:
         wg.execute(
             """
-            SELECT t.telegram_id, lower(t.username) AS uname, t.vk_id,
+            SELECT t.telegram_id, lower(t.username) AS uname, t.vk_id, t.platform,
                    c.id::text AS conv_id, c.status, (c.group_chat_id IS NOT NULL) AS has_chat
             FROM conversations c
             JOIN telegram_users t ON t.id = c.telegram_user_id
             WHERE (t.telegram_id = ANY(%s))
                OR (t.username IS NOT NULL AND t.username <> '' AND lower(t.username) = ANY(%s))
                OR (t.vk_id = ANY(%s))
+               OR (t.platform = 'vk' AND t.username IS NOT NULL AND t.username <> ''
+                   AND lower(t.username) = ANY(%s))
             """,
-            [tg_ids or [0], unames or [""], vk_ids or [0]],
+            [tg_ids or [0], unames or [""], vk_ids or [0], vk_screens or [""]],
         )
         rows = wg.fetchall()
 
@@ -75,13 +86,14 @@ def _fetch_wg_state(links: list) -> dict:
     by_tg: dict[int, dict] = {}
     by_uname: dict[str, dict] = {}
     by_vk: dict[int, dict] = {}
+    by_vk_screen: dict[str, dict] = {}
 
     def _put(idx: dict, key, conv):
         prev = idx.get(key)
         if prev is None or conv["rank"] > prev["rank"]:
             idx[key] = conv
 
-    for tg_id, uname, vk_id, conv_id, status, has_chat in rows:
+    for tg_id, uname, vk_id, platform, conv_id, status, has_chat in rows:
         conv = {"conv_id": conv_id, "status": status or "",
                 "has_chat": bool(has_chat), "rank": _stage_rank(status, bool(has_chat))}
         if tg_id:
@@ -90,6 +102,8 @@ def _fetch_wg_state(links: list) -> dict:
             _put(by_uname, uname, conv)
         if vk_id:
             _put(by_vk, vk_id, conv)
+        if platform == "vk" and uname:
+            _put(by_vk_screen, uname, conv)
 
     out: dict = {}
     for l in links:
@@ -100,6 +114,8 @@ def _fetch_wg_state(links: list) -> dict:
             conv = by_uname[l.telegram_username.lower()]
         elif l.vk_user_id and l.vk_user_id in by_vk:
             conv = by_vk[l.vk_user_id]
+        elif l.vk_screen_name and l.vk_screen_name.lower() in by_vk_screen:
+            conv = by_vk_screen[l.vk_screen_name.lower()]
         if conv:
             out[l.id] = conv
     return out
