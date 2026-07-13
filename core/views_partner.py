@@ -51,6 +51,20 @@ def legacy_rewards_required(view_func):
     return _wrapped
 
 
+def referral_system_required(view_func):
+    """Гард: кабинет рефералов + редактирование реф-ставок новой воронки.
+    Включён по умолчанию (REFERRAL_SYSTEM_ENABLED=true) — это текущая реф-система
+    (per-рефовод доли с созвона/сделки реферала), НЕ завязана на старые отчёты.
+    Выключить = env REFERRAL_SYSTEM_ENABLED=false → редирект на дашборд.
+    """
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, "REFERRAL_SYSTEM_ENABLED", True):
+            return redirect("dashboard")
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
 def _require_partner(request: HttpRequest) -> bool:
     """Только роль «partner» со статусом approved. Забаненный партнёр теряет доступ."""
     user = request.user
@@ -60,70 +74,56 @@ def _require_partner(request: HttpRequest) -> bool:
 
 
 def _referral_earnings_breakdown(partner_user) -> dict[int, dict]:
-    """Доход рефовода/партнёра в разрезе каждого реферала.
+    """Доход рефовода в разрезе каждого реферала — по НОВОЙ воронке.
 
-    Возвращает `{referral_user_id: {lead_cnt, lead_amt, sr_cnt, sr_amt,
-    gr_cnt, gr_amt, total}}`. Считается по `PartnerEarning` — те же
-    записи, что суммируются в общем total_earned, только сгруппированы
-    по `report.user_id`.
+    Считает начисления рефоводу из BalanceLog (reason `sozvon_ref#<link>` /
+    `deal_ref#<link>`), привязывая каждое к рефералу через SearchLink.user.
+    Возвращает `{referral_user_id: {sozvon_cnt, sozvon_amt, deal_cnt,
+    deal_amt, total}}`.
     """
-    from django.db.models import Count, Sum
+    import re
+    from django.db.models import Q
+    from .models import BalanceLog, SearchLink
     out: dict[int, dict] = {}
 
     def _slot(uid: int) -> dict:
         if uid not in out:
             out[uid] = {
-                "lead_cnt": 0, "lead_amt": 0,
-                "sr_cnt": 0, "sr_amt": 0,
-                "gr_cnt": 0, "gr_amt": 0,
+                "sozvon_cnt": 0, "sozvon_amt": 0,
+                "deal_cnt": 0, "deal_amt": 0,
                 "total": 0,
             }
         return out[uid]
 
-    lead_rows = (
-        PartnerEarning.objects
-        .filter(partner=partner_user, lead__isnull=False)
-        .values("lead__user_id")
-        .annotate(cnt=Count("id"), amt=Sum("amount"))
+    logs = (
+        BalanceLog.objects
+        .filter(user=partner_user, field="balance")
+        .filter(Q(reason__startswith="sozvon_ref#") | Q(reason__startswith="deal_ref#"))
+        .values_list("reason", "delta")
     )
-    for row in lead_rows:
-        uid = row["lead__user_id"]
+    parsed: list[tuple[str, int, int]] = []
+    link_ids: set[int] = set()
+    for reason, delta in logs:
+        m = re.match(r"(sozvon_ref|deal_ref)#(\d+)", reason or "")
+        if not m:
+            continue
+        lid = int(m.group(2))
+        link_ids.add(lid)
+        parsed.append((m.group(1), lid, delta or 0))
+    # link_id -> реферал (владелец ссылки)
+    link_user = dict(SearchLink.objects.filter(id__in=link_ids).values_list("id", "user_id"))
+    for kind, lid, amt in parsed:
+        uid = link_user.get(lid)
         if uid is None:
             continue
         s = _slot(uid)
-        s["lead_cnt"] = row["cnt"]
-        s["lead_amt"] = row["amt"] or 0
-        s["total"] += row["amt"] or 0
-
-    sr_rows = (
-        PartnerEarning.objects
-        .filter(partner=partner_user, search_report__isnull=False)
-        .values("search_report__user_id")
-        .annotate(cnt=Count("id"), amt=Sum("amount"))
-    )
-    for row in sr_rows:
-        uid = row["search_report__user_id"]
-        if uid is None:
-            continue
-        s = _slot(uid)
-        s["sr_cnt"] = row["cnt"]
-        s["sr_amt"] = row["amt"] or 0
-        s["total"] += row["amt"] or 0
-
-    gr_rows = (
-        PartnerEarning.objects
-        .filter(partner=partner_user, group_report__isnull=False)
-        .values("group_report__user_id")
-        .annotate(cnt=Count("id"), amt=Sum("amount"))
-    )
-    for row in gr_rows:
-        uid = row["group_report__user_id"]
-        if uid is None:
-            continue
-        s = _slot(uid)
-        s["gr_cnt"] = row["cnt"]
-        s["gr_amt"] = row["amt"] or 0
-        s["total"] += row["amt"] or 0
+        if kind == "sozvon_ref":
+            s["sozvon_cnt"] += 1
+            s["sozvon_amt"] += amt
+        else:
+            s["deal_cnt"] += 1
+            s["deal_amt"] += amt
+        s["total"] += amt
 
     return out
 
@@ -140,13 +140,18 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     balance = user.balance or 0
 
-    total_earned = PartnerEarning.objects.filter(partner=user).aggregate(s=Sum("amount")).get("s") or 0
+    _breakdown = _referral_earnings_breakdown(user)
+    total_earned = sum(v["total"] for v in _breakdown.values())
     users_count = User.objects.filter(partner_owner=user).count()
-    earnings = (
-        PartnerEarning.objects.filter(partner=user)
-        .select_related("lead", "lead__user")
-        .order_by("-created_at")[:100]
+    # История воронки в разрезе рефералов (только с ненулевым доходом).
+    _ref_usernames = dict(
+        User.objects.filter(id__in=_breakdown.keys()).values_list("id", "username")
     )
+    ref_earnings = sorted(
+        ({"username": _ref_usernames.get(uid, "?"), **v}
+         for uid, v in _breakdown.items() if v["total"] > 0),
+        key=lambda x: x["total"], reverse=True,
+    )[:100]
     # Автоматически создаём единственную реф-ссылку, если её ещё нет
     link = PartnerLink.objects.filter(partner=user).first()
     if not link:
@@ -173,13 +178,15 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
 
     SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
     DOZHIM_TOTAL = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
+    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
 
     return render(request, "partner/dashboard.html", {
         "user": user,
         "balance": balance,
         "total_earned": total_earned,
         "users_count": users_count,
-        "earnings": earnings,
+        "ref_earnings": ref_earnings,
         "link": link,
         "withdrawals": withdrawals,
         "withdrawal_pending": withdrawal_pending,
@@ -189,112 +196,112 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         "dozhim_pending_count": dozhim_pending_count,
         "partner_rate": user.partner_rate or PARTNER_EARN_PER_LEAD_DEFAULT,
         "receiptless_withdrawals": receiptless_withdrawals,
-        # Партнёрские ставки (применяются ко всем рефералам сразу)
-        "search_total_reward": SEARCH_TOTAL,
-        "dozhim_total_reward": DOZHIM_TOTAL,
-        "partner_searchlink_cut": user.partner_searchlink_cut,
-        "partner_searchlink_ref_share": max(0, SEARCH_TOTAL - user.partner_searchlink_cut),
-        "partner_dozhim_cut": user.partner_dozhim_cut,
-        "partner_dozhim_ref_share": max(0, DOZHIM_TOTAL - user.partner_dozhim_cut),
+        # Реф-ставки воронки (применяются ко всем рефералам сразу)
+        "sozvon_total_reward": SOZVON_TOTAL,
+        "deal_total_reward": DEAL_TOTAL,
+        "ref_sozvon_cut": user.ref_sozvon_cut,
+        "ref_sozvon_ref_share": max(0, SOZVON_TOTAL - user.ref_sozvon_cut),
+        "ref_deal_cut": user.ref_deal_cut,
+        "ref_deal_ref_share": max(0, DEAL_TOTAL - user.ref_deal_cut),
     })
 
 
 @login_required
-@legacy_rewards_required
+@referral_system_required
 @require_http_methods(["POST"])
 def partner_update_rates(request: HttpRequest) -> HttpResponse:
-    """Партнёр меняет свои ставки (партнёрский cut с SearchLink и с дожим-лида).
+    """Партнёр меняет свои реф-доли с созвона/сделки реферала (инлайн с дашборда).
 
-    Применяется ко всем рефералам сразу — отдельной per-ref настройки нет.
+    Те же поля, что и на странице «Реф-ставки» — применяются ко всем рефералам.
     """
     if not _require_partner(request):
         return HttpResponseForbidden()
 
-    SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
-    DOZHIM_TOTAL = getattr(settings, "DOZHIM_APPROVE_REWARD", 40)
+    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
+    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
     update_fields = []
 
-    raw_sl = request.POST.get("partner_searchlink_cut")
-    if raw_sl is not None:
+    raw_sz = request.POST.get("ref_sozvon_cut")
+    if raw_sz is not None:
         try:
-            sl = max(1, min(SEARCH_TOTAL - 1, int(raw_sl)))
+            sz = max(0, min(SOZVON_TOTAL, int(raw_sz)))
         except (TypeError, ValueError):
-            messages.error(request, f"SearchLink ставка должна быть числом от 1 до {SEARCH_TOTAL - 1}.")
+            messages.error(request, f"Ставка за созвон должна быть числом от 0 до {SOZVON_TOTAL}.")
             return redirect("partner_dashboard")
-        request.user.partner_searchlink_cut = sl
-        update_fields.append("partner_searchlink_cut")
+        request.user.ref_sozvon_cut = sz
+        update_fields.append("ref_sozvon_cut")
 
-    raw_dz = request.POST.get("partner_dozhim_cut")
-    if raw_dz is not None:
+    raw_dl = request.POST.get("ref_deal_cut")
+    if raw_dl is not None:
         try:
-            dz = max(1, min(DOZHIM_TOTAL - 1, int(raw_dz)))
+            dl = max(0, min(DEAL_TOTAL, int(raw_dl)))
         except (TypeError, ValueError):
-            messages.error(request, f"Дожим-ставка должна быть числом от 1 до {DOZHIM_TOTAL - 1}.")
+            messages.error(request, f"Ставка за сделку должна быть числом от 0 до {DEAL_TOTAL}.")
             return redirect("partner_dashboard")
-        request.user.partner_dozhim_cut = dz
-        update_fields.append("partner_dozhim_cut")
+        request.user.ref_deal_cut = dl
+        update_fields.append("ref_deal_cut")
 
     if update_fields:
         request.user.save(update_fields=update_fields)
         messages.success(
             request,
-            f"Ставки обновлены. SearchLink: вы {request.user.partner_searchlink_cut} ₽ / реф {SEARCH_TOTAL - request.user.partner_searchlink_cut} ₽. "
-            f"Дожим: вы {request.user.partner_dozhim_cut} ₽ / реф {DOZHIM_TOTAL - request.user.partner_dozhim_cut} ₽.",
+            f"Ставки обновлены. Созвон: вы {request.user.ref_sozvon_cut} ₽ / реф {SOZVON_TOTAL - request.user.ref_sozvon_cut} ₽. "
+            f"Сделка: вы {request.user.ref_deal_cut} ₽ / реф {DEAL_TOTAL - request.user.ref_deal_cut} ₽.",
         )
     return redirect("partner_dashboard")
 
 
 @login_required
-@legacy_rewards_required
+@referral_system_required
 def partner_ref_rates(request: HttpRequest) -> HttpResponse:
-    """Отдельная страница «Реф-ставки» партнёра. SearchLink + GroupReport.
+    """Страница «Реф-ставки» партнёра: доли с созвона и сделки реферала.
 
-    Lead и дожим-лид (легаси) сюда не выносятся — используются базовая
-    ставка `partner_rate` для Lead и `partner_dozhim_cut` для дожима как
-    раньше, без UI на этой странице.
+    Новая воронка (windowgram): за каждого реферала-менеджера рефовод получает
+    свою долю с созвона (из 150) и со сделки (из 4000). Реф получает остаток.
+    Применяется ко ВСЕМ рефералам этого партнёра.
     """
     if not _require_partner(request):
         return HttpResponseForbidden("Только для партнёров.")
 
-    SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
-    GR_TOTAL = 80  # GROUP_REPORT_APPROVE_REWARD
+    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
+    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
 
     if request.method == "POST":
         update_fields: list[str] = []
-        raw_sl = request.POST.get("partner_searchlink_cut")
-        if raw_sl is not None and raw_sl != "":
+        raw_sz = request.POST.get("ref_sozvon_cut")
+        if raw_sz not in (None, ""):
             try:
-                sl = max(0, min(SEARCH_TOTAL, int(raw_sl)))
+                sz = max(0, min(SOZVON_TOTAL, int(raw_sz)))
             except (TypeError, ValueError):
-                messages.error(request, "SearchLink ставка должна быть числом.")
+                messages.error(request, "Ставка за созвон должна быть числом.")
                 return redirect("partner_ref_rates")
-            request.user.partner_searchlink_cut = sl
-            update_fields.append("partner_searchlink_cut")
+            request.user.ref_sozvon_cut = sz
+            update_fields.append("ref_sozvon_cut")
 
-        raw_gr = request.POST.get("partner_group_report_cut")
-        if raw_gr is not None and raw_gr != "":
+        raw_dl = request.POST.get("ref_deal_cut")
+        if raw_dl not in (None, ""):
             try:
-                gr = max(0, min(GR_TOTAL, int(raw_gr)))
+                dl = max(0, min(DEAL_TOTAL, int(raw_dl)))
             except (TypeError, ValueError):
-                messages.error(request, "GroupReport ставка должна быть числом.")
+                messages.error(request, "Ставка за сделку должна быть числом.")
                 return redirect("partner_ref_rates")
-            request.user.partner_group_report_cut = gr
-            update_fields.append("partner_group_report_cut")
+            request.user.ref_deal_cut = dl
+            update_fields.append("ref_deal_cut")
 
         if update_fields:
             request.user.save(update_fields=update_fields)
-            messages.success(request, "Реф-ставки сохранены.")
+            messages.success(request, "Реф-ставки сохранены — применяются ко всем вашим рефералам.")
         return redirect("partner_ref_rates")
 
     user = request.user
     return render(request, "partner/ref_rates.html", {
         "user": user,
-        "search_total_reward": SEARCH_TOTAL,
-        "group_report_total_reward": GR_TOTAL,
-        "partner_searchlink_cut": user.partner_searchlink_cut,
-        "partner_searchlink_ref_share": max(0, SEARCH_TOTAL - user.partner_searchlink_cut),
-        "partner_group_report_cut": user.partner_group_report_cut,
-        "partner_group_report_ref_share": max(0, GR_TOTAL - user.partner_group_report_cut),
+        "sozvon_total_reward": SOZVON_TOTAL,
+        "deal_total_reward": DEAL_TOTAL,
+        "ref_sozvon_cut": user.ref_sozvon_cut,
+        "ref_sozvon_ref_share": max(0, SOZVON_TOTAL - user.ref_sozvon_cut),
+        "ref_deal_cut": user.ref_deal_cut,
+        "ref_deal_ref_share": max(0, DEAL_TOTAL - user.ref_deal_cut),
     })
 
 
@@ -433,7 +440,7 @@ def partner_ref_register(request: HttpRequest, code: str) -> HttpResponse:
 # ─── Рефералы партнёра ─────────────────────────────────────────────────────────
 
 @login_required
-@legacy_rewards_required
+@referral_system_required
 def partner_referrals(request: HttpRequest) -> HttpResponse:
     """Список пользователей, зарегистрированных по реферальной ссылке партнёра."""
     if not _require_partner(request):
@@ -446,26 +453,26 @@ def partner_referrals(request: HttpRequest) -> HttpResponse:
     paginator = Paginator(users_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
 
-    # У partner-роли ставка за обычный лид фиксирована в partner.partner_rate.
-    # Реф получает LEAD_APPROVE_REWARD - partner_rate, партнёр — partner_rate.
-    partner_rate = request.user.partner_rate or 10
-    search_reward_total = getattr(settings, "SEARCH_REPORT_REWARD", 100)
+    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
+    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
+    sozvon_cut = request.user.ref_sozvon_cut
+    deal_cut = request.user.ref_deal_cut
     breakdown = _referral_earnings_breakdown(request.user)
+    total_earned = sum(v["total"] for v in breakdown.values())
     for u in page_obj:
-        u.current_ref_reward = max(0, LEAD_APPROVE_REWARD - partner_rate)
-        u.partner_cut = partner_rate
-        u.sl_ref_reward = search_reward_total - u.ref_searchlink_manager_cut if u.ref_searchlink_enabled else 0
-        u.earn = breakdown.get(u.id, {"lead_cnt": 0, "lead_amt": 0,
-                                      "sr_cnt": 0, "sr_amt": 0,
-                                      "gr_cnt": 0, "gr_amt": 0, "total": 0})
+        u.earn = breakdown.get(u.id, {"sozvon_cnt": 0, "sozvon_amt": 0,
+                                      "deal_cnt": 0, "deal_amt": 0, "total": 0})
 
     return render(request, "partner/referrals.html", {
         "page_obj": page_obj,
         "total": users_qs.count(),
-        "total_reward": LEAD_APPROVE_REWARD,
-        "search_reward": search_reward_total,
-        "partner_rate": partner_rate,
-        "ref_share": max(0, LEAD_APPROVE_REWARD - partner_rate),
+        "total_earned": total_earned,
+        "sozvon_total_reward": SOZVON_TOTAL,
+        "deal_total_reward": DEAL_TOTAL,
+        "ref_sozvon_cut": sozvon_cut,
+        "ref_sozvon_ref_share": max(0, SOZVON_TOTAL - sozvon_cut),
+        "ref_deal_cut": deal_cut,
+        "ref_deal_ref_share": max(0, DEAL_TOTAL - deal_cut),
     })
 
 
@@ -709,7 +716,7 @@ def _require_user_approved(request: HttpRequest) -> bool:
 
 
 @login_required
-@legacy_rewards_required
+@referral_system_required
 def user_referrals(request: HttpRequest) -> HttpResponse:
     """Реферальная система менеджера. Одна общая ссылка + общие ставки
     (SearchLink + GroupReport) на всех рефералов."""
@@ -717,17 +724,9 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         return HttpResponseForbidden("Только для одобренных пользователей.")
 
     user = request.user
-    total_earned = PartnerEarning.objects.filter(partner=user).aggregate(s=Sum("amount")).get("s") or 0
-    earnings = (
-        PartnerEarning.objects.filter(partner=user)
-        .select_related("lead", "lead__user", "search_report", "search_report__user",
-                        "group_report", "group_report__user")
-        .order_by("-created_at")[:100]
-    )
 
-    from django.conf import settings as _settings
-    SEARCH_TOTAL = getattr(_settings, "SEARCH_REPORT_REWARD", 150)
-    GR_TOTAL = 80
+    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
+    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
 
     # Одна реф-ссылка на всех. Если нет — создаём; если несколько (legacy) —
     # отдаём самую раннюю активную.
@@ -740,66 +739,25 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     if not link:
         link = PartnerLink.objects.create(partner=user, code=uuid4().hex[:24])
 
-    # Фильтр: по умолчанию показываем только «активных» рефералов
-    # (с >=1 одобренным отчётом Lead/SR/GR). Чтобы вернуть всех — `?show=all`.
-    show_param = (request.GET.get("show") or "active").lower()
-    show_all = show_param == "all"
-
-    from .models import Lead, SearchReport, GroupReport
-    from django.db.models import Count
-    # Множество user_id рефералов с хотя бы одним approved-отчётом
-    active_ref_ids: set[int] = set(
-        Lead.objects.filter(user__partner_owner=user, status=Lead.Status.APPROVED)
-        .values_list("user_id", flat=True).distinct()
-    )
-    active_ref_ids.update(
-        SearchReport.objects.filter(user__partner_owner=user, status=SearchReport.Status.APPROVED)
-        .values_list("user_id", flat=True).distinct()
-    )
-    active_ref_ids.update(
-        GroupReport.objects.filter(user__partner_owner=user, status=GroupReport.Status.APPROVED)
-        .values_list("user_id", flat=True).distinct()
-    )
+    # Заработок по новой воронке в разрезе каждого реферала.
+    breakdown = _referral_earnings_breakdown(user)
+    total_earned = sum(v["total"] for v in breakdown.values())
+    # «Активные» = рефералы, за которых уже было начисление воронки.
+    active_ref_ids: set[int] = {uid for uid, v in breakdown.items() if v["total"] > 0}
     total_referrals_count = User.objects.filter(partner_owner=user).count()
     active_count = len(active_ref_ids)
     inactive_count = max(0, total_referrals_count - active_count)
 
+    # По умолчанию показываем всех рефералов (воронка новая, начислений пока мало).
+    show_param = (request.GET.get("show") or "all").lower()
+    show_all = show_param != "active"
     referrals_qs = User.objects.filter(partner_owner=user)
     if not show_all:
         referrals_qs = referrals_qs.filter(id__in=active_ref_ids)
     referrals = list(referrals_qs.order_by("-date_joined")[:200])
-    breakdown = _referral_earnings_breakdown(user)
     for r in referrals:
-        r.earn = breakdown.get(r.id, {"lead_cnt": 0, "lead_amt": 0,
-                                       "sr_cnt": 0, "sr_amt": 0,
-                                       "gr_cnt": 0, "gr_amt": 0, "total": 0})
-
-    # Sub-рефовод? Если у `user` есть свой partner_owner — он реферал главного
-    # рефовода, и для него работает не % система, а milestone «приведи 10
-    # отчётов от реферала → +500 ₽». Считаем прогресс по каждому рефералу.
-    from .lead_utils import is_subreferrer, SUBREF_MILESTONE, SUBREF_BONUS
-    is_sub = is_subreferrer(user)
-    if is_sub:
-        ref_ids = [r.id for r in referrals]
-        # Считаем approved-отчёты для каждого реферала (Lead + SR + GR)
-        lead_cnt = dict(
-            Lead.objects.filter(user_id__in=ref_ids, status=Lead.Status.APPROVED)
-            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
-        )
-        sr_cnt = dict(
-            SearchReport.objects.filter(user_id__in=ref_ids, status=SearchReport.Status.APPROVED)
-            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
-        )
-        gr_cnt = dict(
-            GroupReport.objects.filter(user_id__in=ref_ids, status=GroupReport.Status.APPROVED)
-            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
-        )
-        for r in referrals:
-            done = lead_cnt.get(r.id, 0) + sr_cnt.get(r.id, 0) + gr_cnt.get(r.id, 0)
-            r.subref_done = done
-            r.subref_target = SUBREF_MILESTONE
-            r.subref_paid = bool(r.subref_bonus_paid_at)
-            r.subref_progress_pct = min(100, int(100 * done / SUBREF_MILESTONE)) if SUBREF_MILESTONE else 0
+        r.earn = breakdown.get(r.id, {"sozvon_cnt": 0, "sozvon_amt": 0,
+                                       "deal_cnt": 0, "deal_amt": 0, "total": 0})
 
     return render(request, "core/user_referrals.html", {
         "user": user,
@@ -810,52 +768,51 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         "inactive_count": inactive_count,
         "show_all": show_all,
         "shown_count": len(referrals),
-        "earnings": earnings,
         "link": link,
         "referrals": referrals,
-        "search_total_reward": SEARCH_TOTAL,
-        "group_report_total_reward": GR_TOTAL,
-        "ref_searchlink_cut": user.ref_searchlink_cut,
-        "ref_searchlink_ref_share": max(0, SEARCH_TOTAL - user.ref_searchlink_cut),
-        "ref_group_report_cut": user.ref_group_report_cut,
-        "ref_group_report_ref_share": max(0, GR_TOTAL - user.ref_group_report_cut),
-        "is_subreferrer": is_sub,
-        "subref_milestone": SUBREF_MILESTONE,
-        "subref_bonus": SUBREF_BONUS,
+        "sozvon_total_reward": SOZVON_TOTAL,
+        "deal_total_reward": DEAL_TOTAL,
+        "ref_sozvon_cut": user.ref_sozvon_cut,
+        "ref_sozvon_ref_share": max(0, SOZVON_TOTAL - user.ref_sozvon_cut),
+        "ref_deal_cut": user.ref_deal_cut,
+        "ref_deal_ref_share": max(0, DEAL_TOTAL - user.ref_deal_cut),
     })
 
 
 @login_required
-@legacy_rewards_required
+@referral_system_required
 @require_http_methods(["POST"])
 def user_update_ref_rates(request: HttpRequest) -> HttpResponse:
-    """Менеджер меняет общие реф-ставки (SearchLink + GroupReport)."""
+    """Менеджер-рефовод меняет свои доли с созвона и сделки реферала (новая воронка).
+
+    Применяется ко ВСЕМ его рефералам. Реф получает total - cut.
+    """
     if not _require_user_approved(request):
         return HttpResponseForbidden()
 
-    SEARCH_TOTAL = getattr(settings, "SEARCH_REPORT_REWARD", 150)
-    GR_TOTAL = 80
+    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
+    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
     update_fields: list[str] = []
 
-    raw_sl = request.POST.get("ref_searchlink_cut")
-    if raw_sl not in (None, ""):
+    raw_sz = request.POST.get("ref_sozvon_cut")
+    if raw_sz not in (None, ""):
         try:
-            sl = max(0, min(SEARCH_TOTAL, int(raw_sl)))
+            sz = max(0, min(SOZVON_TOTAL, int(raw_sz)))
         except (TypeError, ValueError):
-            messages.error(request, "SearchLink ставка должна быть числом.")
+            messages.error(request, "Ставка за созвон должна быть числом.")
             return redirect("user_referrals")
-        request.user.ref_searchlink_cut = sl
-        update_fields.append("ref_searchlink_cut")
+        request.user.ref_sozvon_cut = sz
+        update_fields.append("ref_sozvon_cut")
 
-    raw_gr = request.POST.get("ref_group_report_cut")
-    if raw_gr not in (None, ""):
+    raw_dl = request.POST.get("ref_deal_cut")
+    if raw_dl not in (None, ""):
         try:
-            gr = max(0, min(GR_TOTAL, int(raw_gr)))
+            dl = max(0, min(DEAL_TOTAL, int(raw_dl)))
         except (TypeError, ValueError):
-            messages.error(request, "GroupReport ставка должна быть числом.")
+            messages.error(request, "Ставка за сделку должна быть числом.")
             return redirect("user_referrals")
-        request.user.ref_group_report_cut = gr
-        update_fields.append("ref_group_report_cut")
+        request.user.ref_deal_cut = dl
+        update_fields.append("ref_deal_cut")
 
     if update_fields:
         request.user.save(update_fields=update_fields)
@@ -919,7 +876,7 @@ def user_referral_toggle_link(request: HttpRequest, link_id: int) -> HttpRespons
 
 
 @login_required
-@legacy_rewards_required
+@referral_system_required
 def user_referral_list(request: HttpRequest) -> HttpResponse:
     """Список рефералов менеджера (только просмотр) с разбивкой дохода.
 
@@ -929,22 +886,12 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
     if not _require_user_approved(request):
         return HttpResponseForbidden("Только для одобренных пользователей.")
 
-    show_param = (request.GET.get("show") or "active").lower()
-    show_all = show_param == "all"
+    # По умолчанию показываем всех (воронка новая, начислений пока мало).
+    show_param = (request.GET.get("show") or "all").lower()
+    show_all = show_param != "active"
 
-    from .models import Lead, SearchReport, GroupReport
-    active_ref_ids: set[int] = set(
-        Lead.objects.filter(user__partner_owner=request.user, status=Lead.Status.APPROVED)
-        .values_list("user_id", flat=True).distinct()
-    )
-    active_ref_ids.update(
-        SearchReport.objects.filter(user__partner_owner=request.user, status=SearchReport.Status.APPROVED)
-        .values_list("user_id", flat=True).distinct()
-    )
-    active_ref_ids.update(
-        GroupReport.objects.filter(user__partner_owner=request.user, status=GroupReport.Status.APPROVED)
-        .values_list("user_id", flat=True).distinct()
-    )
+    breakdown = _referral_earnings_breakdown(request.user)
+    active_ref_ids: set[int] = {uid for uid, v in breakdown.items() if v["total"] > 0}
     total_referrals_count = User.objects.filter(partner_owner=request.user).count()
     active_count = len(active_ref_ids)
     inactive_count = max(0, total_referrals_count - active_count)
@@ -955,37 +902,9 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
     users_qs = users_qs.order_by("-date_joined")
     paginator = Paginator(users_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
-    breakdown = _referral_earnings_breakdown(request.user)
     for u in page_obj:
-        u.earn = breakdown.get(u.id, {"lead_cnt": 0, "lead_amt": 0,
-                                       "sr_cnt": 0, "sr_amt": 0,
-                                       "gr_cnt": 0, "gr_amt": 0, "total": 0})
-
-    # Sub-рефовод? Если да — догружаем прогресс milestone для отображения.
-    from .lead_utils import is_subreferrer, SUBREF_MILESTONE, SUBREF_BONUS
-    is_sub = is_subreferrer(request.user)
-    if is_sub:
-        from .models import Lead, SearchReport, GroupReport
-        from django.db.models import Count
-        ref_ids = [u.id for u in page_obj]
-        lead_cnt = dict(
-            Lead.objects.filter(user_id__in=ref_ids, status=Lead.Status.APPROVED)
-            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
-        )
-        sr_cnt = dict(
-            SearchReport.objects.filter(user_id__in=ref_ids, status=SearchReport.Status.APPROVED)
-            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
-        )
-        gr_cnt = dict(
-            GroupReport.objects.filter(user_id__in=ref_ids, status=GroupReport.Status.APPROVED)
-            .values_list("user_id").annotate(c=Count("id")).values_list("user_id", "c")
-        )
-        for u in page_obj:
-            done = lead_cnt.get(u.id, 0) + sr_cnt.get(u.id, 0) + gr_cnt.get(u.id, 0)
-            u.subref_done = done
-            u.subref_target = SUBREF_MILESTONE
-            u.subref_paid = bool(u.subref_bonus_paid_at)
-            u.subref_progress_pct = min(100, int(100 * done / SUBREF_MILESTONE)) if SUBREF_MILESTONE else 0
+        u.earn = breakdown.get(u.id, {"sozvon_cnt": 0, "sozvon_amt": 0,
+                                       "deal_cnt": 0, "deal_amt": 0, "total": 0})
 
     return render(request, "core/user_referral_list.html", {
         "page_obj": page_obj,
@@ -994,9 +913,6 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
         "active_count": active_count,
         "inactive_count": inactive_count,
         "show_all": show_all,
-        "is_subreferrer": is_sub,
-        "subref_milestone": SUBREF_MILESTONE,
-        "subref_bonus": SUBREF_BONUS,
     })
 
 

@@ -61,58 +61,43 @@
       </div>
     </div>
 
-    {# Ставки / Милстоун #}
+    {# Реф-ставки: доли рефовода с созвона и сделки реферала #}
     <div class="col-lg-6">
       <div class="card shadow-sm h-100">
         <div class="card-header bg-transparent border-secondary py-2">
-          {% if is_subreferrer %}
-            <strong>Как зарабатывать с рефералов</strong>
-          {% else %}
-            <strong>Реф-ставки</strong>
-          {% endif %}
+          <strong>Реф-ставки</strong>
         </div>
         <div class="card-body">
-          {% if is_subreferrer %}
-            <p class="small text-muted mb-2">
-              Вы приглашены другим рефоводом, поэтому у вас работает спец-режим:
-            </p>
-            <div class="alert alert-info py-2 px-3 small mb-0">
-              <div class="mb-1"><strong>Приведи 10 друзей</strong> 🎯</div>
-              За каждого реферала, который сдал <strong>{{ subref_milestone }}</strong> одобренных отчётов
-              (Lead + SearchLink + Группы), вы получаете <strong>{{ subref_bonus }} ₽</strong> разово на баланс.
-              <div class="mt-2 text-muted">
-                Обычная % схема в вашем случае не работает — реф получает полную ставку за каждый отчёт.
+          <p class="small text-muted mb-3">
+            Ваша доля с событий реферала. Применяются ко всем рефералам сразу.
+            Реф получает остаток.
+          </p>
+          <form method="post" action="{% url 'user_update_ref_rates' %}">
+            {% csrf_token %}
+            <div class="mb-3">
+              <label class="form-label small mb-1" for="ref_sozvon_cut">
+                Созвон реферала ({{ sozvon_total_reward }} ₽)
+              </label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">Вам</span>
+                <input type="number" class="form-control" id="ref_sozvon_cut" name="ref_sozvon_cut"
+                       min="0" max="{{ sozvon_total_reward }}" value="{{ ref_sozvon_cut }}" required>
+                <span class="input-group-text">₽ · рефу <strong>{{ ref_sozvon_ref_share }} ₽</strong></span>
               </div>
             </div>
-          {% else %}
-            <p class="small text-muted mb-3">Применяются ко всем рефералам сразу.</p>
-            <form method="post" action="{% url 'user_update_ref_rates' %}">
-              {% csrf_token %}
-              <div class="mb-3">
-                <label class="form-label small mb-1" for="ref_searchlink_cut">
-                  SearchLink ({{ search_total_reward }} ₽)
-                </label>
-                <div class="input-group input-group-sm">
-                  <span class="input-group-text">Вам</span>
-                  <input type="number" class="form-control" id="ref_searchlink_cut" name="ref_searchlink_cut"
-                         min="0" max="{{ search_total_reward }}" value="{{ ref_searchlink_cut }}" required>
-                  <span class="input-group-text">₽ · рефу <strong>{{ ref_searchlink_ref_share }} ₽</strong></span>
-                </div>
+            <div class="mb-3">
+              <label class="form-label small mb-1" for="ref_deal_cut">
+                Сделка реферала ({{ deal_total_reward }} ₽)
+              </label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">Вам</span>
+                <input type="number" class="form-control" id="ref_deal_cut" name="ref_deal_cut"
+                       min="0" max="{{ deal_total_reward }}" value="{{ ref_deal_cut }}" required>
+                <span class="input-group-text">₽ · рефу <strong>{{ ref_deal_ref_share }} ₽</strong></span>
               </div>
-              <div class="mb-3">
-                <label class="form-label small mb-1" for="ref_group_report_cut">
-                  Отчёт по группам ({{ group_report_total_reward }} ₽)
-                </label>
-                <div class="input-group input-group-sm">
-                  <span class="input-group-text">Вам</span>
-                  <input type="number" class="form-control" id="ref_group_report_cut" name="ref_group_report_cut"
-                         min="0" max="{{ group_report_total_reward }}" value="{{ ref_group_report_cut }}" required>
-                  <span class="input-group-text">₽ · рефу <strong>{{ ref_group_report_ref_share }} ₽</strong></span>
-                </div>
-              </div>
-              <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить ставки</button>
-            </form>
-          {% endif %}
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить ставки</button>
+          </form>
         </div>
       </div>
     </div>
@@ -148,99 +133,46 @@
           {% if show_all %}
             Пока никто не зарегистрировался по вашим ссылкам.
           {% else %}
-            Нет активных рефералов (с одобренными отчётами). Всего рефералов: {{ users_count }}.
+            Нет активных рефералов (с начислениями по воронке). Всего рефералов: {{ users_count }}.
             <a href="?show=all">Показать всех →</a>
           {% endif %}
         </p>
       {% else %}
       <div class="table-responsive">
-        {% if is_subreferrer %}
-          {# Sub-режим: показываем прогресс milestone (10 отчётов = 500₽), без процентов #}
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>@username</th>
+              <th>Имя</th>
+              <th>Статус</th>
+              <th class="text-center small">Созвоны<br><span class="text-muted fw-normal">шт / ₽</span></th>
+              <th class="text-center small">Сделки<br><span class="text-muted fw-normal">шт / ₽</span></th>
+              <th class="text-center">Доход</th>
+              <th>Регистрация</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in referrals %}
               <tr>
-                <th>@username</th>
-                <th>Имя</th>
-                <th>Статус</th>
-                <th class="text-center" style="min-width:180px;">Прогресс до {{ subref_bonus }} ₽</th>
-                <th class="text-center">Награда</th>
-                <th>Регистрация</th>
+                <td>@{{ u.username }}</td>
+                <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
+                <td>
+                  {% if u.status == 'approved' %}
+                    <span class="badge bg-success">approved</span>
+                  {% elif u.status == 'pending' %}
+                    <span class="badge bg-warning text-dark">pending</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ u.status }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-center small">{% if u.earn.sozvon_cnt %}{{ u.earn.sozvon_cnt }} / {{ u.earn.sozvon_amt }} ₽{% else %}—{% endif %}</td>
+                <td class="text-center small">{% if u.earn.deal_cnt %}{{ u.earn.deal_cnt }} / {{ u.earn.deal_amt }} ₽{% else %}—{% endif %}</td>
+                <td class="text-center text-success fw-semibold">{% if u.earn.total %}{{ u.earn.total }} ₽{% else %}—{% endif %}</td>
+                <td class="small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
               </tr>
-            </thead>
-            <tbody>
-              {% for u in referrals %}
-                <tr>
-                  <td>@{{ u.username }}</td>
-                  <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
-                  <td>
-                    {% if u.status == 'approved' %}
-                      <span class="badge bg-success">approved</span>
-                    {% elif u.status == 'pending' %}
-                      <span class="badge bg-warning text-dark">pending</span>
-                    {% else %}
-                      <span class="badge bg-secondary">{{ u.status }}</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-center small">
-                    <div class="d-flex align-items-center gap-2">
-                      <div class="progress flex-grow-1" style="height: 8px;">
-                        <div class="progress-bar bg-{% if u.subref_paid %}success{% else %}info{% endif %}"
-                             role="progressbar"
-                             style="width: {{ u.subref_progress_pct }}%;"></div>
-                      </div>
-                      <span class="text-nowrap">{{ u.subref_done }} / {{ u.subref_target }}</span>
-                    </div>
-                  </td>
-                  <td class="text-center small">
-                    {% if u.subref_paid %}
-                      <span class="badge bg-success">+{{ subref_bonus }} ₽ выплачено</span>
-                    {% else %}
-                      <span class="text-muted">—</span>
-                    {% endif %}
-                  </td>
-                  <td class="small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
-              <tr>
-                <th>@username</th>
-                <th>Имя</th>
-                <th>Статус</th>
-                <th class="text-center small">Lead<br><span class="text-muted fw-normal">шт / ₽</span></th>
-                <th class="text-center small">SearchLink<br><span class="text-muted fw-normal">шт / ₽</span></th>
-                <th class="text-center small">Группы<br><span class="text-muted fw-normal">шт / ₽</span></th>
-                <th class="text-center">Доход</th>
-                <th>Регистрация</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for u in referrals %}
-                <tr>
-                  <td>@{{ u.username }}</td>
-                  <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
-                  <td>
-                    {% if u.status == 'approved' %}
-                      <span class="badge bg-success">approved</span>
-                    {% elif u.status == 'pending' %}
-                      <span class="badge bg-warning text-dark">pending</span>
-                    {% else %}
-                      <span class="badge bg-secondary">{{ u.status }}</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-center small">{% if u.earn.lead_cnt %}{{ u.earn.lead_cnt }} / {{ u.earn.lead_amt }} ₽{% else %}—{% endif %}</td>
-                  <td class="text-center small">{% if u.earn.sr_cnt %}{{ u.earn.sr_cnt }} / {{ u.earn.sr_amt }} ₽{% else %}—{% endif %}</td>
-                  <td class="text-center small">{% if u.earn.gr_cnt %}{{ u.earn.gr_cnt }} / {{ u.earn.gr_amt }} ₽{% else %}—{% endif %}</td>
-                  <td class="text-center text-success fw-semibold">{% if u.earn.total %}{{ u.earn.total }} ₽{% else %}—{% endif %}</td>
-                  <td class="small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
       {% endif %}
     </div>

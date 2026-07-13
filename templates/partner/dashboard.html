@@ -83,38 +83,39 @@
   {% endif %}
 
   <div class="row g-3">
-    {# История начислений #}
+    {# Доход по рефералам (новая воронка) #}
     <div class="col-md-7">
       <div class="card shadow-sm h-100">
-        <div class="card-header bg-transparent border-secondary py-2">
-          <strong>История начислений (+{{ partner_rate }} руб. за каждый одобренный лид)</strong>
+        <div class="card-header bg-transparent border-secondary py-2 d-flex align-items-center justify-content-between">
+          <strong>Доход с рефералов</strong>
+          <a class="btn btn-outline-secondary btn-sm py-0" href="{% url 'partner_referrals' %}">Все рефералы →</a>
         </div>
         <div class="card-body p-0">
-          {% if earnings %}
+          {% if ref_earnings %}
             <div class="table-responsive">
-              <table class="table table-sm mb-0 align-middle table-dark-site" aria-label="История начислений">
+              <table class="table table-sm mb-0 align-middle table-dark-site" aria-label="Доход по рефералам">
                 <thead>
                   <tr>
-                    <th scope="col">Когда</th>
-                    <th scope="col">Лид</th>
-                    <th scope="col">Пользователь</th>
-                    <th scope="col">Сумма</th>
+                    <th scope="col">Реферал</th>
+                    <th scope="col" class="text-center small">Созвоны<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                    <th scope="col" class="text-center small">Сделки<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                    <th scope="col" class="text-center">Доход</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {% for e in earnings %}
+                  {% for e in ref_earnings %}
                     <tr>
-                      <td class="text-muted small">{{ e.created_at|date:"d.m.Y H:i" }}</td>
-                      <td>#{{ e.lead_id|default:"—" }}</td>
-                      <td>{% if e.lead %}@{{ e.lead.user.username }}{% else %}—{% endif %}</td>
-                      <td class="text-success">+{{ e.amount }} руб.</td>
+                      <td>@{{ e.username }}</td>
+                      <td class="text-center small">{% if e.sozvon_cnt %}{{ e.sozvon_cnt }} / {{ e.sozvon_amt }} ₽{% else %}—{% endif %}</td>
+                      <td class="text-center small">{% if e.deal_cnt %}{{ e.deal_cnt }} / {{ e.deal_amt }} ₽{% else %}—{% endif %}</td>
+                      <td class="text-center text-success fw-semibold">+{{ e.total }} ₽</td>
                     </tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
           {% else %}
-            <p class="text-muted small p-3 mb-0">Начислений пока нет. Приглашайте пользователей через реферальные ссылки — вы будете получать +{{ partner_rate }} руб. за каждый их одобренный лид.</p>
+            <p class="text-muted small p-3 mb-0">Начислений пока нет. Приглашайте менеджеров через реферальную ссылку — вы будете получать свою долю с их созвонов и сделок.</p>
           {% endif %}
         </div>
       </div>
@@ -129,8 +130,8 @@
         </div>
         <div class="card-body py-3">
           <p class="small text-muted mb-2">
-            SearchLink: вы <strong>{{ partner_searchlink_cut }} ₽</strong> / реф {{ partner_searchlink_ref_share }} ₽{% if dozhim_enabled %}<br>
-            Дожим: вы <strong>{{ partner_dozhim_cut }} ₽</strong> / реф {{ partner_dozhim_ref_share }} ₽{% endif %}
+            Созвон: вы <strong>{{ ref_sozvon_cut }} ₽</strong> / реф {{ ref_sozvon_ref_share }} ₽<br>
+            Сделка: вы <strong>{{ ref_deal_cut }} ₽</strong> / реф {{ ref_deal_ref_share }} ₽
           </p>
           <a href="{% url 'partner_ref_rates' %}" class="btn btn-outline-primary btn-sm w-100">⚙ Настроить</a>
         </div>

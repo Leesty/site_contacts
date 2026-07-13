@@ -279,6 +279,13 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         manager = l.user
         referrer = manager.partner_owner if manager.partner_owner_id else None
         has_ref = referrer is not None
+        # Доли рефовода — индивидуальные (каждый рефовод задаёт свои во вкладке
+        # «Реф-ставки»), с fallback на дефолты из settings. Клампим в [0, total].
+        r_sozvon = SOZVON_REF
+        r_deal = DEAL_REF
+        if has_ref:
+            r_sozvon = max(0, min(SOZVON_TOTAL, getattr(referrer, "ref_sozvon_cut", SOZVON_REF)))
+            r_deal = max(0, min(DEAL_TOTAL, getattr(referrer, "ref_deal_cut", DEAL_REF)))
 
         def dc(user, amount, reason):
             if user and amount and not dry_run:
@@ -287,8 +294,8 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         upd = []
         if new_stage == 3 and l.sozvon_credited_at is None:
             if has_ref:
-                dc(manager, SOZVON_TOTAL - SOZVON_REF, f"sozvon#{l.pk} +{SOZVON_TOTAL - SOZVON_REF}")
-                dc(referrer, SOZVON_REF, f"sozvon_ref#{l.pk} +{SOZVON_REF}")
+                dc(manager, SOZVON_TOTAL - r_sozvon, f"sozvon#{l.pk} +{SOZVON_TOTAL - r_sozvon}")
+                dc(referrer, r_sozvon, f"sozvon_ref#{l.pk} +{r_sozvon}")
             else:
                 dc(manager, SOZVON_TOTAL, f"sozvon#{l.pk} +{SOZVON_TOTAL}")
                 dc(varvara, VARVARA_SOZVON, f"sozvon_varvara#{l.pk} +{VARVARA_SOZVON}")
@@ -297,10 +304,10 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         if new_stage == 4 and l.deal_credited_at is None:
             sozvon_given = l.sozvon_credited_at is not None
             if has_ref:
-                mgr_sozvon = (SOZVON_TOTAL - SOZVON_REF) if sozvon_given else 0
-                ref_sozvon = SOZVON_REF if sozvon_given else 0
-                dc(manager, (DEAL_TOTAL - DEAL_REF) - mgr_sozvon, f"deal#{l.pk} +{(DEAL_TOTAL - DEAL_REF) - mgr_sozvon}")
-                dc(referrer, DEAL_REF - ref_sozvon, f"deal_ref#{l.pk} +{DEAL_REF - ref_sozvon}")
+                mgr_sozvon = (SOZVON_TOTAL - r_sozvon) if sozvon_given else 0
+                ref_sozvon = r_sozvon if sozvon_given else 0
+                dc(manager, (DEAL_TOTAL - r_deal) - mgr_sozvon, f"deal#{l.pk} +{(DEAL_TOTAL - r_deal) - mgr_sozvon}")
+                dc(referrer, r_deal - ref_sozvon, f"deal_ref#{l.pk} +{r_deal - ref_sozvon}")
             else:
                 mgr_sozvon = SOZVON_TOTAL if sozvon_given else 0
                 dc(manager, DEAL_TOTAL - mgr_sozvon, f"deal#{l.pk} +{DEAL_TOTAL - mgr_sozvon}")

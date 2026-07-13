@@ -149,6 +149,17 @@ class User(AbstractUser):
         default=20,
         help_text="Доля рефовода (₽) с одобренного отчёта по группам реферала. Реф получает 80 - ref_group_report_cut. По умолчанию 20 (реф 60, рефовод 20).",
     )
+    # ── Новая воронка SearchLink (windowgram): доли рефовода за события реферала ──
+    # Применяются ко ВСЕМ рефералам этого рефовода. Читаются воронкой из
+    # partner_owner (рефовод) реферала. Реф получает total - cut.
+    ref_sozvon_cut = models.PositiveIntegerField(
+        default=50,
+        help_text="Доля рефовода (₽) с созвона реферала (из 150). Реф получает 150 - ref_sozvon_cut. По умолчанию 50 (реф 100, рефовод 50).",
+    )
+    ref_deal_cut = models.PositiveIntegerField(
+        default=1000,
+        help_text="Доля рефовода (₽) со сделки реферала (из 4000). Реф получает 4000 - ref_deal_cut. По умолчанию 1000 (реф 3000, рефовод 1000).",
+    )
     ref_lead_reward = models.PositiveIntegerField(
         null=True,
         blank=True,
