@@ -1695,7 +1695,10 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
             with transaction.atomic():
                 wreq = (
                     WorkerWithdrawalRequest.objects
-                    .select_for_update()
+                    # of=("self",): лочим только саму заявку. Без него FOR UPDATE
+                    # применяется и к LEFT JOIN на nullable worker → ошибка Postgres
+                    # "FOR UPDATE cannot be applied to the nullable side of an outer join".
+                    .select_for_update(of=("self",))
                     .select_related("worker")
                     .filter(pk=worker_req_id, status="pending")
                     .first()
@@ -1808,7 +1811,7 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
         if worker_req_id and action == "cancel_approved":
             with transaction.atomic():
                 wreq = (
-                    WorkerWithdrawalRequest.objects.select_for_update()
+                    WorkerWithdrawalRequest.objects.select_for_update(of=("self",))
                     .select_related("worker")
                     .filter(pk=worker_req_id, status="approved")
                     .first()
