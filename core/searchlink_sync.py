@@ -55,6 +55,10 @@ def _fetch_wg_state(links: list) -> dict:
     В windowgram VK-юзер лежит в telegram_users с platform='vk', где
     username = screen_name, vk_id = числовой id. Поэтому screen_name матчим
     строго по platform='vk', чтобы не пересечься с telegram-username.
+
+    «Создан чат» (стадия 2): в TG это group_chat_id, в VK — беседа, т.е.
+    vk_peer_id >= 2_000_000_000 (CHAT_PEER_OFFSET). У VK group_chat_id почти
+    всегда пустой, поэтому без учёта беседы VK-клиенты с чатом висли бы на «бот».
     """
     tg_ids = sorted({l.telegram_id for l in links if l.telegram_id})
     unames = sorted({l.telegram_username.lower() for l in links if l.telegram_username})
@@ -69,7 +73,8 @@ def _fetch_wg_state(links: list) -> dict:
         wg.execute(
             """
             SELECT t.telegram_id, lower(t.username) AS uname, t.vk_id, t.platform,
-                   c.id::text AS conv_id, c.status, (c.group_chat_id IS NOT NULL) AS has_chat
+                   c.id::text AS conv_id, c.status,
+                   (c.group_chat_id IS NOT NULL OR c.vk_peer_id >= 2000000000) AS has_chat
             FROM conversations c
             JOIN telegram_users t ON t.id = c.telegram_user_id
             WHERE (t.telegram_id = ANY(%s))
