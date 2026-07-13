@@ -751,6 +751,10 @@ def _split_group_report_payout(manager: "User") -> tuple[int, int, "User | None"
 @login_required
 @require_POST
 def admin_group_report_approve(request: HttpRequest, report_id: int) -> HttpResponse:
+    # Старая система начислений отключена (2026-07): за групрепорт менеджер ничего
+    # не получает, начисляем только по статусу клиента в windowgram (новая воронка).
+    if not getattr(settings, "LEGACY_REWARDS_ENABLED", False):
+        return HttpResponseForbidden("Старая система отчётов отключена — начисляем через новую воронку.")
     if not _is_admin_or_main(request.user):
         return HttpResponseForbidden("Недостаточно прав.")
 

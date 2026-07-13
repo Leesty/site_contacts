@@ -1355,6 +1355,10 @@ def admin_search_reports_list(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["POST"])
 def admin_search_report_approve(request: HttpRequest, report_id: int) -> HttpResponse:
     """Одобрить отчёт SearchLink: +100₽ к balance пользователя."""
+    # Старая система начислений отключена (2026-07): начисляем только через новую
+    # воронку windowgram. Одобрение старых SearchLink-отчётов заблокировано.
+    if not getattr(settings, "LEGACY_REWARDS_ENABLED", False):
+        return HttpResponseForbidden("Старая система отчётов отключена — начисляем через новую воронку.")
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
 

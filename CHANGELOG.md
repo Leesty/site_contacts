@@ -16,6 +16,10 @@
 - **Отчёты по группам сняты**: карточка «Отчёты по группам» на дашборде менеджера и
   админ-карточки «Группы — модерация»/«Права на отчёты» скрыты за `legacy_rewards_enabled`;
   подача `manager_group_report_create` → редирект. Данные сохранены.
+- **Старый крединг остановлен**: approve-флоу `admin_lead_approve`, `admin_group_report_approve`,
+  `admin_search_report_approve` заблокированы при выключенном `LEGACY_REWARDS_ENABLED` →
+  начисляем ТОЛЬКО через новую воронку windowgram. reject/rework оставлены (корректировки, не начисляют).
+  Pending Lead/GroupReport по решению НЕ рассчитываем (за групрепорт менеджер получает только по статусу).
 
 ## 2026-07-13 — `[feat]` SearchLink 2.0: воронка windowgram + авто-начисления (Фаза 1)
 

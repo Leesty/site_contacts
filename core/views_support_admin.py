@@ -779,6 +779,10 @@ LEAD_APPROVE_REWARD = getattr(settings, "LEAD_APPROVE_REWARD", 40)
 @require_http_methods(["POST"])
 def admin_lead_approve(request: HttpRequest, user_id: int, lead_id: int) -> HttpResponse:
     """Одобрить лид: начислить пользователю LEAD_APPROVE_REWARD руб., статус — одобрен."""
+    # Старая система начислений отключена (2026-07): начисляем только через новую
+    # воронку windowgram. Одобрение по старой Lead-схеме заблокировано.
+    if not getattr(settings, "LEGACY_REWARDS_ENABLED", False):
+        return HttpResponseForbidden("Старая система отчётов отключена — начисляем через новую воронку.")
     if not _require_support(request):
         return HttpResponseForbidden("Недостаточно прав.")
     from .models import LeadReviewLog
