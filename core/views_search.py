@@ -120,8 +120,10 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
     from django.db.models import Q, Count, Q as _Q
     links_qs = SearchLink.objects.filter(user=request.user)
 
-    # Вкладки новой воронки (по funnel_stage): бот / чат / созвон / сделка.
-    if tab == "bot":
+    # Вкладки новой воронки (по funnel_stage): ждём бота / бот / чат / созвон / сделка.
+    if tab == "waiting":
+        links_qs = links_qs.filter(bot_started=False)
+    elif tab == "bot":
         links_qs = links_qs.filter(bot_started=True, funnel_stage__lt=2)
     elif tab == "chat":
         links_qs = links_qs.filter(funnel_stage=2)
@@ -136,25 +138,37 @@ def search_links_my(request: HttpRequest) -> HttpResponse:
 
     # Счётчики вкладок — одним aggregate.
     _c = SearchLink.objects.filter(user=request.user).aggregate(
+        total=Count("id"),
+        waiting=Count("id", filter=_Q(bot_started=False)),
         bot=Count("id", filter=_Q(bot_started=True, funnel_stage__lt=2)),
         chat=Count("id", filter=_Q(funnel_stage=2)),
         sozvon=Count("id", filter=_Q(funnel_stage=3)),
         deal=Count("id", filter=_Q(funnel_stage=4)),
     )
+    sozvon_reward = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
+    deal_reward = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
 
     paginator = Paginator(links_qs, 30)
     page_obj = paginator.get_page(request.GET.get("page", 1))
+    # eff_stage для трек-прогресса: 0 ждём бота, 1 бот, 2 чат, 3 созвон, 4 сделка.
+    for link in page_obj:
+        link.eff_stage = max(link.funnel_stage, 1) if link.bot_started else 0
 
     return render(request, "search/my_links.html", {
         "page_obj": page_obj,
         "q": q,
         "tab": tab,
+        "all_count": _c["total"],
+        "waiting_count": _c["waiting"],
         "bot_count": _c["bot"],
         "chat_count": _c["chat"],
         "sozvon_count": _c["sozvon"],
         "deal_count": _c["deal"],
-        "sozvon_reward": getattr(settings, "SEARCH_SOZVON_REWARD", 150),
-        "deal_reward": getattr(settings, "SEARCH_DEAL_REWARD", 4000),
+        # потенциальный/полученный доход (созвон + сделка = уже начисленное)
+        "earned_sozvon": _c["sozvon"] * sozvon_reward,
+        "earned_deal": _c["deal"] * deal_reward,
+        "sozvon_reward": sozvon_reward,
+        "deal_reward": deal_reward,
         "can_use_vk": _can_use_vk_platform(request.user),
     })
 

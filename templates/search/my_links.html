@@ -3,253 +3,233 @@
 {% block title %}Мои ссылки — SearchLink{% endblock %}
 
 {% block content %}
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">Мои ссылки (SearchLink)</h1>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+<style>
+  .sl-wrap { --line: rgba(255,255,255,.09); --card: rgba(255,255,255,.035); }
+  .sl-head h1 { letter-spacing:-.5px; }
+  /* ── Hero создание ── */
+  .sl-hero { background: linear-gradient(135deg, rgba(99,102,241,.16), rgba(99,102,241,.03)); border:1px solid rgba(99,102,241,.28); border-radius:16px; padding:16px 18px; }
+  .sl-hero input { background: rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.14); color:#fff; height:44px; border-radius:10px; }
+  .sl-hero input::placeholder { color:#8b93a7; }
+  .sl-hero input:focus { border-color:#818cf8; box-shadow:0 0 0 3px rgba(99,102,241,.25); background:rgba(0,0,0,.35); }
+  .sl-hero .btn-create { height:44px; border-radius:10px; font-weight:700; background:#6366f1; border:none; white-space:nowrap; }
+  .sl-hero .btn-create:hover { background:#4f46e5; }
+  .sl-hint { font-size:12px; color:#a9b1c6; }
+  .sl-hint b.g { color:#4ade80; }
+  /* ── Воронка-навигация ── */
+  .sl-funnel { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+  .sl-stage { flex:1 1 120px; min-width:112px; text-decoration:none; color:inherit; border-radius:13px; padding:11px 13px; background:var(--card); border:1px solid var(--line); transition:.14s; position:relative; }
+  .sl-stage:hover { transform:translateY(-2px); border-color:rgba(255,255,255,.22); }
+  .sl-stage .lbl { font-size:11px; color:#9aa3b8; display:flex; align-items:center; gap:5px; }
+  .sl-stage .cnt { font-size:23px; font-weight:800; line-height:1.15; margin-top:2px; color:#f1f5f9; }
+  .sl-stage .rw { font-size:10.5px; font-weight:700; color:#8b93a7; margin-top:1px; }
+  .sl-stage.active { border-color:#818cf8; background:rgba(99,102,241,.16); box-shadow:0 0 0 1px rgba(129,140,248,.5); }
+  .sl-stage.money { background:linear-gradient(135deg, rgba(34,197,94,.10), rgba(34,197,94,.015)); border-color:rgba(34,197,94,.28); }
+  .sl-stage.money .rw { color:#4ade80; }
+  .sl-stage.money.active { border-color:#4ade80; box-shadow:0 0 0 1px rgba(74,222,128,.5); background:rgba(34,197,94,.16); }
+  /* ── Карточка ссылки + трек ── */
+  .sl-link { background:var(--card); border:1px solid var(--line); border-radius:13px; padding:13px 15px; margin-bottom:10px; transition:.14s; }
+  .sl-link:hover { border-color:rgba(255,255,255,.18); }
+  .sl-link .name { font-weight:600; color:#f1f5f9; }
+  .sl-pill { font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; vertical-align:middle; }
+  .sl-copy { font-size:11px; border-radius:8px; padding:3px 9px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:#cbd5e1; cursor:pointer; transition:.12s; }
+  .sl-copy:hover { border-color:#818cf8; color:#fff; background:rgba(99,102,241,.18); }
+  .sl-copy.tg:hover { border-color:#38bdf8; background:rgba(56,189,248,.18); }
+  /* трек */
+  .sl-track { display:flex; align-items:flex-start; margin-top:12px; }
+  .sl-node { display:flex; flex-direction:column; align-items:center; width:60px; flex:0 0 auto; }
+  .sl-dot { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; border:2px solid rgba(255,255,255,.16); background:rgba(255,255,255,.02); color:#5b6472; transition:.15s; }
+  .sl-node.done .sl-dot { background:#22c55e; border-color:#22c55e; color:#04210f; }
+  .sl-node.cur .sl-dot { background:#6366f1; border-color:#818cf8; color:#fff; box-shadow:0 0 0 4px rgba(99,102,241,.28); }
+  .sl-node.win .sl-dot { background:#22c55e; border-color:#4ade80; color:#04210f; box-shadow:0 0 0 4px rgba(34,197,94,.3); }
+  .sl-node .nlbl { font-size:10px; margin-top:5px; color:#8b93a7; text-align:center; line-height:1.2; }
+  .sl-node.done .nlbl, .sl-node.cur .nlbl, .sl-node.win .nlbl { color:#dbe2ee; font-weight:600; }
+  .sl-node .nrw { font-size:9px; color:#4ade80; font-weight:700; }
+  .sl-conn { flex:1 1 auto; height:2px; background:var(--line); margin-top:15px; border-radius:2px; }
+  .sl-conn.done { background:#22c55e; }
+  .sl-dupe { color:#f87171; font-size:12px; font-weight:600; }
+</style>
+
+<div class="sl-wrap">
+  {# ── Шапка ── #}
+  <div class="d-flex justify-content-between align-items-start mb-3 sl-head">
+    <div>
+      <h1 class="h4 mb-1">🔗 Мои ссылки</h1>
+      <p class="text-muted small mb-0">Создавайте ссылки, отправляйте клиентам — деньги приходят автоматически по мере продвижения клиента по воронке.</p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm text-nowrap" href="{% url 'dashboard' %}">← В кабинет</a>
   </div>
 
-  {# Создание ссылки #}
-  <div class="card shadow-sm mb-3">
-    <div class="card-header bg-transparent border-secondary py-2">
-      <strong>Создать ссылку</strong>
-    </div>
-    <div class="card-body py-3">
-      <form method="post" action="{% url 'search_link_create' %}" class="d-flex gap-2">
-        {% csrf_token %}
-        <input type="text" class="form-control form-control-sm" name="lead_name" placeholder="Имя / ник лида" required maxlength="200">
-        <button type="submit" class="btn btn-primary btn-sm px-4">Создать</button>
-      </form>
-      {% if can_use_vk %}
-      <div class="form-text mt-1">
-        Ваш лендинг работает и для Telegram, и для ВК. Клиент сам выбирает, где запустить бота — засчитывается первый переход.
-      </div>
-      {% endif %}
-      {% if not searchlink_reports_enabled %}
-      <div class="alert alert-info small mt-2 mb-0 py-2">
-        Отчёты больше не нужны — всё автоматически. Клиент прошёл по ссылке и запустил бота → дальше отслеживаем его путь: создан чат → <strong>созвон (+150 ₽)</strong> → <strong>успешная сделка (до 4000 ₽)</strong>. Начисления приходят по мере смены статуса клиента.
-      </div>
-      {% endif %}
+  {# ── Hero: создать ссылку ── #}
+  <div class="sl-hero mb-1">
+    <form method="post" action="{% url 'search_link_create' %}" class="d-flex gap-2 flex-column flex-sm-row">
+      {% csrf_token %}
+      <input type="text" class="form-control flex-grow-1" name="lead_name" placeholder="Имя или ник клиента…" required maxlength="200">
+      <button type="submit" class="btn btn-create text-white px-4">＋ Создать ссылку</button>
+    </form>
+    <div class="sl-hint mt-2">
+      🤖 Клиент запускает бота → 💬 создаётся чат → 📞 <b class="g">созвон = +{{ sozvon_reward }} ₽</b> → ✅ <b class="g">сделка = до {{ deal_reward }} ₽</b>. Отчёты не нужны — всё считается по статусу клиента.
+      {% if can_use_vk %}<br><span class="text-muted">Лендинг работает и для Telegram, и для ВК — засчитывается первый переход.</span>{% endif %}
     </div>
   </div>
 
-  {# Вкладки воронки: все / бот / чат / созвон / сделка #}
-  <ul class="nav nav-tabs mb-3">
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="?tab=all">Все ссылки</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'bot' %}active{% endif %}" href="?tab=bot">
-        Запустил бота {% if bot_count %}<span class="badge bg-secondary">{{ bot_count }}</span>{% endif %}
-      </a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'chat' %}active{% endif %}" href="?tab=chat">
-        Создан чат {% if chat_count %}<span class="badge bg-info text-dark">{{ chat_count }}</span>{% endif %}
-      </a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'sozvon' %}active{% endif %}" href="?tab=sozvon">
-        Проведён созвон {% if sozvon_count %}<span class="badge bg-primary">{{ sozvon_count }}</span>{% endif %}
-      </a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link {% if tab == 'deal' %}active{% endif %}" href="?tab=deal">
-        Успешная сделка {% if deal_count %}<span class="badge bg-success">{{ deal_count }}</span>{% endif %}
-      </a>
-    </li>
-  </ul>
+  {# ── Воронка-навигация ── #}
+  <div class="sl-funnel">
+    <a class="sl-stage {% if tab == 'all' %}active{% endif %}" href="?tab=all">
+      <div class="lbl">📂 Все</div><div class="cnt">{{ all_count }}</div><div class="rw">все ссылки</div>
+    </a>
+    <a class="sl-stage {% if tab == 'waiting' %}active{% endif %}" href="?tab=waiting">
+      <div class="lbl">⏳ Ждём бота</div><div class="cnt">{{ waiting_count }}</div><div class="rw">не запустил</div>
+    </a>
+    <a class="sl-stage {% if tab == 'bot' %}active{% endif %}" href="?tab=bot">
+      <div class="lbl">🤖 Бот</div><div class="cnt">{{ bot_count }}</div><div class="rw">запустил</div>
+    </a>
+    <a class="sl-stage {% if tab == 'chat' %}active{% endif %}" href="?tab=chat">
+      <div class="lbl">💬 Чат</div><div class="cnt">{{ chat_count }}</div><div class="rw">создан</div>
+    </a>
+    <a class="sl-stage money {% if tab == 'sozvon' %}active{% endif %}" href="?tab=sozvon">
+      <div class="lbl">📞 Созвон</div><div class="cnt">{{ sozvon_count }}</div><div class="rw">+{{ sozvon_reward }} ₽</div>
+    </a>
+    <a class="sl-stage money {% if tab == 'deal' %}active{% endif %}" href="?tab=deal">
+      <div class="lbl">✅ Сделка</div><div class="cnt">{{ deal_count }}</div><div class="rw">до {{ deal_reward }} ₽</div>
+    </a>
+  </div>
 
-  {# Поиск #}
+  {# ── Поиск (на вкладке «Все») ── #}
   {% if tab == 'all' %}
-  <div class="card shadow-sm mb-3">
-    <div class="card-body py-2">
-      <form method="get" class="d-flex gap-2">
-        <input type="hidden" name="tab" value="all">
-        <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск по имени или коду..." aria-label="Поиск">
-        <button type="submit" class="btn btn-primary btn-sm px-4">Найти</button>
-        {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'search_links_my' %}?tab=all">Сбросить</a>{% endif %}
-      </form>
-    </div>
-  </div>
+  <form method="get" class="d-flex gap-2 mb-3">
+    <input type="hidden" name="tab" value="all">
+    <input type="text" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="🔎 Поиск по имени или коду…" aria-label="Поиск">
+    <button type="submit" class="btn btn-primary btn-sm px-4">Найти</button>
+    {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'search_links_my' %}?tab=all">Сбросить</a>{% endif %}
+  </form>
   {% endif %}
 
-  {# Таблица ссылок #}
+  {# ── Список ссылок ── #}
   {% if page_obj %}
-    <div class="card shadow-sm">
-      {% if page_obj.paginator.num_pages > 1 %}
-        <div class="card-header bg-transparent border-secondary d-flex justify-content-end">
-          <nav>
-            <ul class="pagination pagination-sm mb-0">
-              {% if page_obj.has_previous %}
-                <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Предыдущая страница">←</a></li>
-              {% endif %}
-              <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-              {% if page_obj.has_next %}
-                <li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Следующая страница">→</a></li>
-              {% endif %}
-            </ul>
-          </nav>
+    {% for link in page_obj %}
+      <div class="sl-link">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <span class="text-muted small me-1">#{{ link.display_id|default:link.id }}</span>
+            {% if link.started_platform == 'vk' %}<span class="sl-pill" style="background:#4c75a3;color:#fff;">VK</span>
+            {% elif link.started_platform == 'telegram' %}<span class="sl-pill" style="background:#0088cc;color:#fff;">TG</span>
+            {% elif link.platform == 'both' %}<span class="sl-pill bg-secondary">TG+VK</span>
+            {% else %}<span class="sl-pill" style="background:#0088cc;color:#fff;">TG</span>{% endif %}
+            {% if link.lead_contact_display %}
+              {% with disp=link.lead_contact_display %}
+              {% if link.lead_contact_url %}<a class="name" href="{{ link.lead_contact_url }}" target="_blank" rel="noopener">{% if link.started_platform == 'vk' or disp|slice:":3" == "tg:" %}{{ disp|truncatechars:28 }}{% else %}@{{ disp|truncatechars:28 }}{% endif %}</a>{% else %}<span class="name">{{ disp|truncatechars:28 }}</span>{% endif %}
+              {% endwith %}
+              <span class="text-muted small">· {{ link.lead_name|truncatechars:20 }}</span>
+            {% else %}
+              <span class="name">{{ link.lead_name|truncatechars:32 }}</span>
+            {% endif %}
+            <span class="text-muted small ms-1 d-none d-md-inline">· {{ link.created_at|date:"d.m H:i" }}</span>
+          </div>
+          <div class="d-flex gap-1">
+            <button type="button" class="sl-copy js-copy-direct" data-copy="{{ site_url }}/s/{{ link.code }}/" data-toast="Ссылка-лендинг скопирована" title="{{ site_url }}/s/{{ link.code }}/">📋 Лендинг</button>
+            <button type="button" class="sl-copy tg js-copy-direct" data-copy="{{ link.tg_deep_link }}" data-toast="Прямая TG-ссылка скопирована" title="{{ link.tg_deep_link }}">📨 TG</button>
+          </div>
         </div>
-      {% endif %}
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0 align-middle table-dark-site">
-            <thead>
-              <tr>
-                <th>Имя лида</th>
-                <th>Ссылка</th>
-                <th class="d-none d-lg-table-cell">Создано</th>
-                <th>Стадия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for link in page_obj %}
-                <tr>
-                  <td>
-                    <span class="text-muted small me-1">#{{ link.display_id|default:link.id }}</span>
-                    {% if link.started_platform == 'vk' %}
-                      <span class="badge" style="background:#4c75a3;color:#fff;font-size:10px;">VK</span>
-                    {% elif link.started_platform == 'telegram' %}
-                      <span class="badge" style="background:#0088cc;color:#fff;font-size:10px;">TG</span>
-                    {% elif link.platform == 'both' %}
-                      <span class="badge bg-secondary" style="font-size:10px;">TG+VK</span>
-                    {% else %}
-                      <span class="badge" style="background:#0088cc;color:#fff;font-size:10px;">TG</span>
-                    {% endif %}
-                    {% if link.lead_contact_display %}
-                      {% with disp=link.lead_contact_display %}
-                      {% if link.lead_contact_url %}<a href="{{ link.lead_contact_url }}" target="_blank" rel="noopener"
-                         {% if disp|slice:":3" == "tg:" %}title="Telegram ID (username скрыт). Клик откроет TG-клиент."{% endif %}>{% if link.started_platform == 'vk' or disp|slice:":3" == "tg:" %}{{ disp|truncatechars:30 }}{% else %}@{{ disp|truncatechars:30 }}{% endif %}</a>{% else %}{{ disp|truncatechars:30 }}{% endif %}
-                      {% endwith %}
-                      <span class="text-muted small">· {{ link.lead_name|truncatechars:20 }}</span>
-                    {% else %}
-                      {{ link.lead_name|truncatechars:30 }}
-                    {% endif %}
-                  </td>
-                  <td>
-                    <div class="d-flex flex-wrap gap-1">
-                      <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-copy-direct"
-                              data-copy="{{ site_url }}/s/{{ link.code }}/"
-                              data-toast="Ссылка-лендинг скопирована"
-                              style="font-size: 11px;" title="{{ site_url }}/s/{{ link.code }}/">
-                        📋 Лендинг
-                      </button>
-                      <button type="button" class="btn btn-outline-info btn-sm py-0 px-2 js-copy-direct"
-                              data-copy="{{ link.tg_deep_link }}"
-                              data-toast="Прямая TG-ссылка скопирована"
-                              style="font-size: 11px;" title="{{ link.tg_deep_link }}">
-                        📨 TG
-                      </button>
-                    </div>
-                  </td>
-                  <td class="text-muted small text-nowrap d-none d-lg-table-cell">{{ link.created_at|date:"d.m H:i" }}</td>
-                  <td>
-                    {% if link.duplicate_of_id %}
-                      <span class="badge bg-danger" title="Клиент уже привлечён по другой ссылке">Дубликат</span>
-                    {% elif link.funnel_stage >= 4 %}
-                      <span class="badge bg-success">✅ Успешная сделка</span>
-                    {% elif link.funnel_stage == 3 %}
-                      <span class="badge bg-primary">📞 Проведён созвон</span>
-                    {% elif link.funnel_stage == 2 %}
-                      <span class="badge bg-info text-dark">💬 Создан чат</span>
-                    {% elif link.bot_started %}
-                      <span class="badge bg-success">🤖 Бот запущен</span>
-                    {% else %}
-                      <span class="badge bg-secondary">Ждём бота</span>
-                      {% if user.role == 'admin' or user.role == 'main_admin' or user.role == 'support' %}
-                        <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 ms-1 js-force-confirm-btn"
-                                data-code="{{ link.code }}" style="font-size: 11px;"
-                                title="Отметить старт вручную (если webhook не сработал)">✓ Подтвердить</button>
-                      {% endif %}
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+
+        {% if link.duplicate_of_id %}
+          <div class="mt-2 sl-dupe">⚠ Дубликат — этот клиент уже привлечён по другой ссылке.</div>
+        {% else %}
+          {# трек-прогресс: бот → чат → созвон → сделка #}
+          <div class="sl-track">
+            <div class="sl-node {% if link.eff_stage > 1 %}done{% elif link.eff_stage == 1 %}cur{% endif %}">
+              <div class="sl-dot">🤖</div><div class="nlbl">Бот</div>
+            </div>
+            <div class="sl-conn {% if link.eff_stage >= 2 %}done{% endif %}"></div>
+            <div class="sl-node {% if link.eff_stage > 2 %}done{% elif link.eff_stage == 2 %}cur{% endif %}">
+              <div class="sl-dot">💬</div><div class="nlbl">Чат</div>
+            </div>
+            <div class="sl-conn {% if link.eff_stage >= 3 %}done{% endif %}"></div>
+            <div class="sl-node {% if link.eff_stage > 3 %}done{% elif link.eff_stage == 3 %}cur{% endif %}">
+              <div class="sl-dot">📞</div><div class="nlbl">Созвон</div><div class="nrw">+{{ sozvon_reward }}</div>
+            </div>
+            <div class="sl-conn {% if link.eff_stage >= 4 %}done{% endif %}"></div>
+            <div class="sl-node {% if link.eff_stage == 4 %}win{% endif %}">
+              <div class="sl-dot">✅</div><div class="nlbl">Сделка</div><div class="nrw">до {{ deal_reward }}</div>
+            </div>
+          </div>
+          {% if not link.bot_started and user.role != 'user' %}
+            <div class="mt-2">
+              <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 js-force-confirm-btn" data-code="{{ link.code }}" style="font-size:11px;" title="Отметить старт вручную (если webhook не сработал)">✓ Подтвердить старт</button>
+            </div>
+          {% endif %}
+        {% endif %}
       </div>
-    </div>
+    {% endfor %}
+
+    {% if page_obj.paginator.num_pages > 1 %}
+      <nav class="d-flex justify-content-center mt-3">
+        <ul class="pagination pagination-sm mb-0">
+          {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">←</a></li>{% endif %}
+          <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+          {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?tab={{ tab }}&page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">→</a></li>{% endif %}
+        </ul>
+      </nav>
+    {% endif %}
   {% else %}
-    <div class="card shadow-sm">
-      <div class="card-body text-center text-muted py-5">
-        {% if q %}По запросу «{{ q }}» ссылок не найдено.{% else %}У вас пока нет ссылок. Создайте первую выше.{% endif %}
-      </div>
+    <div class="sl-link text-center text-muted py-5">
+      {% if q %}По запросу «{{ q }}» ничего не найдено.
+      {% elif tab != 'all' %}Здесь пока пусто — на этой стадии клиентов нет.
+      {% else %}У вас пока нет ссылок. Создайте первую выше ↑{% endif %}
     </div>
   {% endif %}
+</div>
 
-  <div id="copy-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index:1100;display:none;" role="alert">Ссылка скопирована!</div>
-  <script>
-  function showCopyToast(msg) {
-    var toast = document.getElementById('copy-toast');
-    toast.textContent = msg || 'Ссылка скопирована!';
-    toast.style.display = 'block';
-    setTimeout(function() { toast.style.display = 'none'; }, 2000);
-  }
-  function copyToClipboard(text) {
-    if (navigator.clipboard) {
-      return navigator.clipboard.writeText(text);
-    }
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    return Promise.resolve();
-  }
-  document.querySelectorAll('.js-copy-direct').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var text = btn.getAttribute('data-copy') || '';
-      if (!text) return;
-      copyToClipboard(text);
-      var toastText = btn.getAttribute('data-toast') || 'Ссылка скопирована';
-      showCopyToast(toastText);
-    });
+<div id="copy-toast" class="position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-success py-2 px-3 mb-0 shadow-sm" style="z-index:1100;display:none;" role="alert">Ссылка скопирована!</div>
+<script>
+function showCopyToast(msg) {
+  var toast = document.getElementById('copy-toast');
+  toast.textContent = msg || 'Ссылка скопирована!';
+  toast.style.display = 'block';
+  setTimeout(function() { toast.style.display = 'none'; }, 2000);
+}
+function copyToClipboard(text) {
+  if (navigator.clipboard) { return navigator.clipboard.writeText(text); }
+  var ta = document.createElement('textarea');
+  ta.value = text; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); document.body.removeChild(ta);
+  return Promise.resolve();
+}
+document.querySelectorAll('.js-copy-direct').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var text = btn.getAttribute('data-copy') || '';
+    if (!text) return;
+    copyToClipboard(text);
+    showCopyToast(btn.getAttribute('data-toast') || 'Ссылка скопирована');
   });
-
-  // Ручное подтверждение старта бота (только для admin/support)
-  function getCsrf() {
-    var el = document.querySelector('[name=csrfmiddlewaretoken]');
-    if (el) return el.value;
-    var m = document.cookie.match(/csrftoken=([^;]+)/);
-    return m ? m[1] : '';
-  }
-  document.querySelectorAll('.js-force-confirm-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var code = btn.getAttribute('data-code');
-      if (!code) return;
-      var tgUsername = prompt('Введите @username клиента (необязательно, для аудита):', '') || '';
-      if (tgUsername === null) return;
-      if (!confirm('Отметить эту ссылку как «Бот запущен»? Действие нельзя отменить.')) return;
-      btn.disabled = true;
-      btn.textContent = '…';
-      var body = new FormData();
-      body.append('csrfmiddlewaretoken', getCsrf());
-      if (tgUsername.trim()) body.append('telegram_username', tgUsername.trim());
-      fetch('/search/links/' + encodeURIComponent(code) + '/force-confirm-start/', {
-        method: 'POST', body: body,
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        credentials: 'same-origin'
+});
+function getCsrf() {
+  var el = document.querySelector('[name=csrfmiddlewaretoken]');
+  if (el) return el.value;
+  var m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : '';
+}
+document.querySelectorAll('.js-force-confirm-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var code = btn.getAttribute('data-code');
+    if (!code) return;
+    var tgUsername = prompt('Введите @username клиента (необязательно, для аудита):', '') || '';
+    if (tgUsername === null) return;
+    if (!confirm('Отметить эту ссылку как «Бот запущен»? Действие нельзя отменить.')) return;
+    btn.disabled = true; btn.textContent = '…';
+    var body = new FormData();
+    body.append('csrfmiddlewaretoken', getCsrf());
+    if (tgUsername.trim()) body.append('telegram_username', tgUsername.trim());
+    fetch('/search/links/' + encodeURIComponent(code) + '/force-confirm-start/', {
+      method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin'
+    })
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        if (res.ok && res.data.ok) { showCopyToast('Старт подтверждён'); setTimeout(function() { location.reload(); }, 800); }
+        else { btn.disabled = false; btn.textContent = '✓ Подтвердить старт'; alert('Ошибка: ' + (res.data && res.data.error || 'неизвестная')); }
       })
-        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-        .then(function(res) {
-          if (res.ok && res.data.ok) {
-            showCopyToast('Старт подтверждён');
-            setTimeout(function() { location.reload(); }, 800);
-          } else {
-            btn.disabled = false;
-            btn.textContent = '✓ Подтвердить';
-            alert('Ошибка: ' + (res.data && res.data.error || 'неизвестная'));
-          }
-        })
-        .catch(function() {
-          btn.disabled = false;
-          btn.textContent = '✓ Подтвердить';
-          alert('Сетевая ошибка');
-        });
-    });
+      .catch(function() { btn.disabled = false; btn.textContent = '✓ Подтвердить старт'; alert('Сетевая ошибка'); });
   });
-  </script>
-  {% csrf_token %}
+});
+</script>
+{% csrf_token %}
 {% endblock %}
