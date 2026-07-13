@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-13 — `[feat]` Кабинет рефералов возвращён с редактированием ставок (под воронку)
+
+Каждый рефовод снова задаёт свои доли с событий реферала — но теперь по новой
+воронке (созвон/сделка), а не по старым отчётам. Вкладка была скрыта за
+`LEGACY_REWARDS_ENABLED`; отвязали её от старых отчётов отдельным флагом.
+
+- **Модель**: `User.ref_sozvon_cut` (default 50) + `ref_deal_cut` (default 1000),
+  миграция `0091` (AddField-only, применена на прод). Реф получает `total - cut`.
+- **Воронка**: `_apply_credit` читает индивидуальные доли рефовода
+  (`referrer.ref_sozvon_cut/ref_deal_cut`, fallback на settings). Проверено
+  rollback-тестом: созвон 150 при ставке 70 → менеджер 80, рефовод 70. Прод не менялся.
+- **Гейт**: `@referral_system_required` + флаг `REFERRAL_SYSTEM_ENABLED` (default ON),
+  независим от `LEGACY_REWARDS_ENABLED` — реф-кабинет виден, старые отчёты остаются off.
+- **Заработок**: `_referral_earnings_breakdown` пересчитан из `BalanceLog`
+  (`sozvon_ref#`/`deal_ref#` → SearchLink → реферал), а не из `PartnerEarning`.
+- Вьюхи `partner_referrals`/`user_referrals`/`user_referral_list`/`partner_dashboard`
+  + rate-вьюхи → созвон/сделка. Убран мёртвый sub-рефовод milestone (был на отчётах).
+- Шаблоны: колонки Созвоны/Сделки, формы ставок (созвон из 150 / сделка из 4000),
+  nav «Рефералы» для партнёров И менеджеров. Все страницы рендерятся 200.
+
 ## 2026-07-13 — `[fix]` VK в воронке SearchLink: матч по screen_name + аудит
 
 Разбор жалобы «под VK не работает». **Итог: VK работает** — вебхук VK-бота
