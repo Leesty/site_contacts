@@ -448,6 +448,24 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                     ctx["calendar_today_count"] = _cur.fetchone()[0]
             except Exception:
                 ctx["calendar_today_count"] = 0
+
+            # Деньги «на ожидании» — сколько платформа должна менеджерам к выплате.
+            # Считаем только ПЛЮСОВЫЕ балансы (минусовые = должники, не выплата).
+            ctx["pending_main_balance"] = (
+                User.objects.filter(role="user", balance__gt=0)
+                .aggregate(s=Sum("balance")).get("s") or 0
+            )
+            ctx["pending_legacy_balance"] = (
+                User.objects.filter(role="user", legacy_balance__gt=0)
+                .aggregate(s=Sum("legacy_balance")).get("s") or 0
+            )
+            ctx["pending_withdrawals_total"] = (
+                WithdrawalRequest.objects.filter(status="pending")
+                .aggregate(s=Sum("amount")).get("s") or 0
+            )
+            ctx["pending_withdrawals_count"] = (
+                WithdrawalRequest.objects.filter(status="pending").count()
+            )
             return render(request, "core/dashboard_main_admin.html", ctx)
 
         return render(request, "core/dashboard_admin.html", ctx)
