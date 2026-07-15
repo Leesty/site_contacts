@@ -69,35 +69,23 @@
         </div>
         <div class="card-body">
           <p class="small text-muted mb-3">
-            Ваша доля с событий реферала. Применяются ко всем рефералам сразу.
-            Реф получает остаток.
+            Ваша доля с событий реферала. Ставки фиксированы и одинаковы для всех.
           </p>
-          <form method="post" action="{% url 'user_update_ref_rates' %}">
-            {% csrf_token %}
-            <div class="mb-3">
-              <label class="form-label small mb-1" for="ref_sozvon_cut">
-                Созвон реферала ({{ sozvon_total_reward }} ₽)
-              </label>
-              <div class="input-group input-group-sm">
-                <span class="input-group-text">Вам</span>
-                <input type="number" class="form-control" id="ref_sozvon_cut" name="ref_sozvon_cut"
-                       min="0" max="{{ sozvon_total_reward }}" value="{{ ref_sozvon_cut }}" required>
-                <span class="input-group-text">₽ · рефу <strong>{{ ref_sozvon_ref_share }} ₽</strong></span>
-              </div>
+          <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
+            <div>
+              <div class="small">Созвон реферала</div>
+              <div class="text-muted" style="font-size: 11px;">всего {{ sozvon_total_reward }} ₽ · рефу {{ ref_sozvon_ref_share }} ₽</div>
             </div>
-            <div class="mb-3">
-              <label class="form-label small mb-1" for="ref_deal_cut">
-                Сделка реферала ({{ deal_total_reward }} ₽)
-              </label>
-              <div class="input-group input-group-sm">
-                <span class="input-group-text">Вам</span>
-                <input type="number" class="form-control" id="ref_deal_cut" name="ref_deal_cut"
-                       min="0" max="{{ deal_total_reward }}" value="{{ ref_deal_cut }}" required>
-                <span class="input-group-text">₽ · рефу <strong>{{ ref_deal_ref_share }} ₽</strong></span>
-              </div>
+            <div class="h5 mb-0 text-success">+{{ ref_sozvon_cut }} ₽</div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center py-2">
+            <div>
+              <div class="small">Сделка реферала</div>
+              <div class="text-muted" style="font-size: 11px;">всего {{ deal_total_reward }} ₽ · рефу {{ ref_deal_ref_share }} ₽</div>
             </div>
-            <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить ставки</button>
-          </form>
+            <div class="h5 mb-0 text-success">+{{ ref_deal_cut }} ₽</div>
+          </div>
+          <p class="small text-muted mb-0 mt-2">🔒 Ставки едины для всех и не редактируются.</p>
         </div>
       </div>
     </div>

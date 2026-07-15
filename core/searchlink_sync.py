@@ -140,6 +140,20 @@ def _credit(user, amount: int, reason: str, actor):
         u.save(update_fields=["is_accredited"])
 
 
+def _sozvon_actually_paid(link_id) -> bool:
+    """Был ли аванс за созвон РЕАЛЬНО выплачен по этой ссылке.
+
+    Нельзя судить по `sozvon_credited_at`: baseline проставляет его без оплаты
+    (форвард-онли, «выдан» = «обработан, не платим»). Если при сделке вычесть
+    такой невыплаченный аванс, менеджер получит 2900 вместо 3000. Источник
+    истины — BalanceLog: аванс выплачен ⟺ есть запись `sozvon#<link> +N`.
+    """
+    from .models import BalanceLog
+    return BalanceLog.objects.filter(
+        field="balance", reason__startswith=f"sozvon#{link_id} "
+    ).exists()
+
+
 def baseline_searchlink_funnel(dry_run: bool = True) -> dict:
     """Форвард-онли baseline (разовый). Обновляет стадию всех bot_started ссылок
     по текущему состоянию windowgram и ПОМЕЧАЕТ уже достигнутые созвон/сделку как
@@ -279,13 +293,10 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         manager = l.user
         referrer = manager.partner_owner if manager.partner_owner_id else None
         has_ref = referrer is not None
-        # Доли рефовода — индивидуальные (каждый рефовод задаёт свои во вкладке
-        # «Реф-ставки»), с fallback на дефолты из settings. Клампим в [0, total].
+        # Ставки ФИКСИРОВАННЫЕ для всех (2026-07-13): редактирование отключено.
+        # Рефовод берёт SOZVON_REF с созвона и DEAL_REF со сделки реферала.
         r_sozvon = SOZVON_REF
         r_deal = DEAL_REF
-        if has_ref:
-            r_sozvon = max(0, min(SOZVON_TOTAL, getattr(referrer, "ref_sozvon_cut", SOZVON_REF)))
-            r_deal = max(0, min(DEAL_TOTAL, getattr(referrer, "ref_deal_cut", DEAL_REF)))
 
         def dc(user, amount, reason):
             if user and amount and not dry_run:
@@ -302,7 +313,9 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
             summary["sozvon_credited"] += 1; summary["sozvon_rub"] += SOZVON_TOTAL
         if new_stage == 4 and l.deal_credited_at is None:
-            sozvon_given = l.sozvon_credited_at is not None
+            # Аванс за созвон вычитаем из сделки ТОЛЬКО если он реально выплачен
+            # (иначе baseline-«выдан» съедал бы 100 ₽ → менеджер получал 2900).
+            sozvon_given = _sozvon_actually_paid(l.pk)
             if has_ref:
                 mgr_sozvon = (SOZVON_TOTAL - r_sozvon) if sozvon_given else 0
                 ref_sozvon = r_sozvon if sozvon_given else 0

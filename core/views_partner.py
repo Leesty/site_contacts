@@ -65,6 +65,27 @@ def referral_system_required(view_func):
     return _wrapped
 
 
+def _fixed_ref_rate_context() -> dict:
+    """Фиксированные реф-ставки для шаблонов (редактирование отключено 2026-07-13).
+
+    Одинаковы для всех рефоводов и берутся из settings — те же константы, что
+    использует воронка при начислении. Менять = env SEARCH_SOZVON_REFERRER /
+    SEARCH_DEAL_REFERRER.
+    """
+    sozvon_total = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
+    deal_total = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
+    sozvon_ref = getattr(settings, "SEARCH_SOZVON_REFERRER", 50)
+    deal_ref = getattr(settings, "SEARCH_DEAL_REFERRER", 1000)
+    return {
+        "sozvon_total_reward": sozvon_total,
+        "deal_total_reward": deal_total,
+        "ref_sozvon_cut": sozvon_ref,
+        "ref_sozvon_ref_share": max(0, sozvon_total - sozvon_ref),
+        "ref_deal_cut": deal_ref,
+        "ref_deal_ref_share": max(0, deal_total - deal_ref),
+    }
+
+
 def _require_partner(request: HttpRequest) -> bool:
     """Только роль «partner» со статусом approved. Забаненный партнёр теряет доступ."""
     user = request.user
@@ -197,12 +218,8 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
         "partner_rate": user.partner_rate or PARTNER_EARN_PER_LEAD_DEFAULT,
         "receiptless_withdrawals": receiptless_withdrawals,
         # Реф-ставки воронки (применяются ко всем рефералам сразу)
-        "sozvon_total_reward": SOZVON_TOTAL,
-        "deal_total_reward": DEAL_TOTAL,
-        "ref_sozvon_cut": user.ref_sozvon_cut,
-        "ref_sozvon_ref_share": max(0, SOZVON_TOTAL - user.ref_sozvon_cut),
-        "ref_deal_cut": user.ref_deal_cut,
-        "ref_deal_ref_share": max(0, DEAL_TOTAL - user.ref_deal_cut),
+        # Реф-ставки — ФИКСИРОВАННЫЕ для всех (редактирование отключено)
+        **_fixed_ref_rate_context(),
     })
 
 
@@ -210,55 +227,24 @@ def partner_dashboard(request: HttpRequest) -> HttpResponse:
 @referral_system_required
 @require_http_methods(["POST"])
 def partner_update_rates(request: HttpRequest) -> HttpResponse:
-    """Партнёр меняет свои реф-доли с созвона/сделки реферала (инлайн с дашборда).
+    """Редактирование реф-ставок ОТКЛЮЧЕНО (2026-07-13) — ставки фиксированы.
 
-    Те же поля, что и на странице «Реф-ставки» — применяются ко всем рефералам.
+    No-op, чтобы старые формы/закладки не давали 404. См. user_update_ref_rates.
     """
     if not _require_partner(request):
         return HttpResponseForbidden()
-
-    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
-    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
-    update_fields = []
-
-    raw_sz = request.POST.get("ref_sozvon_cut")
-    if raw_sz is not None:
-        try:
-            sz = max(0, min(SOZVON_TOTAL, int(raw_sz)))
-        except (TypeError, ValueError):
-            messages.error(request, f"Ставка за созвон должна быть числом от 0 до {SOZVON_TOTAL}.")
-            return redirect("partner_dashboard")
-        request.user.ref_sozvon_cut = sz
-        update_fields.append("ref_sozvon_cut")
-
-    raw_dl = request.POST.get("ref_deal_cut")
-    if raw_dl is not None:
-        try:
-            dl = max(0, min(DEAL_TOTAL, int(raw_dl)))
-        except (TypeError, ValueError):
-            messages.error(request, f"Ставка за сделку должна быть числом от 0 до {DEAL_TOTAL}.")
-            return redirect("partner_dashboard")
-        request.user.ref_deal_cut = dl
-        update_fields.append("ref_deal_cut")
-
-    if update_fields:
-        request.user.save(update_fields=update_fields)
-        messages.success(
-            request,
-            f"Ставки обновлены. Созвон: вы {request.user.ref_sozvon_cut} ₽ / реф {SOZVON_TOTAL - request.user.ref_sozvon_cut} ₽. "
-            f"Сделка: вы {request.user.ref_deal_cut} ₽ / реф {DEAL_TOTAL - request.user.ref_deal_cut} ₽.",
-        )
+    messages.info(request, "Реф-ставки фиксированы и не редактируются.")
     return redirect("partner_dashboard")
 
 
 @login_required
 @referral_system_required
 def partner_ref_rates(request: HttpRequest) -> HttpResponse:
-    """Страница «Реф-ставки» партнёра: доли с созвона и сделки реферала.
+    """Страница «Реф-ставки» партнёра — ТОЛЬКО ПРОСМОТР (2026-07-13).
 
-    Новая воронка (windowgram): за каждого реферала-менеджера рефовод получает
-    свою долю с созвона (из 150) и со сделки (из 4000). Реф получает остаток.
-    Применяется ко ВСЕМ рефералам этого партнёра.
+    Ставки фиксированы для всех и берутся из settings: рефовод получает
+    SEARCH_SOZVON_REFERRER с созвона и SEARCH_DEAL_REFERRER со сделки реферала,
+    реф — остаток. Редактирование отключено, POST игнорируется.
     """
     if not _require_partner(request):
         return HttpResponseForbidden("Только для партнёров.")
@@ -267,41 +253,14 @@ def partner_ref_rates(request: HttpRequest) -> HttpResponse:
     DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
 
     if request.method == "POST":
-        update_fields: list[str] = []
-        raw_sz = request.POST.get("ref_sozvon_cut")
-        if raw_sz not in (None, ""):
-            try:
-                sz = max(0, min(SOZVON_TOTAL, int(raw_sz)))
-            except (TypeError, ValueError):
-                messages.error(request, "Ставка за созвон должна быть числом.")
-                return redirect("partner_ref_rates")
-            request.user.ref_sozvon_cut = sz
-            update_fields.append("ref_sozvon_cut")
-
-        raw_dl = request.POST.get("ref_deal_cut")
-        if raw_dl not in (None, ""):
-            try:
-                dl = max(0, min(DEAL_TOTAL, int(raw_dl)))
-            except (TypeError, ValueError):
-                messages.error(request, "Ставка за сделку должна быть числом.")
-                return redirect("partner_ref_rates")
-            request.user.ref_deal_cut = dl
-            update_fields.append("ref_deal_cut")
-
-        if update_fields:
-            request.user.save(update_fields=update_fields)
-            messages.success(request, "Реф-ставки сохранены — применяются ко всем вашим рефералам.")
+        messages.info(request, "Реф-ставки фиксированы и не редактируются.")
         return redirect("partner_ref_rates")
 
     user = request.user
     return render(request, "partner/ref_rates.html", {
         "user": user,
-        "sozvon_total_reward": SOZVON_TOTAL,
-        "deal_total_reward": DEAL_TOTAL,
-        "ref_sozvon_cut": user.ref_sozvon_cut,
-        "ref_sozvon_ref_share": max(0, SOZVON_TOTAL - user.ref_sozvon_cut),
-        "ref_deal_cut": user.ref_deal_cut,
-        "ref_deal_ref_share": max(0, DEAL_TOTAL - user.ref_deal_cut),
+        # Реф-ставки — ФИКСИРОВАННЫЕ для всех (редактирование отключено)
+        **_fixed_ref_rate_context(),
     })
 
 
@@ -453,10 +412,6 @@ def partner_referrals(request: HttpRequest) -> HttpResponse:
     paginator = Paginator(users_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
 
-    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
-    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
-    sozvon_cut = request.user.ref_sozvon_cut
-    deal_cut = request.user.ref_deal_cut
     breakdown = _referral_earnings_breakdown(request.user)
     total_earned = sum(v["total"] for v in breakdown.values())
     for u in page_obj:
@@ -467,12 +422,8 @@ def partner_referrals(request: HttpRequest) -> HttpResponse:
         "page_obj": page_obj,
         "total": users_qs.count(),
         "total_earned": total_earned,
-        "sozvon_total_reward": SOZVON_TOTAL,
-        "deal_total_reward": DEAL_TOTAL,
-        "ref_sozvon_cut": sozvon_cut,
-        "ref_sozvon_ref_share": max(0, SOZVON_TOTAL - sozvon_cut),
-        "ref_deal_cut": deal_cut,
-        "ref_deal_ref_share": max(0, DEAL_TOTAL - deal_cut),
+        # Реф-ставки — ФИКСИРОВАННЫЕ для всех (редактирование отключено)
+        **_fixed_ref_rate_context(),
     })
 
 
@@ -770,12 +721,8 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         "shown_count": len(referrals),
         "link": link,
         "referrals": referrals,
-        "sozvon_total_reward": SOZVON_TOTAL,
-        "deal_total_reward": DEAL_TOTAL,
-        "ref_sozvon_cut": user.ref_sozvon_cut,
-        "ref_sozvon_ref_share": max(0, SOZVON_TOTAL - user.ref_sozvon_cut),
-        "ref_deal_cut": user.ref_deal_cut,
-        "ref_deal_ref_share": max(0, DEAL_TOTAL - user.ref_deal_cut),
+        # Реф-ставки — ФИКСИРОВАННЫЕ для всех (редактирование отключено)
+        **_fixed_ref_rate_context(),
     })
 
 
@@ -783,40 +730,15 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
 @referral_system_required
 @require_http_methods(["POST"])
 def user_update_ref_rates(request: HttpRequest) -> HttpResponse:
-    """Менеджер-рефовод меняет свои доли с созвона и сделки реферала (новая воронка).
+    """Редактирование реф-ставок ОТКЛЮЧЕНО (2026-07-13).
 
-    Применяется ко ВСЕМ его рефералам. Реф получает total - cut.
+    Ставки фиксированы для всех и задаются в settings (SEARCH_SOZVON_REFERRER /
+    SEARCH_DEAL_REFERRER). Вьюха оставлена как no-op, чтобы старые формы/закладки
+    не давали 404. Вернуть редактирование = восстановить тело из git-истории.
     """
     if not _require_user_approved(request):
         return HttpResponseForbidden()
-
-    SOZVON_TOTAL = getattr(settings, "SEARCH_SOZVON_REWARD", 150)
-    DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
-    update_fields: list[str] = []
-
-    raw_sz = request.POST.get("ref_sozvon_cut")
-    if raw_sz not in (None, ""):
-        try:
-            sz = max(0, min(SOZVON_TOTAL, int(raw_sz)))
-        except (TypeError, ValueError):
-            messages.error(request, "Ставка за созвон должна быть числом.")
-            return redirect("user_referrals")
-        request.user.ref_sozvon_cut = sz
-        update_fields.append("ref_sozvon_cut")
-
-    raw_dl = request.POST.get("ref_deal_cut")
-    if raw_dl not in (None, ""):
-        try:
-            dl = max(0, min(DEAL_TOTAL, int(raw_dl)))
-        except (TypeError, ValueError):
-            messages.error(request, "Ставка за сделку должна быть числом.")
-            return redirect("user_referrals")
-        request.user.ref_deal_cut = dl
-        update_fields.append("ref_deal_cut")
-
-    if update_fields:
-        request.user.save(update_fields=update_fields)
-        messages.success(request, "Реф-ставки сохранены — применяются ко всем вашим рефералам.")
+    messages.info(request, "Реф-ставки фиксированы и не редактируются.")
     return redirect("user_referrals")
 
 

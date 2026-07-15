@@ -5,46 +5,38 @@
 {% block content %}
 <div class="mb-3">
   <a class="text-muted small text-decoration-none" href="{% url 'partner_dashboard' %}">← Кабинет</a>
-  <h1 class="h4 mb-1 mt-2">⚙ Мои реф-ставки</h1>
+  <h1 class="h4 mb-1 mt-2">⚙ Реф-ставки</h1>
   <p class="text-muted small mb-0">
-    Ваша доля с событий реферала в воронке — применяется ко всем вашим рефералам.
-    Реф получает остаток.
+    Ваша доля с событий реферала в воронке. Ставки фиксированы и одинаковы для всех —
+    реф получает остаток.
   </p>
 </div>
 
 <div class="card shadow-sm" style="max-width: 600px;">
   <div class="card-body">
-    <form method="post">
-      {% csrf_token %}
-
-      <div class="mb-3">
-        <label class="form-label small mb-1" for="ref_sozvon_cut">
-          Созвон реферала <span class="text-muted">(пул {{ sozvon_total_reward }} ₽)</span>
-        </label>
-        <div class="input-group input-group-sm">
-          <span class="input-group-text">Вам</span>
-          <input type="number" class="form-control" id="ref_sozvon_cut" name="ref_sozvon_cut"
-                 min="0" max="{{ sozvon_total_reward }}" value="{{ ref_sozvon_cut }}" required>
-          <span class="input-group-text">₽ · рефу <strong>{{ ref_sozvon_ref_share }} ₽</strong></span>
+    <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
+      <div>
+        <div>Созвон реферала</div>
+        <div class="form-text small text-muted mb-0">
+          Пул {{ sozvon_total_reward }} ₽ · рефу {{ ref_sozvon_ref_share }} ₽. Начисляется, когда у клиента реферала появился статус /жду или /ответ.
         </div>
-        <div class="form-text small text-muted">Сколько вы получите с каждого проведённого созвона реферала.</div>
       </div>
+      <div class="h4 mb-0 text-success text-nowrap ms-3">+{{ ref_sozvon_cut }} ₽</div>
+    </div>
 
-      <div class="mb-3">
-        <label class="form-label small mb-1" for="ref_deal_cut">
-          Сделка реферала <span class="text-muted">(пул {{ deal_total_reward }} ₽)</span>
-        </label>
-        <div class="input-group input-group-sm">
-          <span class="input-group-text">Вам</span>
-          <input type="number" class="form-control" id="ref_deal_cut" name="ref_deal_cut"
-                 min="0" max="{{ deal_total_reward }}" value="{{ ref_deal_cut }}" required>
-          <span class="input-group-text">₽ · рефу <strong>{{ ref_deal_ref_share }} ₽</strong></span>
+    <div class="d-flex justify-content-between align-items-center py-2">
+      <div>
+        <div>Сделка реферала</div>
+        <div class="form-text small text-muted mb-0">
+          Пул {{ deal_total_reward }} ₽ · рефу {{ ref_deal_ref_share }} ₽. Начисляется при статусе /оплачено (за вычетом уже выданного аванса за созвон).
         </div>
-        <div class="form-text small text-muted">Сколько вы получите с каждой успешной сделки реферала.</div>
       </div>
+      <div class="h4 mb-0 text-success text-nowrap ms-3">+{{ ref_deal_cut }} ₽</div>
+    </div>
 
-      <button type="submit" class="btn btn-primary btn-sm w-100">Сохранить ставки</button>
-    </form>
+    <div class="alert alert-secondary py-2 px-3 small mb-0 mt-3">
+      🔒 Ставки едины для всех рефоводов и не редактируются.
+    </div>
   </div>
 </div>
 {% endblock %}
