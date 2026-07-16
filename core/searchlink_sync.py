@@ -297,6 +297,12 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         # Рефовод берёт SOZVON_REF с созвона и DEAL_REF со сделки реферала.
         r_sozvon = SOZVON_REF
         r_deal = DEAL_REF
+        # Две реф-системы: % получает только АККРЕДИТОВАННЫЙ рефовод. У
+        # неаккредитованного вместо процентов разовый бонус 500 ₽ за каждого
+        # реферала, приведшего 10 клиентов в бота (lead_utils.check_and_pay_subref_milestone).
+        # Сам реферал в обоих случаях получает одинаково: 100 созвон / 3000 сделка.
+        from .lead_utils import is_milestone_referrer
+        ref_gets_percent = has_ref and not is_milestone_referrer(referrer)
 
         def dc(user, amount, reason):
             if user and amount and not dry_run:
@@ -306,7 +312,8 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         if new_stage == 3 and l.sozvon_credited_at is None:
             if has_ref:
                 dc(manager, SOZVON_TOTAL - r_sozvon, f"sozvon#{l.pk} +{SOZVON_TOTAL - r_sozvon}")
-                dc(referrer, r_sozvon, f"sozvon_ref#{l.pk} +{r_sozvon}")
+                if ref_gets_percent:
+                    dc(referrer, r_sozvon, f"sozvon_ref#{l.pk} +{r_sozvon}")
             else:
                 dc(manager, SOZVON_TOTAL, f"sozvon#{l.pk} +{SOZVON_TOTAL}")
                 dc(varvara, VARVARA_SOZVON, f"sozvon_varvara#{l.pk} +{VARVARA_SOZVON}")
@@ -320,7 +327,8 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
                 mgr_sozvon = (SOZVON_TOTAL - r_sozvon) if sozvon_given else 0
                 ref_sozvon = r_sozvon if sozvon_given else 0
                 dc(manager, (DEAL_TOTAL - r_deal) - mgr_sozvon, f"deal#{l.pk} +{(DEAL_TOTAL - r_deal) - mgr_sozvon}")
-                dc(referrer, r_deal - ref_sozvon, f"deal_ref#{l.pk} +{r_deal - ref_sozvon}")
+                if ref_gets_percent:
+                    dc(referrer, r_deal - ref_sozvon, f"deal_ref#{l.pk} +{r_deal - ref_sozvon}")
             else:
                 mgr_sozvon = SOZVON_TOTAL if sozvon_given else 0
                 dc(manager, DEAL_TOTAL - mgr_sozvon, f"deal#{l.pk} +{DEAL_TOTAL - mgr_sozvon}")

@@ -1146,6 +1146,17 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
     except Exception as e:
         logger.warning("SearchLink autoadd contact failed link=%s: %s", link.code, e)
 
+    # Реф-milestone: если рефовод менеджера НЕаккредитован — он получает не %,
+    # а разовые 500 ₽ за реферала, приведшего 10 клиентов в бота. Клиент только
+    # что нажал /start, поэтому проверяем порог здесь. Идемпотентно.
+    try:
+        from django.db import transaction as _tx
+        from .lead_utils import check_and_pay_subref_milestone
+        with _tx.atomic():
+            check_and_pay_subref_milestone(link.user)
+    except Exception as e:
+        logger.warning("SearchLink ref milestone failed link=%s: %s", link.code, e)
+
     return JsonResponse({"ok": True})
 
 

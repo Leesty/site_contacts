@@ -65,27 +65,41 @@
     <div class="col-lg-6">
       <div class="card shadow-sm h-100">
         <div class="card-header bg-transparent border-secondary py-2">
-          <strong>Реф-ставки</strong>
+          <strong>{% if is_milestone_referrer %}Как вы зарабатываете{% else %}Реф-ставки{% endif %}</strong>
         </div>
         <div class="card-body">
-          <p class="small text-muted mb-3">
-            Ваша доля с событий реферала. Ставки фиксированы и одинаковы для всех.
-          </p>
-          <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
-            <div>
-              <div class="small">Созвон реферала</div>
-              <div class="text-muted" style="font-size: 11px;">всего {{ sozvon_total_reward }} ₽ · рефу {{ ref_sozvon_ref_share }} ₽</div>
+          {% if is_milestone_referrer %}
+            {# Неаккредитованный рефовод: разовый бонус вместо процентов #}
+            <div class="alert alert-info py-2 px-3 small mb-2">
+              <div class="mb-1"><strong>🎯 {{ milestone_bonus }} ₽ за каждого друга</strong></div>
+              Как только приглашённый вами менеджер приведёт <strong>{{ milestone_target }}</strong> клиентов,
+              нажавших «старт» в боте, вы разово получаете <strong>{{ milestone_bonus }} ₽</strong> на баланс.
             </div>
-            <div class="h5 mb-0 text-success">+{{ ref_sozvon_cut }} ₽</div>
-          </div>
-          <div class="d-flex justify-content-between align-items-center py-2">
-            <div>
-              <div class="small">Сделка реферала</div>
-              <div class="text-muted" style="font-size: 11px;">всего {{ deal_total_reward }} ₽ · рефу {{ ref_deal_ref_share }} ₽</div>
+            <p class="small text-muted mb-0">
+              Проценты с созвонов и сделок рефералов вам не начисляются — они идут полностью
+              самому рефералу ({{ ref_sozvon_ref_share }} ₽ за созвон, {{ ref_deal_ref_share }} ₽ за сделку).
+              Чтобы перейти на процентную систему, нужна аккредитация ✅.
+            </p>
+          {% else %}
+            <p class="small text-muted mb-3">
+              Ваша доля с событий реферала. Ставки фиксированы и одинаковы для всех.
+            </p>
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
+              <div>
+                <div class="small">Созвон реферала</div>
+                <div class="text-muted" style="font-size: 11px;">всего {{ sozvon_total_reward }} ₽ · рефу {{ ref_sozvon_ref_share }} ₽</div>
+              </div>
+              <div class="h5 mb-0 text-success">+{{ ref_sozvon_cut }} ₽</div>
             </div>
-            <div class="h5 mb-0 text-success">+{{ ref_deal_cut }} ₽</div>
-          </div>
-          <p class="small text-muted mb-0 mt-2">🔒 Ставки едины для всех и не редактируются.</p>
+            <div class="d-flex justify-content-between align-items-center py-2">
+              <div>
+                <div class="small">Сделка реферала</div>
+                <div class="text-muted" style="font-size: 11px;">всего {{ deal_total_reward }} ₽ · рефу {{ ref_deal_ref_share }} ₽</div>
+              </div>
+              <div class="h5 mb-0 text-success">+{{ ref_deal_cut }} ₽</div>
+            </div>
+            <p class="small text-muted mb-0 mt-2">🔒 Ставки едины для всех и не редактируются.</p>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -133,9 +147,14 @@
               <th>@username</th>
               <th>Имя</th>
               <th>Статус</th>
-              <th class="text-center small">Созвоны<br><span class="text-muted fw-normal">шт / ₽</span></th>
-              <th class="text-center small">Сделки<br><span class="text-muted fw-normal">шт / ₽</span></th>
-              <th class="text-center">Доход</th>
+              {% if is_milestone_referrer %}
+                <th class="text-center" style="min-width:200px;">Прогресс до {{ milestone_bonus }} ₽<br><span class="text-muted fw-normal small">клиентов в боте</span></th>
+                <th class="text-center">Бонус</th>
+              {% else %}
+                <th class="text-center small">Созвоны<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                <th class="text-center small">Сделки<br><span class="text-muted fw-normal">шт / ₽</span></th>
+                <th class="text-center">Доход</th>
+              {% endif %}
               <th>Регистрация</th>
             </tr>
           </thead>
@@ -153,9 +172,32 @@
                     <span class="badge bg-secondary">{{ u.status }}</span>
                   {% endif %}
                 </td>
-                <td class="text-center small">{% if u.earn.sozvon_cnt %}{{ u.earn.sozvon_cnt }} / {{ u.earn.sozvon_amt }} ₽{% else %}—{% endif %}</td>
-                <td class="text-center small">{% if u.earn.deal_cnt %}{{ u.earn.deal_cnt }} / {{ u.earn.deal_amt }} ₽{% else %}—{% endif %}</td>
-                <td class="text-center text-success fw-semibold">{% if u.earn.total %}{{ u.earn.total }} ₽{% else %}—{% endif %}</td>
+                {% if is_milestone_referrer %}
+                  <td class="text-center small">
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="progress flex-grow-1" style="height: 8px;">
+                        <div class="progress-bar bg-{% if u.ms_paid %}success{% else %}info{% endif %}"
+                             role="progressbar" style="width: {{ u.ms_pct }}%;"
+                             aria-valuenow="{{ u.ms_done }}" aria-valuemin="0" aria-valuemax="{{ milestone_target }}"></div>
+                      </div>
+                      <span class="text-nowrap">{{ u.ms_done }} / {{ milestone_target }}</span>
+                    </div>
+                    {% if not u.ms_paid and u.ms_left %}
+                      <div class="text-muted" style="font-size: 10px;">осталось привести {{ u.ms_left }}</div>
+                    {% endif %}
+                  </td>
+                  <td class="text-center small">
+                    {% if u.ms_paid %}
+                      <span class="badge bg-success">+{{ milestone_bonus }} ₽ выплачено</span>
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                {% else %}
+                  <td class="text-center small">{% if u.earn.sozvon_cnt %}{{ u.earn.sozvon_cnt }} / {{ u.earn.sozvon_amt }} ₽{% else %}—{% endif %}</td>
+                  <td class="text-center small">{% if u.earn.deal_cnt %}{{ u.earn.deal_cnt }} / {{ u.earn.deal_amt }} ₽{% else %}—{% endif %}</td>
+                  <td class="text-center text-success fw-semibold">{% if u.earn.total %}{{ u.earn.total }} ₽{% else %}—{% endif %}</td>
+                {% endif %}
                 <td class="small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
               </tr>
             {% endfor %}

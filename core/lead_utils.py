@@ -407,47 +407,71 @@ def compress_lead_attachment(lead) -> bool:
         return False
 
 
-# ─── Sub-referrer milestone ──────────────────────────────────────────────────
+# ─── Реф-milestone для НЕаккредитованных рефоводов ───────────────────────────
+# Две реф-системы (2026-07-13):
+#   • Аккредитованный рефовод (галочка is_accredited) — обычные % с событий
+#     реферала: SEARCH_SOZVON_REFERRER с созвона, SEARCH_DEAL_REFERRER со сделки.
+#   • НЕаккредитованный — процентов НЕ получает. Вместо них разовый бонус
+#     SUBREF_BONUS ₽ за каждого реферала, приведшего SUBREF_MILESTONE клиентов,
+#     нажавших /start в боте. Сам реферал в обоих случаях получает одинаково
+#     (100 за созвон / 3000 за сделку).
 
-SUBREF_MILESTONE = 10  # одобренных отчётов
-SUBREF_BONUS = 500     # ₽ рефоводу-приглашателю
+SUBREF_MILESTONE = 10  # клиентов реферала, нажавших /start в боте
+SUBREF_BONUS = 500     # ₽ рефоводу-приглашателю (разово за каждого реферала)
 
 
 def is_subreferrer(owner) -> bool:
-    """True, если этот рефовод сам — реферал главного рефовода (role=user)
-    и тоже имеет рефовода. Для таких рефоводов обычные % бонусы за отчёты
-    рефералов не работают — только milestone 500 ₽ за 10 отчётов."""
+    """(legacy) Рефовод сам — реферал другого рефовода. Оставлено для старых
+    отчётных флоу (выключены за LEGACY_REWARDS_ENABLED). Новую систему см. в
+    `is_milestone_referrer`."""
     if not owner:
         return False
     return owner.role == "user" and bool(getattr(owner, "partner_owner_id", None))
 
 
-def check_and_pay_subref_milestone(user, actor=None) -> bool:
-    """Если `user` — реферал sub-рефовода и сдал >=10 одобренных отчётов,
-    выплачивает 500 ₽ его рефоводу. Идемпотентно (по флагу
-    `user.subref_bonus_paid_at`). Возвращает True если выплата произошла.
+def is_milestone_referrer(owner) -> bool:
+    """True, если у рефовода работает milestone-система вместо процентов.
 
-    Считаются Lead + SearchReport + GroupReport со статусом approved.
+    Это менеджеры (role=user) БЕЗ галочки аккредитации. Аккредитованные
+    менеджеры получают обычные % с созвонов/сделок рефералов.
+
+    Партнёры/админы под milestone НЕ подпадают — у них % всегда, независимо от
+    галочки (аккредитация — пользовательская механика для вывода средств, а
+    партнёры её не проходят: на 2026-07-13 оба партнёра is_accredited=False).
+    """
+    if not owner:
+        return False
+    if getattr(owner, "role", None) != "user":
+        return False
+    return not bool(getattr(owner, "is_accredited", False))
+
+
+def ref_started_clients_count(user) -> int:
+    """Сколько клиентов реферала нажали /start в боте (SearchLink.bot_started)."""
+    from .models import SearchLink
+    return SearchLink.objects.filter(user=user, bot_started=True).count()
+
+
+def check_and_pay_subref_milestone(user, actor=None) -> bool:
+    """Если рефовод `user`-а НЕаккредитован и `user` привёл >=SUBREF_MILESTONE
+    клиентов, нажавших /start в боте — выплачивает SUBREF_BONUS ₽ рефоводу.
+
+    Идемпотентно (по `user.subref_bonus_paid_at` — бонус разовый за каждого
+    реферала). Возвращает True если выплата произошла.
     """
     if not user or not user.partner_owner_id:
         return False
     if user.subref_bonus_paid_at is not None:
         return False
 
-    from .models import (
-        Lead, SearchReport, GroupReport, User, log_balance_change,
-    )
+    from .models import User, log_balance_change
     from django.utils import timezone
 
     owner = User.objects.filter(pk=user.partner_owner_id).first()
-    if not is_subreferrer(owner):
+    if not is_milestone_referrer(owner):
         return False
 
-    total = (
-        Lead.objects.filter(user=user, status=Lead.Status.APPROVED).count()
-        + SearchReport.objects.filter(user=user, status=SearchReport.Status.APPROVED).count()
-        + GroupReport.objects.filter(user=user, status=GroupReport.Status.APPROVED).count()
-    )
+    total = ref_started_clients_count(user)
     if total < SUBREF_MILESTONE:
         return False
 
@@ -457,7 +481,7 @@ def check_and_pay_subref_milestone(user, actor=None) -> bool:
     owner_locked.save(update_fields=["balance"])
     log_balance_change(
         owner_locked, "balance", _old, owner_locked.balance,
-        f"subref_milestone#{user.id}: +{SUBREF_BONUS} (10 approved reports)",
+        f"ref_milestone#{user.id}: +{SUBREF_BONUS} ({SUBREF_MILESTONE} клиентов в боте)",
         actor,
     )
     user.subref_bonus_paid_at = timezone.now()

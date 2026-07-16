@@ -710,6 +710,31 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         r.earn = breakdown.get(r.id, {"sozvon_cnt": 0, "sozvon_amt": 0,
                                        "deal_cnt": 0, "deal_amt": 0, "total": 0})
 
+    # Неаккредитованный рефовод: вместо % — разовый бонус за каждого реферала,
+    # приведшего SUBREF_MILESTONE клиентов в бота. Показываем прогресс по каждому.
+    from .lead_utils import is_milestone_referrer, SUBREF_MILESTONE, SUBREF_BONUS
+    from .models import BalanceLog, SearchLink
+    is_milestone = is_milestone_referrer(user)
+    if is_milestone:
+        # У milestone-рефовода нет %-начислений — доход это бонусы ref_milestone#.
+        total_earned = (
+            BalanceLog.objects.filter(user=user, field="balance",
+                                      reason__startswith="ref_milestone#")
+            .aggregate(s=Sum("delta")).get("s") or 0
+        )
+    if is_milestone and referrals:
+        # Один запрос на всех рефералов вместо N (клиенты, нажавшие /start).
+        starts = dict(
+            SearchLink.objects.filter(user__in=referrals, bot_started=True)
+            .values("user_id").annotate(c=Count("id")).values_list("user_id", "c")
+        )
+        for r in referrals:
+            done = starts.get(r.id, 0)
+            r.ms_done = done
+            r.ms_left = max(0, SUBREF_MILESTONE - done)
+            r.ms_paid = bool(r.subref_bonus_paid_at)
+            r.ms_pct = min(100, int(100 * done / SUBREF_MILESTONE)) if SUBREF_MILESTONE else 0
+
     return render(request, "core/user_referrals.html", {
         "user": user,
         "total_earned": total_earned,
@@ -723,6 +748,10 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
         "referrals": referrals,
         # Реф-ставки — ФИКСИРОВАННЫЕ для всех (редактирование отключено)
         **_fixed_ref_rate_context(),
+        # Milestone-система (неаккредитованный рефовод)
+        "is_milestone_referrer": is_milestone,
+        "milestone_target": SUBREF_MILESTONE,
+        "milestone_bonus": SUBREF_BONUS,
     })
 
 
