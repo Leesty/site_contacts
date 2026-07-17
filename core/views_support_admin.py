@@ -3423,6 +3423,9 @@ def admin_receipts(request: HttpRequest) -> HttpResponse:
     """Список загруженных чеков для проверки."""
     if getattr(request.user, "role", None) != "main_admin":
         return HttpResponseForbidden("Только для главного админа.")
+    # Система чеков скрыта (2026-07, временно) — страница недоступна.
+    if not getattr(settings, "WITHDRAWAL_RECEIPTS_ENABLED", False):
+        return redirect("dashboard")
 
     if request.method == "POST":
         wr_id = request.POST.get("wr_id")

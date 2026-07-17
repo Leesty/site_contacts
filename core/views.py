@@ -944,6 +944,9 @@ def receipt_upload(request: HttpRequest, wr_id: int) -> HttpResponse:
     (выплата может быть частями)."""
     if request.method != "POST":
         return redirect("dashboard")
+    # Система чеков скрыта (2026-07, временно) — загрузка отключена.
+    if not getattr(settings, "WITHDRAWAL_RECEIPTS_ENABLED", False):
+        return redirect("dashboard")
     user = request.user
     wr = get_object_or_404(WithdrawalRequest, pk=wr_id, user=user, status="approved")
 
@@ -998,12 +1001,15 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             return redirect("smz_registration")
         # Чек-гейт: первый вывод (когда нет ни одной approved-заявки) — без чека.
         # Со второй и далее — требуем чек по каждой предыдущей выплате.
-        has_unchecked = WithdrawalRequest.objects.filter(
-            user=user, status="approved",
-        ).exclude(receipt_status__in=["approved", "waived"]).exists()
-        if has_unchecked:
-            messages.warning(request, "Загрузите и дождитесь одобрения чека по предыдущей выплате.")
-            return redirect("dashboard")
+        # Скрыт за WITHDRAWAL_RECEIPTS_ENABLED (2026-07, временно): без флага
+        # отсутствие чека НЕ блокирует вывод.
+        if getattr(settings, "WITHDRAWAL_RECEIPTS_ENABLED", False):
+            has_unchecked = WithdrawalRequest.objects.filter(
+                user=user, status="approved",
+            ).exclude(receipt_status__in=["approved", "waived"]).exists()
+            if has_unchecked:
+                messages.warning(request, "Загрузите и дождитесь одобрения чека по предыдущей выплате.")
+                return redirect("dashboard")
 
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     dept = request.GET.get("dept") or request.POST.get("dept") or "search"

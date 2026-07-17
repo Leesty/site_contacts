@@ -259,6 +259,12 @@ LEGACY_REWARDS_ENABLED = os.getenv("LEGACY_REWARDS_ENABLED", "false").lower() ==
 # (per-рефовод доли с созвона/сделки реферала), независимая от старых отчётов.
 REFERRAL_SYSTEM_ENABLED = os.getenv("REFERRAL_SYSTEM_ENABLED", "true").lower() == "true"
 
+# Фиче-флаг: система чеков по выплатам (загрузка чеков пользователем + гейт
+# «загрузите чек по предыдущей выплате перед новым выводом» + модерация чеков).
+# По умолчанию ВЫКЛ (2026-07, временно): чеки скрыты, вывод не блокируется их
+# отсутствием. Данные receipt_* сохранены. Вернуть = WITHDRAWAL_RECEIPTS_ENABLED=true.
+WITHDRAWAL_RECEIPTS_ENABLED = os.getenv("WITHDRAWAL_RECEIPTS_ENABLED", "false").lower() == "true"
+
 # Лимит загрузки файлов: вложения лидов (скрин/видео) до 30 МБ
 _DATA_UPLOAD_MAX = 33 * 1024 * 1024  # 33 МБ, чтобы 30 МБ файл проходил
 DATA_UPLOAD_MAX_MEMORY_SIZE = _DATA_UPLOAD_MAX

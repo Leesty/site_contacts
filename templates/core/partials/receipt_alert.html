@@ -1,4 +1,5 @@
-{% if receiptless_withdrawals %}
+{# Система чеков по выплатам скрыта за withdrawal_receipts_enabled (2026-07, временно). #}
+{% if withdrawal_receipts_enabled and receiptless_withdrawals %}
   <div class="alert alert-danger mb-3">
     <strong>Чеки по выплатам:</strong>
     <div class="small text-muted mb-2">Вывод заблокирован до одобрения чеков администратором. Загружайте сколько нужно — и можете докидывать новые в любой момент, пока админ не одобрил.</div>
