@@ -1040,13 +1040,39 @@ def search_bot_start_webhook(request: HttpRequest) -> HttpResponse:
         elif link.telegram_id or link.telegram_username:
             existing_started_via = "telegram"
 
-        # Если поздний вебхук с ДРУГОЙ платформы — игнорируем полностью, не пишем в БД.
+        # Поздний вебхук с ДРУГОЙ платформы (клиент перешёл, напр. VK→TG, по той
+        # же ссылке). Победителя и bot_started_at НЕ меняем, но ДОПИСЫВАЕМ
+        # идентификатор второй платформы в пустые поля — чтобы воронка ловила
+        # чат/созвон/сделку на любой из платформ (чат мог быть создан на второй).
+        # Риск: если по одной ссылке кликнут два РАЗНЫХ человека, их свяжет как
+        # одного — принято осознанно (ссылка обычно на одного клиента).
         if existing_started_via and existing_started_via != platform:
+            sec = []
+            if platform == "telegram":
+                if telegram_id and not link.telegram_id:
+                    link.telegram_id = telegram_id; sec.append("telegram_id")
+                if telegram_username and not link.telegram_username:
+                    link.telegram_username = telegram_username; sec.append("telegram_username")
+                if telegram_first_name and not link.telegram_first_name:
+                    link.telegram_first_name = telegram_first_name; sec.append("telegram_first_name")
+            else:  # vk
+                if vk_user_id and not link.vk_user_id:
+                    link.vk_user_id = vk_user_id; sec.append("vk_user_id")
+                if vk_screen_name and not link.vk_screen_name:
+                    link.vk_screen_name = vk_screen_name; sec.append("vk_screen_name")
+                if vk_first_name and not link.vk_first_name:
+                    link.vk_first_name = vk_first_name; sec.append("vk_first_name")
+            if sec:
+                sec.append("updated_at")
+                link.save(update_fields=sec)
+                logger.info("SearchLink secondary platform recorded: code=%s winner=%s added=%s",
+                            link.code, existing_started_via, platform)
             return JsonResponse({
                 "ok": True,
                 "already_started": True,
                 "winner": existing_started_via,
-                "ignored_platform": platform,
+                "secondary_platform": platform,
+                "recorded_fields": sec,
             })
 
         # Та же платформа (например, бот перезапустился и клиент повторно /start) —
