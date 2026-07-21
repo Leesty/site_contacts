@@ -1382,6 +1382,10 @@ class SearchLink(TimeStampedModel):
         max_length=32, blank=True, default="",
         help_text="Последний известный CRM-статус клиента в windowgram (кэш для отображения).",
     )
+    chat_credited_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Когда начислено фи varvara за создание чата (10 ₽, только у менеджеров без рефовода). NULL = ещё не начислено.",
+    )
     sozvon_credited_at = models.DateTimeField(
         null=True, blank=True,
         help_text="Когда начислен «созвон» (150 ₽). NULL = ещё не начислен.",

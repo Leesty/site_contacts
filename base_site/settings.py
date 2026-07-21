@@ -244,7 +244,7 @@ SEARCH_SOZVON_REWARD = int(os.getenv("SEARCH_SOZVON_REWARD", "150"))       # в�
 SEARCH_SOZVON_REFERRER = int(os.getenv("SEARCH_SOZVON_REFERRER", "50"))    # рефоводу с созвона (менеджер: 150-50=100)
 SEARCH_DEAL_REWARD = int(os.getenv("SEARCH_DEAL_REWARD", "4000"))          # всего за сделку
 SEARCH_DEAL_REFERRER = int(os.getenv("SEARCH_DEAL_REFERRER", "1000"))      # рефоводу со сделки (менеджер: 4000-1000=3000)
-SEARCH_VARVARA_SOZVON_FEE = int(os.getenv("SEARCH_VARVARA_SOZVON_FEE", "10"))    # Варваре с созвона (только если у менеджера НЕТ рефовода)
+SEARCH_VARVARA_CHAT_FEE = int(os.getenv("SEARCH_VARVARA_CHAT_FEE", "10"))       # Варваре за СОЗДАНИЕ ЧАТА (только если у менеджера НЕТ рефовода). 2026-07-21: раньше фи шло за созвон.
 SEARCH_VARVARA_DEAL_FEE = int(os.getenv("SEARCH_VARVARA_DEAL_FEE", "100"))       # Варваре со сделки (только если НЕТ рефовода)
 VARVARA_USER_ID = int(os.getenv("VARVARA_USER_ID", "123"))                 # varvara_lead (balance_admin, получатель фи)
 
