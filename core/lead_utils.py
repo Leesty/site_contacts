@@ -446,6 +446,36 @@ def is_milestone_referrer(owner) -> bool:
     return not bool(getattr(owner, "is_accredited", False))
 
 
+def resolve_referral_attribution(inviter):
+    """Кто получит % с нового реферала и кто считается пригласившим.
+
+    Правило владельца 2026-07-21: если пригласивший — milestone-рефовод
+    (неаккредитованный менеджер), он получает ТОЛЬКО свой бонус 500 ₽ за 10
+    клиентов, а проценты идут ближайшему «процентному» предку по цепочке
+    (аккредитованный менеджер / партнёр / админ). Пример: Настя (аккр.) → Миша
+    (неаккр.) → Ваня. Ваня становится рефералом НАСТИ, Миша получает 500 ₽.
+
+    Если процентного предка нет — % не идёт никому: у реферала не будет
+    partner_owner, и он забирает полную ставку (150 / 4000), а Варвара — своё фи.
+
+    Возвращает (invited_by, percent_owner).
+    """
+    if not inviter:
+        return None, None
+    if not is_milestone_referrer(inviter):
+        return inviter, inviter  # аккредитован (или партнёр/админ) — сам получает %
+    seen = {inviter.pk}
+    cur = getattr(inviter, "partner_owner", None)
+    while cur is not None:
+        if not is_milestone_referrer(cur):
+            return inviter, cur
+        if cur.pk in seen:  # защита от циклов в цепочке
+            break
+        seen.add(cur.pk)
+        cur = getattr(cur, "partner_owner", None)
+    return inviter, None
+
+
 def ref_started_clients_count(user) -> int:
     """Сколько клиентов реферала нажали /start в боте (SearchLink.bot_started)."""
     from .models import SearchLink
@@ -459,7 +489,10 @@ def check_and_pay_subref_milestone(user, actor=None) -> bool:
     Идемпотентно (по `user.subref_bonus_paid_at` — бонус разовый за каждого
     реферала). Возвращает True если выплата произошла.
     """
-    if not user or not user.partner_owner_id:
+    # Бонус получает тот, кто ФАКТИЧЕСКИ пригласил (invited_by), а не владелец
+    # процента (partner_owner) — они различаются, если пригласивший неаккредитован.
+    inviter_id = getattr(user, "invited_by_id", None) or getattr(user, "partner_owner_id", None)
+    if not user or not inviter_id:
         return False
     if user.subref_bonus_paid_at is not None:
         return False
@@ -467,7 +500,7 @@ def check_and_pay_subref_milestone(user, actor=None) -> bool:
     from .models import User, log_balance_change
     from django.utils import timezone
 
-    owner = User.objects.filter(pk=user.partner_owner_id).first()
+    owner = User.objects.filter(pk=inviter_id).first()
     if not is_milestone_referrer(owner):
         return False
 

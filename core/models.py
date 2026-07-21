@@ -105,6 +105,18 @@ class User(AbstractUser):
         limit_choices_to={"role__in": ["partner", "user"]},
         help_text="Партнёр, привлёкший этого пользователя.",
     )
+    invited_by = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="invited_users",
+        help_text=(
+            "Кто ФАКТИЧЕСКИ пригласил (по чьей ссылке зарегистрировался) — для milestone-бонуса. "
+            "Может отличаться от partner_owner: если пригласивший неаккредитован, он получает "
+            "только 500 ₽ за 10 клиентов, а % идёт выше по цепочке аккредитованному."
+        ),
+    )
     partner_rate = models.PositiveIntegerField(
         default=10,
         help_text="(Legacy) Ставка партнёра (руб.) за каждый одобренный лид реферала. Используется только для старой Lead-системы.",

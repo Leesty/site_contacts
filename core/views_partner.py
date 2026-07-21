@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
@@ -378,7 +378,12 @@ def partner_ref_register(request: HttpRequest, code: str) -> HttpResponse:
             if form.is_valid():
                 user = form.save(commit=False)
                 user.status = User.Status.APPROVED
-                user.partner_owner = ref_link.partner
+                # Пригласивший ≠ получатель %: если пригласивший неаккредитован,
+                # % идёт выше по цепочке, а он получает только milestone-бонус.
+                from .lead_utils import resolve_referral_attribution
+                inviter, percent_owner = resolve_referral_attribution(ref_link.partner)
+                user.invited_by = inviter
+                user.partner_owner = percent_owner
                 user.save()
                 messages.success(request, "Регистрация прошла успешно. Войдите в личный кабинет.")
                 return redirect("login")
@@ -695,14 +700,20 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     total_earned = sum(v["total"] for v in breakdown.values())
     # «Активные» = рефералы, за которых уже было начисление воронки.
     active_ref_ids: set[int] = {uid for uid, v in breakdown.items() if v["total"] > 0}
-    total_referrals_count = User.objects.filter(partner_owner=user).count()
+
+    # Чей список показываем: у %-рефовода это его рефералы (partner_owner), у
+    # milestone-рефовода — те, кого он ПРИГЛАСИЛ (invited_by): их проценты уходят
+    # выше по цепочке, но бонус 500 ₽ за каждого получает он.
+    from .lead_utils import is_milestone_referrer as _is_ms
+    _my_refs = (Q(invited_by=user) if _is_ms(user) else Q(partner_owner=user))
+    total_referrals_count = User.objects.filter(_my_refs).count()
     active_count = len(active_ref_ids)
     inactive_count = max(0, total_referrals_count - active_count)
 
     # По умолчанию показываем всех рефералов (воронка новая, начислений пока мало).
     show_param = (request.GET.get("show") or "all").lower()
     show_all = show_param != "active"
-    referrals_qs = User.objects.filter(partner_owner=user)
+    referrals_qs = User.objects.filter(_my_refs)
     if not show_all:
         referrals_qs = referrals_qs.filter(id__in=active_ref_ids)
     referrals = list(referrals_qs.order_by("-date_joined")[:200])
@@ -943,7 +954,12 @@ def referral_ref_register(request: HttpRequest, code: str) -> HttpResponse:
             if form.is_valid():
                 user = form.save(commit=False)
                 user.status = User.Status.APPROVED
-                user.partner_owner = ref_link.partner
+                # Пригласивший ≠ получатель %: если пригласивший неаккредитован,
+                # % идёт выше по цепочке, а он получает только milestone-бонус.
+                from .lead_utils import resolve_referral_attribution
+                inviter, percent_owner = resolve_referral_attribution(ref_link.partner)
+                user.invited_by = inviter
+                user.partner_owner = percent_owner
                 user.partner_link = ref_link
                 # Применяем долю рефовода из ссылки к новому рефералу.
                 user.ref_searchlink_enabled = True
