@@ -77,7 +77,7 @@
       <div class="card h-100 shadow-sm">
         <div class="card-header bg-transparent border-secondary py-2">
           <strong>История начислений</strong>
-          <span class="text-muted small">— фи с воронки: {{ deal_rate }} ₽ за сделку, {{ chat_rate }} ₽ за чат (клиенты без рефовода)</span>
+          <span class="text-muted small">— фи с воронки: {{ deal_rate }} ₽ за сделку, {{ chat_rate }} ₽ за чат (со всех клиентов)</span>
         </div>
         <div class="card-body p-0">
           {% if fee_logs %}
@@ -87,17 +87,21 @@
                   <tr>
                     <th>Когда</th>
                     <th>За что</th>
-                    <th>Сумма</th>
+                    <th>Клиент</th>
+                    <th>Менеджер</th>
+                    <th class="text-end">Сумма</th>
                   </tr>
                 </thead>
                 <tbody>
                   {% for log in fee_logs %}
                     <tr>
-                      <td class="text-muted small">{{ log.created_at|date:"d.m.Y H:i" }}</td>
+                      <td class="text-muted small text-nowrap">{{ log.created_at|date:"d.m.Y H:i" }}</td>
                       <td>
-                        {% if 'deal_varvara' in log.reason %}Сделка{% elif 'chat_varvara' in log.reason %}Чат{% elif 'sozvon_varvara' in log.reason %}Созвон{% elif 'reversal' in log.reason %}Корректировка{% else %}Фи{% endif %}
+                        {% if 'deal_varvara' in log.reason %}<span class="badge bg-success">Сделка</span>{% elif 'chat_varvara' in log.reason %}<span class="badge bg-primary">Чат</span>{% elif 'sozvon_varvara' in log.reason %}<span class="badge bg-secondary">Созвон</span>{% elif 'reversal' in log.reason %}<span class="badge bg-warning text-dark">Корректировка</span>{% else %}Фи{% endif %}
                       </td>
-                      <td class="{% if log.delta < 0 %}text-warning{% endif %}">{% if log.delta > 0 %}+{% endif %}{{ log.delta }} руб.</td>
+                      <td class="small">{% if log.client_name and log.client_name != '—' %}{{ log.client_name }}{% if log.link_no %} <span class="text-muted">#{{ log.link_no }}</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                      <td class="small">{% if log.manager_username and log.manager_username != '—' %}@{{ log.manager_username }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                      <td class="text-end {% if log.delta < 0 %}text-warning{% else %}text-success{% endif %}">{% if log.delta > 0 %}+{% endif %}{{ log.delta }} ₽</td>
                     </tr>
                   {% endfor %}
                 </tbody>

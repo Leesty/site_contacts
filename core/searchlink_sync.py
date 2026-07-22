@@ -274,10 +274,10 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             link.wg_status = conv["status"][:32]; touched = True
         if conv["conv_id"] and str(link.wg_conversation_id or "") != conv["conv_id"]:
             link.wg_conversation_id = conv["conv_id"]; touched = True
-        # Фи varvara за чат положено только менеджерам БЕЗ рефовода — учитываем
-        # это здесь, иначе ссылка уйдёт в field_only и начисление не произойдёт.
-        needs = (new_stage >= 2 and link.chat_credited_at is None
-                 and not link.user.partner_owner_id) or \
+        # Фи varvara за чат — фикс-ставка проекта, идёт со ВСЕХ клиентов (в т.ч.
+        # реферальных). Учитываем стадию чата здесь, иначе ссылка уйдёт в
+        # field_only и начисление не произойдёт.
+        needs = (new_stage >= 2 and link.chat_credited_at is None) or \
                 (new_stage == 3 and link.sozvon_credited_at is None) or \
                 (new_stage == 4 and link.deal_credited_at is None)
         if touched:
@@ -316,9 +316,9 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
                 _credit(user, amount, reason, varvara)
 
         upd = []
-        # Фи varvara за СОЗДАНИЕ ЧАТА — 10 ₽ с каждого клиента менеджера БЕЗ рефовода
-        # (правило владельца 2026-07-21; раньше это фи шло за созвон).
-        if new_stage >= 2 and l.chat_credited_at is None and not has_ref:
+        # Фи varvara за СОЗДАНИЕ ЧАТА — 10 ₽ с КАЖДОГО клиента (в т.ч. реферального):
+        # фикс-ставка проекта поверх реф-процентов (правило владельца 2026-07-22).
+        if new_stage >= 2 and l.chat_credited_at is None:
             dc(varvara, VARVARA_CHAT, f"chat_varvara#{l.pk} +{VARVARA_CHAT}")
             l.chat_credited_at = timezone.now(); upd.append("chat_credited_at")
         if new_stage == 3 and l.sozvon_credited_at is None:
@@ -343,7 +343,9 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             else:
                 mgr_sozvon = SOZVON_TOTAL if sozvon_given else 0
                 dc(manager, DEAL_TOTAL - mgr_sozvon, f"deal#{l.pk} +{DEAL_TOTAL - mgr_sozvon}")
-                dc(varvara, VARVARA_DEAL, f"deal_varvara#{l.pk} +{VARVARA_DEAL}")
+            # Фи varvara за СДЕЛКУ — 100 ₽ с КАЖДОГО клиента (в т.ч. реферального):
+            # фикс-ставка проекта поверх реф-процентов (правило владельца 2026-07-22).
+            dc(varvara, VARVARA_DEAL, f"deal_varvara#{l.pk} +{VARVARA_DEAL}")
             l.deal_credited_at = timezone.now(); upd.append("deal_credited_at")
             summary["deal_credited"] += 1; summary["deal_rub"] += DEAL_TOTAL
         return upd

@@ -239,13 +239,14 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     if _is_partner(user):
         return redirect("partner_dashboard")
     if _is_balance_admin(user):
+        import re as _re
         from django.db.models import Q as _Q
-        from .models import BalanceLog
+        from .models import BalanceLog, SearchLink
 
         earn = _balance_admin_earnings(user)
 
         # История начислений — только фи новой системы (воронка SearchLink)
-        fee_logs = (
+        fee_logs = list(
             BalanceLog.objects.filter(user=user, field="balance")
             .filter(
                 _Q(reason__startswith="chat_varvara")
@@ -253,9 +254,27 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 | _Q(reason__startswith="sozvon_varvara")
                 | _Q(reason__startswith="reversal")
             )
-            .select_related("actor")
             .order_by("-created_at")[:200]
         )
+        # Обогащаем каждую запись клиентом/менеджером (за кого начислено) —
+        # reason вида "chat_varvara#<link_pk> +N", тянем SearchLink одним запросом.
+        _link_ids = []
+        for lg in fee_logs:
+            m = _re.search(r"#(\d+)", lg.reason or "")
+            lg.link_pk = int(m.group(1)) if m else None
+            if lg.link_pk:
+                _link_ids.append(lg.link_pk)
+        _links = {
+            sl.pk: sl
+            for sl in SearchLink.objects.filter(pk__in=_link_ids)
+            .select_related("user")
+            .only("pk", "display_id", "lead_name", "platform", "user__username")
+        }
+        for lg in fee_logs:
+            sl = _links.get(lg.link_pk)
+            lg.client_name = (sl.lead_name if sl else "") or "—"
+            lg.manager_username = (sl.user.username if sl and sl.user_id else "") or "—"
+            lg.link_no = (sl.display_id if sl else None) or lg.link_pk
         withdrawals = WithdrawalRequest.objects.filter(user=user).order_by("-created_at")
         return render(
             request,
