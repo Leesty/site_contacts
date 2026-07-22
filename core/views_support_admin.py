@@ -1762,7 +1762,13 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                     )
                 else:
                     _is_dozhim_wr = wreq.payout_details and wreq.payout_details.startswith("[Дожим]")
-                    if _is_dozhim_wr:
+                    # Баланс‑админ (Варвара): доступно считается неттингом
+                    # (заработок − выведено), баланс при заявке НЕ списывается,
+                    # поэтому при отклонении его НЕ восстанавливаем — иначе
+                    # каждый отказ раздувал бы фантомный User.balance.
+                    if getattr(wreq.user, "role", None) == "balance_admin":
+                        pass
+                    elif _is_dozhim_wr:
                         _old = wreq.user.dozhim_balance or 0
                         wreq.user.dozhim_balance = _old + wreq.amount
                         wreq.user.save(update_fields=["dozhim_balance"])
@@ -1791,7 +1797,10 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                     messages.warning(request, "Заявка не найдена или не в статусе «одобрено».")
                     return redirect("admin_withdrawal_requests")
                 _is_dozhim_wr = wreq.payout_details and wreq.payout_details.startswith("[Дожим]")
-                if _is_dozhim_wr:
+                # Баланс‑админ: неттинговая модель, баланс не трогаем (см. отклонение выше).
+                if getattr(wreq.user, "role", None) == "balance_admin":
+                    pass
+                elif _is_dozhim_wr:
                     _old = wreq.user.dozhim_balance or 0
                     wreq.user.dozhim_balance = _old + wreq.amount
                     wreq.user.save(update_fields=["dozhim_balance"])
@@ -1805,7 +1814,7 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                 wreq.processed_at = timezone.now()
                 wreq.processed_by = request.user
                 wreq.save(update_fields=["status", "processed_at", "processed_by"])
-            messages.success(request, f"Одобренный вывод @{wreq.user.username} на {wreq.amount} ₽ отменён. Баланс восстановлен.")
+            messages.success(request, f"Одобренный вывод @{wreq.user.username} на {wreq.amount} ₽ отменён. Заявка снята.")
             return redirect("admin_withdrawal_requests")
         # Отмена одобренной воркер-заявки
         if worker_req_id and action == "cancel_approved":

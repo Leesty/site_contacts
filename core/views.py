@@ -135,6 +135,70 @@ def _is_balance_admin(user) -> bool:
     return getattr(user, "role", None) == "balance_admin"
 
 
+def _balance_admin_earnings(user):
+    """Заработок баланс‑админа (Варвара) по НОВОЙ системе — фи с воронки SearchLink.
+
+    Показываем только новые фи (10 ₽ за чат, 100 ₽ за сделку с клиентов без рефовода).
+    Старая формула (лиды × ставка) в интерфейс НЕ выводится, но участвует в НЕТТО:
+    старый заработок уже полностью выведен (earned == withdrawn), поэтому
+    available = (старая_формула + новые_фи) − выведено = ровно новые незанятые фи.
+    Так фантомный `User.balance` (раздутый возвратами отклонённых выводов в старой
+    формульной модели, где баланс не списывался) в расчёт НЕ попадает.
+
+    Возвращает dict с разбивкой, total_earned, withdrawn, available.
+    """
+    from django.db.models import Sum
+    from decimal import Decimal
+    from .models import LeadReviewLog, SearchReport, BalanceLog
+
+    # --- старая формула: только для НЕТТО, в интерфейсе не показывается ---
+    total_approved = LeadReviewLog.objects.filter(
+        action=LeadReviewLog.Action.APPROVED,
+        lead__user__partner_owner__isnull=True,
+    ).count()
+    sr_approved = SearchReport.objects.filter(
+        status=SearchReport.Status.APPROVED,
+        user__partner_owner__isnull=True,
+    ).count()
+    rate = getattr(user, "balance_admin_rate", None) or Decimal("5")
+    sl_rate = getattr(user, "balance_admin_searchlink_rate", None) or Decimal("15")
+    offset = getattr(user, "balance_admin_earnings_offset", None) or Decimal("0")
+    legacy_earned = int(total_approved * rate + sr_approved * sl_rate + offset)
+
+    # --- новая система: фи Варвары с воронки ---
+    fee_qs = BalanceLog.objects.filter(user=user, field="balance")
+
+    def _s(prefix):
+        return int(fee_qs.filter(reason__startswith=prefix).aggregate(s=Sum("delta")).get("s") or 0)
+
+    chat_sum = _s("chat_varvara")        # 10 ₽ за чат (новое правило с 21.07)
+    deal_sum = _s("deal_varvara")        # 100 ₽ за сделку (вкл. ретро-начисление)
+    sozvon_sum = _s("sozvon_varvara")    # 10 ₽ за созвон (старое правило до 21.07)
+    corr_sum = _s("reversal")            # корректировки (реверс дублей)
+    new_fees = chat_sum + deal_sum + sozvon_sum + corr_sum
+
+    chat_rate = int(getattr(settings, "SEARCH_VARVARA_CHAT_FEE", 10)) or 10
+    deal_rate = int(getattr(settings, "SEARCH_VARVARA_DEAL_FEE", 100)) or 100
+
+    withdrawn = int(
+        WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
+        .aggregate(s=Sum("amount")).get("s") or 0
+    )
+    total_earned = legacy_earned + new_fees
+    available = max(0, total_earned - withdrawn)
+
+    return {
+        "new_fees": new_fees,
+        "chat_sum": chat_sum, "chat_cnt": chat_sum // chat_rate, "chat_rate": chat_rate,
+        "deal_sum": deal_sum, "deal_cnt": deal_sum // deal_rate, "deal_rate": deal_rate,
+        "sozvon_sum": sozvon_sum, "sozvon_cnt": sozvon_sum // chat_rate,
+        "corr_sum": corr_sum,
+        "total_earned": total_earned,
+        "withdrawn": withdrawn,
+        "available": available,
+    }
+
+
 def _user_search_reward(user, search_total: int) -> int:
     """Сколько реферал получит за одобренный SearchLink-отчёт.
 
@@ -175,34 +239,21 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     if _is_partner(user):
         return redirect("partner_dashboard")
     if _is_balance_admin(user):
-        from django.db.models import Sum, Q as _Q
-        from .models import LeadReviewLog, SearchReport
+        from django.db.models import Q as _Q
+        from .models import BalanceLog
 
-        # Lead-action и SearchReport-approve от не-партнёрских пользователей
-        base_log_qs = LeadReviewLog.objects.filter(
-            action=LeadReviewLog.Action.APPROVED,
-            lead__user__partner_owner__isnull=True,
-        )
-        total_approved = base_log_qs.count()
-        sr_approved = SearchReport.objects.filter(
-            status=SearchReport.Status.APPROVED,
-            user__partner_owner__isnull=True,
-        ).count()
-        from decimal import Decimal
-        rate = getattr(user, "balance_admin_rate", None) or Decimal("5")
-        sl_rate = getattr(user, "balance_admin_searchlink_rate", None) or Decimal("15")
-        offset = getattr(user, "balance_admin_earnings_offset", None) or Decimal("0")
-        earned = int(total_approved * rate + sr_approved * sl_rate + offset)
-        withdrawn = (
-            WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
-            .aggregate(s=Sum("amount"))
-            .get("s")
-            or 0
-        )
-        available = max(0, earned - withdrawn)
-        logs = (
-            base_log_qs
-            .select_related("lead", "admin", "lead__user")
+        earn = _balance_admin_earnings(user)
+
+        # История начислений — только фи новой системы (воронка SearchLink)
+        fee_logs = (
+            BalanceLog.objects.filter(user=user, field="balance")
+            .filter(
+                _Q(reason__startswith="chat_varvara")
+                | _Q(reason__startswith="deal_varvara")
+                | _Q(reason__startswith="sozvon_varvara")
+                | _Q(reason__startswith="reversal")
+            )
+            .select_related("actor")
             .order_by("-created_at")[:200]
         )
         withdrawals = WithdrawalRequest.objects.filter(user=user).order_by("-created_at")
@@ -211,18 +262,16 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             "core/dashboard_balance_admin.html",
             {
                 "user": user,
-                "earned_total": earned,
-                "withdrawn_total": withdrawn,
-                "available_balance": available,
-                "logs": logs,
+                "earned_total": earn["new_fees"],
+                "withdrawn_total": earn["withdrawn"],
+                "available_balance": earn["available"],
+                "chat_sum": earn["chat_sum"], "chat_cnt": earn["chat_cnt"], "chat_rate": earn["chat_rate"],
+                "deal_sum": earn["deal_sum"], "deal_cnt": earn["deal_cnt"], "deal_rate": earn["deal_rate"],
+                "sozvon_sum": earn["sozvon_sum"], "sozvon_cnt": earn["sozvon_cnt"],
+                "corr_sum": earn["corr_sum"],
+                "fee_logs": fee_logs,
                 "withdrawals": withdrawals,
                 "withdrawal_min_balance": getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500),
-                "current_rate": rate,
-                "current_sl_rate": sl_rate,
-                "lead_actions_count": total_approved,
-                "sr_approved_count": sr_approved,
-                "lead_earned": int(total_approved * rate),
-                "sl_earned": int(sr_approved * sl_rate),
                 "receiptless_withdrawals": list(
                     WithdrawalRequest.objects.filter(user=user, status="approved")
                     .exclude(receipt_status__in=["approved", "waived"])
@@ -1020,29 +1069,8 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
     # Специальная логика для баланс‑админа: баланс считается по логу одобренных лидов
     # + по одобренным SearchReport-отчётам от не-рефералов.
     if getattr(user, "role", None) == "balance_admin":
-        from django.db.models import Sum
-        from .models import LeadReviewLog, SearchReport
-
-        total_approved = LeadReviewLog.objects.filter(
-            action=LeadReviewLog.Action.APPROVED,
-            lead__user__partner_owner__isnull=True,
-        ).count()
-        sr_approved = SearchReport.objects.filter(
-            status=SearchReport.Status.APPROVED,
-            user__partner_owner__isnull=True,
-        ).count()
-        from decimal import Decimal
-        rate = getattr(user, "balance_admin_rate", None) or Decimal("5")
-        sl_rate = getattr(user, "balance_admin_searchlink_rate", None) or Decimal("15")
-        offset = getattr(user, "balance_admin_earnings_offset", None) or Decimal("0")
-        earned = int(total_approved * rate + sr_approved * sl_rate + offset)
-        withdrawn = (
-            WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
-            .aggregate(s=Sum("amount"))
-            .get("s")
-            or 0
-        )
-        balance = max(0, earned - withdrawn)
+        # Новая система: доступно = незанятые фи с воронки (см. _balance_admin_earnings).
+        balance = _balance_admin_earnings(user)["available"]
     elif getattr(user, "role", None) in ("admin", "main_admin"):
         from django.db.models import Sum
         from .admin_earnings import total_earned as _ae_total_earned
@@ -1086,29 +1114,8 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
             # Повторно считаем баланс внутри транзакции, чтобы учесть параллельные изменения.
             _role = getattr(user_refresh, "role", None)
             if _role == "balance_admin":
-                from django.db.models import Sum
-                from .models import LeadReviewLog, SearchReport
-
-                total_approved = LeadReviewLog.objects.filter(
-                    action=LeadReviewLog.Action.APPROVED,
-                    lead__user__partner_owner__isnull=True,
-                ).count()
-                sr_approved = SearchReport.objects.filter(
-                    status=SearchReport.Status.APPROVED,
-                    user__partner_owner__isnull=True,
-                ).count()
-                from decimal import Decimal
-                rate = getattr(user_refresh, "balance_admin_rate", None) or Decimal("5")
-                sl_rate = getattr(user_refresh, "balance_admin_searchlink_rate", None) or Decimal("15")
-                offset = getattr(user_refresh, "balance_admin_earnings_offset", None) or Decimal("0")
-                earned = int(total_approved * rate + sr_approved * sl_rate + offset)
-                withdrawn = (
-                    WithdrawalRequest.objects.filter(user=user_refresh, status__in=("pending", "approved"))
-                    .aggregate(s=Sum("amount"))
-                    .get("s")
-                    or 0
-                )
-                current_balance = max(0, earned - withdrawn)
+                # Новая система: доступно = незанятые фи с воронки.
+                current_balance = _balance_admin_earnings(user_refresh)["available"]
                 if WithdrawalRequest.objects.filter(user=user_refresh, status="pending").exists():
                     messages.info(request, "У вас уже есть заявка на вывод на рассмотрении.")
                     return redirect("dashboard")
