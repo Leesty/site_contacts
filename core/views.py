@@ -138,20 +138,20 @@ def _is_balance_admin(user) -> bool:
 def _balance_admin_earnings(user):
     """Заработок баланс‑админа (Варвара) по НОВОЙ системе — фи с воронки SearchLink.
 
-    Показываем только новые фи (10 ₽ за чат, 100 ₽ за сделку с клиентов без рефовода).
-    Старая формула (лиды × ставка) в интерфейс НЕ выводится, но участвует в НЕТТО:
+    Фи: 10 ₽ за СОЗВОН + 100 ₽ за сделку со ВСЕХ клиентов (правило 2026-07-22).
+    Старая формула (лиды × ставка) в разбивку не выводится, но участвует в НЕТТО:
     старый заработок уже полностью выведен (earned == withdrawn), поэтому
     available = (старая_формула + новые_фи) − выведено = ровно новые незанятые фи.
     Так фантомный `User.balance` (раздутый возвратами отклонённых выводов в старой
     формульной модели, где баланс не списывался) в расчёт НЕ попадает.
 
-    Возвращает dict с разбивкой, total_earned, withdrawn, available.
+    Возвращает dict с разбивкой, total_all_time, withdrawn, available.
     """
     from django.db.models import Sum
     from decimal import Decimal
     from .models import LeadReviewLog, SearchReport, BalanceLog
 
-    # --- старая формула: только для НЕТТО, в интерфейсе не показывается ---
+    # --- старая формула: для НЕТТО и плашки «всего за всё время» ---
     total_approved = LeadReviewLog.objects.filter(
         action=LeadReviewLog.Action.APPROVED,
         lead__user__partner_owner__isnull=True,
@@ -165,35 +165,35 @@ def _balance_admin_earnings(user):
     offset = getattr(user, "balance_admin_earnings_offset", None) or Decimal("0")
     legacy_earned = int(total_approved * rate + sr_approved * sl_rate + offset)
 
-    # --- новая система: фи Варвары с воронки ---
+    # --- новая система: фи Варвары с воронки (10 за созвон, 100 за сделку) ---
     fee_qs = BalanceLog.objects.filter(user=user, field="balance")
 
     def _s(prefix):
         return int(fee_qs.filter(reason__startswith=prefix).aggregate(s=Sum("delta")).get("s") or 0)
 
-    chat_sum = _s("chat_varvara")        # 10 ₽ за чат (новое правило с 21.07)
     deal_sum = _s("deal_varvara")        # 100 ₽ за сделку (вкл. ретро-начисление)
-    sozvon_sum = _s("sozvon_varvara")    # 10 ₽ за созвон (старое правило до 21.07)
-    corr_sum = _s("reversal")            # корректировки (реверс дублей)
-    new_fees = chat_sum + deal_sum + sozvon_sum + corr_sum
+    sozvon_sum = _s("sozvon_varvara")    # 10 ₽ за созвон
+    corr_sum = _s("reversal")            # реверс дубля сделки (-100) — сворачиваем в сделки
+    # Фи за чат отменено (правило вернули на созвон) — chat_varvara НЕ учитываем.
+    deal_net = deal_sum + corr_sum
+    new_fees = sozvon_sum + deal_net
 
-    chat_rate = int(getattr(settings, "SEARCH_VARVARA_CHAT_FEE", 10)) or 10
+    sozvon_rate = int(getattr(settings, "SEARCH_VARVARA_SOZVON_FEE", 10)) or 10
     deal_rate = int(getattr(settings, "SEARCH_VARVARA_DEAL_FEE", 100)) or 100
 
     withdrawn = int(
         WithdrawalRequest.objects.filter(user=user, status__in=("pending", "approved"))
         .aggregate(s=Sum("amount")).get("s") or 0
     )
-    total_earned = legacy_earned + new_fees
-    available = max(0, total_earned - withdrawn)
+    total_all_time = legacy_earned + new_fees
+    available = max(0, total_all_time - withdrawn)
 
     return {
         "new_fees": new_fees,
-        "chat_sum": chat_sum, "chat_cnt": chat_sum // chat_rate, "chat_rate": chat_rate,
-        "deal_sum": deal_sum, "deal_cnt": deal_sum // deal_rate, "deal_rate": deal_rate,
-        "sozvon_sum": sozvon_sum, "sozvon_cnt": sozvon_sum // chat_rate,
-        "corr_sum": corr_sum,
-        "total_earned": total_earned,
+        "deal_sum": deal_net, "deal_cnt": deal_net // deal_rate, "deal_rate": deal_rate,
+        "sozvon_sum": sozvon_sum, "sozvon_cnt": sozvon_sum // sozvon_rate, "sozvon_rate": sozvon_rate,
+        "legacy_earned": legacy_earned,
+        "total_all_time": total_all_time,
         "withdrawn": withdrawn,
         "available": available,
     }
@@ -245,14 +245,13 @@ def dashboard(request: HttpRequest) -> HttpResponse:
 
         earn = _balance_admin_earnings(user)
 
-        # История начислений — только фи новой системы (воронка SearchLink)
+        # История начислений — фи новой системы (созвоны + сделки).
+        # chat_varvara исключено: фи за чат отменено, начисления возвращены.
         fee_logs = list(
             BalanceLog.objects.filter(user=user, field="balance")
             .filter(
-                _Q(reason__startswith="chat_varvara")
-                | _Q(reason__startswith="deal_varvara")
+                _Q(reason__startswith="deal_varvara")
                 | _Q(reason__startswith="sozvon_varvara")
-                | _Q(reason__startswith="reversal")
             )
             .order_by("-created_at")[:200]
         )
@@ -282,12 +281,12 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             {
                 "user": user,
                 "earned_total": earn["new_fees"],
+                "total_all_time": earn["total_all_time"],
+                "legacy_earned": earn["legacy_earned"],
                 "withdrawn_total": earn["withdrawn"],
                 "available_balance": earn["available"],
-                "chat_sum": earn["chat_sum"], "chat_cnt": earn["chat_cnt"], "chat_rate": earn["chat_rate"],
                 "deal_sum": earn["deal_sum"], "deal_cnt": earn["deal_cnt"], "deal_rate": earn["deal_rate"],
-                "sozvon_sum": earn["sozvon_sum"], "sozvon_cnt": earn["sozvon_cnt"],
-                "corr_sum": earn["corr_sum"],
+                "sozvon_sum": earn["sozvon_sum"], "sozvon_cnt": earn["sozvon_cnt"], "sozvon_rate": earn["sozvon_rate"],
                 "fee_logs": fee_logs,
                 "withdrawals": withdrawals,
                 "withdrawal_min_balance": getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500),

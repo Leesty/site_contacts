@@ -39,22 +39,31 @@
   </div>
 
   <div class="row g-3 mb-4">
-    <div class="col-md-6">
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm" style="border-color:#2e7d55;">
+        <div class="card-body">
+          <h2 class="h6 text-muted">Всего заработано за всё время</h2>
+          <p class="fs-4 mb-1 text-success">{{ total_all_time }} <span class="fs-6 text-muted">руб.</span></p>
+          <div class="small text-muted">
+            Старая система (лиды): <strong>{{ legacy_earned }} ₽</strong><br>
+            Воронка (созвоны + сделки): <strong>{{ earned_total }} ₽</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
           <h2 class="h6 text-muted">Заработано на воронке</h2>
           <p class="fs-4 mb-1">{{ earned_total }} <span class="fs-6 text-muted">руб.</span></p>
           <div class="small text-muted">
             Сделки: {{ deal_cnt }} × {{ deal_rate }} ₽ = <strong>{{ deal_sum }} ₽</strong><br>
-            Чаты: {{ chat_cnt }} × {{ chat_rate }} ₽ = <strong>{{ chat_sum }} ₽</strong>
-            {% if sozvon_sum %}<br>Созвоны*: {{ sozvon_cnt }} × {{ chat_rate }} ₽ = <strong>{{ sozvon_sum }} ₽</strong>{% endif %}
-            {% if corr_sum %}<br><span class="text-warning">Корректировки: {{ corr_sum }} ₽</span>{% endif %}
+            Созвоны: {{ sozvon_cnt }} × {{ sozvon_rate }} ₽ = <strong>{{ sozvon_sum }} ₽</strong>
           </div>
-          {% if sozvon_sum %}<div class="text-muted" style="font-size:.7rem;margin-top:.35rem;">* фи за созвоны — по старому правилу до 21.07, теперь фи начисляется за чат</div>{% endif %}
         </div>
       </div>
     </div>
-    <div class="col-md-6">
+    <div class="col-md-4">
       <div class="card h-100 shadow-sm">
         <div class="card-body d-flex flex-column">
           <h2 class="h6 text-muted">Доступно к выводу</h2>
@@ -75,7 +84,7 @@
       <div class="card shadow-sm">
         <div class="card-header bg-transparent border-secondary py-2">
           <strong>История начислений</strong>
-          <span class="text-muted small">— фи с воронки: {{ deal_rate }} ₽ за сделку, {{ chat_rate }} ₽ за чат (со всех клиентов)</span>
+          <span class="text-muted small">— фи с воронки: {{ deal_rate }} ₽ за сделку, {{ sozvon_rate }} ₽ за созвон (со всех клиентов)</span>
         </div>
         <div class="card-body p-0">
           {% if fee_logs %}

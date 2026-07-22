@@ -236,7 +236,7 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
     SOZVON_REF = getattr(settings, "SEARCH_SOZVON_REFERRER", 50)
     DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
     DEAL_REF = getattr(settings, "SEARCH_DEAL_REFERRER", 1000)
-    VARVARA_CHAT = getattr(settings, "SEARCH_VARVARA_CHAT_FEE", 10)
+    VARVARA_SOZVON = getattr(settings, "SEARCH_VARVARA_SOZVON_FEE", 10)
     VARVARA_DEAL = getattr(settings, "SEARCH_VARVARA_DEAL_FEE", 100)
     varvara = User.objects.filter(pk=getattr(settings, "VARVARA_USER_ID", 123)).first()
 
@@ -274,11 +274,9 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             link.wg_status = conv["status"][:32]; touched = True
         if conv["conv_id"] and str(link.wg_conversation_id or "") != conv["conv_id"]:
             link.wg_conversation_id = conv["conv_id"]; touched = True
-        # Фи varvara за чат — фикс-ставка проекта, идёт со ВСЕХ клиентов (в т.ч.
-        # реферальных). Учитываем стадию чата здесь, иначе ссылка уйдёт в
-        # field_only и начисление не произойдёт.
-        needs = (new_stage >= 2 and link.chat_credited_at is None) or \
-                (new_stage == 3 and link.sozvon_credited_at is None) or \
+        # Фи varvara — фикс-ставка проекта со ВСЕХ клиентов: 10 ₽ за СОЗВОН и
+        # 100 ₽ за сделку (правило владельца 2026-07-22, вернули с чата на созвон).
+        needs = (new_stage == 3 and link.sozvon_credited_at is None) or \
                 (new_stage == 4 and link.deal_credited_at is None)
         if touched:
             summary["stage_updated"] += 1
@@ -316,11 +314,6 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
                 _credit(user, amount, reason, varvara)
 
         upd = []
-        # Фи varvara за СОЗДАНИЕ ЧАТА — 10 ₽ с КАЖДОГО клиента (в т.ч. реферального):
-        # фикс-ставка проекта поверх реф-процентов (правило владельца 2026-07-22).
-        if new_stage >= 2 and l.chat_credited_at is None:
-            dc(varvara, VARVARA_CHAT, f"chat_varvara#{l.pk} +{VARVARA_CHAT}")
-            l.chat_credited_at = timezone.now(); upd.append("chat_credited_at")
         if new_stage == 3 and l.sozvon_credited_at is None:
             if has_ref:
                 dc(manager, SOZVON_TOTAL - r_sozvon, f"sozvon#{l.pk} +{SOZVON_TOTAL - r_sozvon}")
@@ -328,6 +321,10 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
                     dc(referrer, r_sozvon, f"sozvon_ref#{l.pk} +{r_sozvon}")
             else:
                 dc(manager, SOZVON_TOTAL, f"sozvon#{l.pk} +{SOZVON_TOTAL}")
+            # Фи varvara за СОЗВОН — 10 ₽ с КАЖДОГО клиента (в т.ч. реферального):
+            # фикс-ставка проекта поверх реф-процентов (правило владельца 2026-07-22,
+            # вернули с чата обратно на созвон).
+            dc(varvara, VARVARA_SOZVON, f"sozvon_varvara#{l.pk} +{VARVARA_SOZVON}")
             l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
             summary["sozvon_credited"] += 1; summary["sozvon_rub"] += SOZVON_TOTAL
         if new_stage == 4 and l.deal_credited_at is None:
