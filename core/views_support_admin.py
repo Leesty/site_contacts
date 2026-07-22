@@ -3287,7 +3287,11 @@ def admin_toggle_ban(request: HttpRequest, user_id: int) -> HttpResponse:
 # ─── Оплата (баланс-админ) ───────────────────────────────────────────────────
 
 def _is_balance_admin_check(request: HttpRequest) -> bool:
-    return getattr(request.user, "role", None) == User.Role.BALANCE_ADMIN
+    # Функция «Оплата» (правка баланса юзеров ×1.5 / −25000) убрана у баланс-админа
+    # по решению владельца 2026-07-22: Варвара только получает выплаты, выводит и
+    # выдаёт контакты. Все payment-эндпоинты теперь недоступны (403). Чтобы вернуть
+    # — восстановить проверку роли: `== User.Role.BALANCE_ADMIN`.
+    return False
 
 
 @login_required
