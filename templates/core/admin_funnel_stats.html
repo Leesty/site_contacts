@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Аналитика воронки — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h4 mb-1">📊 Аналитика новой системы</h1>
+      <p class="text-muted small mb-0">
+        Воронка SearchLink → windowgram. Деньги — только реально начисленные (BalanceLog).
+        Выплаты идут с запуска {{ launch }}: события до него отбейзлайнены без оплаты.
+      </p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  {# ── Период ── #}
+  <div class="d-flex gap-1 mb-3 flex-wrap">
+    <span class="text-muted small align-self-center me-1">Деньги за период:</span>
+    {% for key, label in periods.items %}
+      <a href="?period={{ key }}&sort={{ sort }}"
+         class="btn btn-sm {% if period == key %}btn-success{% else %}btn-outline-secondary{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+  {# ── KPI ── #}
+  <div class="row row-cols-2 row-cols-lg-4 g-2 mb-4">
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="border-color:#2e7d55;">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Выплачено всего</div>
+          <div class="fs-4 text-success fw-semibold">{{ paid_total }} ₽</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Менеджерам</div>
+          <div class="fs-5 fw-semibold">{{ mgr_total }} ₽</div>
+          <div class="text-muted" style="font-size:11px;">
+            созвоны {{ t.mgr_sozvon }} · сделки {{ t.mgr_deal }}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Рефоводам</div>
+          <div class="fs-5 fw-semibold">{{ ref_total }} ₽</div>
+          <div class="text-muted" style="font-size:11px;">
+            созвоны {{ t.ref_sozvon }} · сделки {{ t.ref_deal }}
+            {% if milestone_total %}· milestone {{ milestone_total }}{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Фи Варвары</div>
+          <div class="fs-5 fw-semibold">{{ fee_total }} ₽</div>
+          <div class="text-muted" style="font-size:11px;">{{ rates.fee_sozvon }} ₽ созвон · {{ rates.fee_deal }} ₽ сделка</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Сделок оплачено</div>
+          <div class="fs-4 fw-semibold">{{ events.deal }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Созвонов оплачено</div>
+          <div class="fs-4 fw-semibold">{{ events.sozvon }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Средний чек сделки</div>
+          <div class="fs-5 fw-semibold">{{ avg_deal }} ₽</div>
+          <div class="text-muted" style="font-size:11px;">ушло людям с одной сделки</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Ставки</div>
+          <div class="small">{{ rates.sozvon }} ₽ созвон<br>{{ rates.deal }} ₽ сделка</div>
+          <div class="text-muted" style="font-size:11px;">рефоводу {{ rates.sozvon_ref }} / {{ rates.deal_ref }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Воронка ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Воронка</strong>
+      <span class="text-muted small">— состояние за всё время (включая события до запуска, за которые не платили)</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr><th>Стадия</th><th class="text-end">Клиентов</th><th class="text-end">Конверсия</th><th style="width:40%;">Доля</th></tr>
+          </thead>
+          <tbody>
+            {% for s in funnel %}
+              <tr>
+                <td>{{ s.icon }} {{ s.name }}</td>
+                <td class="text-end fw-semibold">{{ s.n }}</td>
+                <td class="text-end">
+                  {% if s.conv is not None %}
+                    <span class="{% if s.conv >= 50 %}text-success{% elif s.conv >= 15 %}text-warning{% else %}text-danger{% endif %}">{{ s.conv }}%</span>
+                    <span class="text-muted" style="font-size:11px;">{{ s.of }}</span>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td>
+                  <div style="background:#1e293b;border-radius:4px;height:14px;overflow:hidden;">
+                    <div style="height:100%;background:linear-gradient(90deg,#16a34a,#22c55e);width:{% widthratio s.n funnel.0.n 100 %}%;"></div>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Динамика ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Динамика за 30 дней</strong>
+      <span class="text-muted small">— оплаченные события и выплаты по дням</span>
+    </div>
+    <div class="card-body p-0">
+      {% if daily %}
+        <div class="table-responsive" style="max-height:340px;overflow-y:auto;">
+          <table class="table table-sm mb-0 align-middle table-dark-site">
+            <thead style="position:sticky;top:0;z-index:1;">
+              <tr>
+                <th>Дата</th><th class="text-end">🤖 Старты</th><th class="text-end">📞 Созвоны</th>
+                <th class="text-end">✅ Сделки</th><th class="text-end">Выплачено</th><th style="width:25%;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in daily %}
+                <tr>
+                  <td class="text-nowrap small">{{ d.date|date:"d.m (D)" }}</td>
+                  <td class="text-end">{{ d.starts }}</td>
+                  <td class="text-end">{% if d.sozvons %}{{ d.sozvons }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td class="text-end">{% if d.deals %}<span class="text-success fw-semibold">{{ d.deals }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td class="text-end fw-semibold">{{ d.paid }} ₽</td>
+                  <td>
+                    <div style="background:#1e293b;border-radius:3px;height:10px;overflow:hidden;">
+                      <div style="height:100%;background:#22c55e;width:{{ d.bar }}%;"></div>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted small p-3 mb-0">За 30 дней начислений не было.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Менеджеры ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2 d-flex justify-content-between align-items-center flex-wrap gap-1">
+      <div>
+        <strong>По менеджерам</strong>
+        <span class="text-muted small">— откуда поступления ({{ managers|length }} чел.)</span>
+      </div>
+      <div class="d-flex gap-1">
+        <span class="text-muted small align-self-center">сорт:</span>
+        <a href="?period={{ period }}&sort=earned" class="btn btn-sm py-0 {% if sort == 'earned' %}btn-success{% else %}btn-outline-secondary{% endif %}">₽</a>
+        <a href="?period={{ period }}&sort=deals" class="btn btn-sm py-0 {% if sort == 'deals' %}btn-success{% else %}btn-outline-secondary{% endif %}">сделки</a>
+        <a href="?period={{ period }}&sort=links" class="btn btn-sm py-0 {% if sort == 'links' %}btn-success{% else %}btn-outline-secondary{% endif %}">ссылки</a>
+        <a href="?period={{ period }}&sort=conv" class="btn btn-sm py-0 {% if sort == 'conv' %}btn-success{% else %}btn-outline-secondary{% endif %}">конверсия</a>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Менеджер</th><th>Рефовод</th>
+              <th class="text-end">🔗</th><th class="text-end">🤖</th><th class="text-end">💬</th>
+              <th class="text-end">📞 опл.</th><th class="text-end">✅ опл.</th>
+              <th class="text-end">За созвоны</th><th class="text-end">За сделки</th>
+              <th class="text-end">Заработал</th><th class="text-end">Как рефовод</th>
+              <th class="text-end">Конв.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in managers %}
+              <tr>
+                <td class="text-nowrap">
+                  @{{ m.username }}
+                  {% if m.accredited %}<span class="badge bg-success" style="font-size:9px;">аккр</span>{% endif %}
+                  {% if m.role != 'user' %}<span class="badge bg-secondary" style="font-size:9px;">{{ m.role }}</span>{% endif %}
+                </td>
+                <td class="small text-muted">{% if m.referrer %}@{{ m.referrer }}{% else %}—{% endif %}</td>
+                <td class="text-end">{{ m.links }}</td>
+                <td class="text-end">{{ m.bots }}</td>
+                <td class="text-end">{{ m.chats }}</td>
+                <td class="text-end">{% if m.n_sozvon %}{{ m.n_sozvon }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end">{% if m.n_deal %}<span class="text-success fw-semibold">{{ m.n_deal }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end small">{% if m.earn_sozvon %}{{ m.earn_sozvon }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end small">{% if m.earn_deal %}{{ m.earn_deal }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end fw-semibold {% if m.earned %}text-success{% endif %}">{{ m.earned }} ₽</td>
+                <td class="text-end small">{% if m.as_ref %}{{ m.as_ref }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end small">{{ m.conv }}%</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="12" class="text-muted p-3">Нет данных за период.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-transparent border-secondary py-2">
+      <span class="text-muted" style="font-size:11px;">
+        🔗 ссылок · 🤖 запустили бота · 💬 дошли до чата — за всё время.
+        «опл.» и деньги — за выбранный период. Конверсия = сделки ÷ старты бота.
+      </span>
+    </div>
+  </div>
+
+  {# ── Рефоводы ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Рефоводы</strong>
+      <span class="text-muted small">— {{ rates.sozvon_ref }} ₽ с созвона и {{ rates.deal_ref }} ₽ со сделки реферала; неаккредитованным — milestone 500 ₽</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Рефовод</th><th class="text-end">Рефералов</th>
+              <th class="text-end">С созвонов</th><th class="text-end">Со сделок</th>
+              <th class="text-end">Milestone</th><th class="text-end">Всего</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in referrers %}
+              <tr>
+                <td>@{{ r.username }}
+                  {% if r.accredited %}<span class="badge bg-success" style="font-size:9px;">аккр</span>
+                  {% else %}<span class="badge bg-secondary" style="font-size:9px;">milestone</span>{% endif %}
+                </td>
+                <td class="text-end">{{ r.refs }}</td>
+                <td class="text-end small">{% if r.from_sozvon %}{{ r.from_sozvon }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end small">{% if r.from_deal %}{{ r.from_deal }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end small">{% if r.milestone %}{{ r.milestone }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end fw-semibold text-success">{{ r.total }} ₽</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="text-muted p-3">За период рефоводы ничего не получали.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Платформы ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2"><strong>Платформы</strong></div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0 align-middle table-dark-site">
+        <thead>
+          <tr><th>Платформа</th><th class="text-end">Ссылок</th><th class="text-end">Запустили бота</th><th class="text-end">Сделок</th><th class="text-end">Конверсия в бота</th></tr>
+        </thead>
+        <tbody>
+          {% for p in platforms %}
+            <tr>
+              <td>{% if p.platform == 'vk' %}🔵 VK{% elif p.platform == 'both' %}🟣 TG+VK{% else %}✈️ Telegram{% endif %}</td>
+              <td class="text-end">{{ p.links }}</td>
+              <td class="text-end">{{ p.bots }}</td>
+              <td class="text-end">{{ p.deals }}</td>
+              <td class="text-end">{{ p.conv }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
