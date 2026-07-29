@@ -193,14 +193,13 @@
       </div>
     </div>
     <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-sm mb-0 align-middle table-dark-site">
+      <div class="table-responsive has-scroll-hint">
+        <table class="table table-sm mb-0 align-middle table-dark-site table-wide">
           <thead>
             <tr>
               <th>Менеджер</th><th>Рефовод</th>
               <th class="text-end">🔗</th><th class="text-end">🤖</th><th class="text-end">💬</th>
               <th class="text-end">📞 опл.</th><th class="text-end">✅ опл.</th>
-              <th class="text-end">За созвоны</th><th class="text-end">За сделки</th>
               <th class="text-end">Заработал</th><th class="text-end">Как рефовод</th>
               <th class="text-end">Конв.</th>
             </tr>
@@ -219,14 +218,19 @@
                 <td class="text-end">{{ m.chats }}</td>
                 <td class="text-end">{% if m.n_sozvon %}{{ m.n_sozvon }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                 <td class="text-end">{% if m.n_deal %}<span class="text-success fw-semibold">{{ m.n_deal }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                <td class="text-end small">{% if m.earn_sozvon %}{{ m.earn_sozvon }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                <td class="text-end small">{% if m.earn_deal %}{{ m.earn_deal }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                <td class="text-end fw-semibold {% if m.earned %}text-success{% endif %}">{{ m.earned }} ₽</td>
+                <td class="text-end fw-semibold {% if m.earned %}text-success{% endif %}">
+                  {{ m.earned }} ₽
+                  {% if m.earn_sozvon or m.earn_deal %}
+                    <span class="cell-sub text-nowrap">
+                      {% if m.earn_sozvon %}созвоны {{ m.earn_sozvon }}{% endif %}{% if m.earn_sozvon and m.earn_deal %} · {% endif %}{% if m.earn_deal %}сделки {{ m.earn_deal }}{% endif %}
+                    </span>
+                  {% endif %}
+                </td>
                 <td class="text-end small">{% if m.as_ref %}{{ m.as_ref }} ₽{% else %}<span class="text-muted">—</span>{% endif %}</td>
                 <td class="text-end small">{{ m.conv }}%</td>
               </tr>
             {% empty %}
-              <tr><td colspan="12" class="text-muted p-3">Нет данных за период.</td></tr>
+              <tr><td colspan="10" class="text-muted p-3">Нет данных за период.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -235,7 +239,8 @@
     <div class="card-footer bg-transparent border-secondary py-2">
       <span class="text-muted" style="font-size:11px;">
         🔗 ссылок · 🤖 запустили бота · 💬 дошли до чата — за всё время.
-        «опл.» и деньги — за выбранный период. Конверсия = сделки ÷ старты бота.
+        «опл.» и деньги — за выбранный период. Под суммой — из чего она сложилась
+        (созвоны и сделки). Конверсия = сделки ÷ старты бота.
       </span>
     </div>
   </div>
