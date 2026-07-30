@@ -8,6 +8,16 @@
   <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
 </div>
 
+{% if not cold_chat_creation_enabled %}
+  <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+    <span style="font-size: 18px;">⏸</span>
+    <div>
+      <strong>Создание чатов временно приостановлено.</strong>
+      Контакты и лиды фиксируйте как обычно — чаты создадите, когда функцию включат обратно.
+    </div>
+  </div>
+{% endif %}
+
 {# ─── Что нужно для прохождения авто-валидации отчёта ───────────────── #}
 <div class="card shadow-sm mb-3" style="background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25);">
   <div class="card-body py-3">
@@ -168,12 +178,15 @@
                       <a class="btn btn-outline-info btn-sm py-0" style="font-size: 11px;"
                          href="{{ c.chat_invite_link }}" target="_blank" rel="noopener"
                          title="Ссылка на чат">🔗 чат</a>
-                    {% else %}
+                    {% elif cold_chat_creation_enabled %}
                       <form method="post" action="{% url 'cold_contact_create_chat' c.id %}" class="m-0">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-outline-warning btn-sm py-0"
                                 style="font-size: 11px;" title="Создать чат">＋ чат</button>
                       </form>
+                    {% else %}
+                      <span class="badge bg-secondary" style="font-size: 10px;"
+                            title="Создание чатов временно приостановлено администрацией">чат на паузе</span>
                     {% endif %}
                     {% if c.chat_id %}
                       {% if c.call_report %}

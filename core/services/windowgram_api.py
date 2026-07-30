@@ -121,7 +121,18 @@ def create_chat(user, title: str) -> dict:
     """Создаёт TG-чат через invite-pool. Возвращает {chat_id, invite_link, title, ...}.
 
     Внутри: ensure_manager → login → create-chat. На каждое создание новый login.
+
+    Гейт `COLD_CHAT_CREATION_ENABLED` — общий рубильник функции (владелец,
+    2026-07-28). Единая точка: обе вьюхи (`contact_mark_lead`,
+    `contact_create_chat`) ловят WindowgramError и показывают текст менеджеру.
     """
+    from django.conf import settings as _settings
+
+    if not getattr(_settings, "COLD_CHAT_CREATION_ENABLED", False):
+        raise WindowgramError(
+            "Создание чатов временно приостановлено администрацией. "
+            "Лид сохранён — чат создадите, когда функцию включат обратно."
+        )
     ensure_manager(user)
     jwt = _manager_login_for_user(user)
     try:
