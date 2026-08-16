@@ -155,6 +155,29 @@ def _credit(user, amount: int, reason: str, actor):
         u.save(update_fields=["is_accredited"])
 
 
+def _paid_sozvon_link_ids(link_ids: list) -> set:
+    """ID ссылок, за созвон которых реально была выплата (одним запросом).
+
+    Батч-версия `_sozvon_actually_paid` для синка: тот делает по запросу на
+    ссылку, что на тысячах ссылок недопустимо.
+    """
+    import re as _re
+
+    from .models import BalanceLog
+
+    if not link_ids:
+        return set()
+    reasons = BalanceLog.objects.filter(
+        field="balance", reason__regex=r"^sozvon#[0-9]+ ",
+    ).values_list("reason", flat=True)
+    ids = set()
+    for r in reasons:
+        m = _re.match(r"sozvon#(\d+) ", r or "")
+        if m:
+            ids.add(int(m.group(1)))
+    return ids
+
+
 def _sozvon_actually_paid(link_id) -> bool:
     """Был ли аванс за созвон РЕАЛЬНО выплачен по этой ссылке.
 
@@ -269,6 +292,12 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
     wg_state = _fetch_wg_state(links)
     CACHE_FIELDS = ["funnel_stage", "chat_created", "wg_status", "wg_conversation_id"]
 
+    # Ссылки, за созвон которых РЕАЛЬНО заплатили (одним запросом, не по одной).
+    # Нужно, чтобы не показывать менеджеру стадию «Созвон» там, где аванс лишь
+    # помечен baseline'ом без денег — иначе счётчик врёт (жалоба 16.08: счётчик
+    # прыгнул с 15 до 34, а баланс не изменился).
+    _paid_sozvon = _paid_sozvon_link_ids([l.id for l in links])
+
     # ── Проход 1 (Python, без записи): вычисляем кэш-поля + кто требует начисления ──
     field_only = []            # ссылки только с обновлением кэша (без денег)
     credit_links = []          # [(link, new_stage)] — требуют начисления, транзакционно
@@ -277,6 +306,11 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         if not conv:
             continue
         new_stage = max(1, conv["rank"])  # bot_started → минимум 1
+        # Отметка созвона БЕЗ выплаты (baseline) не должна показываться как
+        # «Созвон» — деньги за неё не придут. Откатываем к чату/боту.
+        if (new_stage == 3 and link.sozvon_credited_at is not None
+                and link.id not in _paid_sozvon):
+            new_stage = 2 if conv["has_chat"] else 1
         touched = False
         if new_stage > link.funnel_stage:
             link.funnel_stage = new_stage; touched = True
