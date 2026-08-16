@@ -59,7 +59,9 @@ def _fetch_wg_state(links: list) -> dict:
     username = screen_name, vk_id = числовой id. Поэтому screen_name матчим
     строго по platform='vk', чтобы не пересечься с telegram-username.
 
-    «Создан чат» (стадия 2): в TG это group_chat_id, в VK — беседа, т.е.
+    «Создан чат» (стадия 2): в TG это group_chat_id ИЛИ forum_chat_id (новая
+    система murzzvon с 13.08.2026 — чат клиента стал темой форума, group_chat_id
+    у таких пуст), в VK — беседа, т.е.
     vk_peer_id >= 2_000_000_000 (CHAT_PEER_OFFSET). У VK group_chat_id почти
     всегда пустой, поэтому без учёта беседы VK-клиенты с чатом висли бы на «бот».
     """
@@ -77,7 +79,8 @@ def _fetch_wg_state(links: list) -> dict:
             """
             SELECT t.telegram_id, lower(t.username) AS uname, t.vk_id, t.platform,
                    c.id::text AS conv_id, c.status,
-                   (c.group_chat_id IS NOT NULL OR c.vk_peer_id >= 2000000000) AS has_chat
+                   (c.group_chat_id IS NOT NULL OR c.forum_chat_id IS NOT NULL
+                    OR c.vk_peer_id >= 2000000000) AS has_chat
             FROM conversations c
             JOIN telegram_users t ON t.id = c.telegram_user_id
             WHERE (t.telegram_id = ANY(%s))
