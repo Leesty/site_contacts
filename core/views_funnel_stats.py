@@ -133,6 +133,34 @@ def _bot_starts_by_day(days: int = 30) -> dict:
         return {r[0]: r[1] for r in cur.fetchall()}
 
 
+def _booking_stats():
+    """Кто из клиентов записался на встречу в боте (`calendar_events`).
+
+    Возвращает (by_user, total_booked): сколько клиентов КАЖДОГО менеджера
+    записались на встречу. Считаем по сматченным SearchLink — только те, что
+    реально привязаны к диалогу CRM.
+    """
+    from django.db import connections
+    from .models import SearchLink
+
+    with connections["windowgram"].cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT conversation_id::text FROM calendar_events "
+            "WHERE conversation_id IS NOT NULL"
+        )
+        booked = {r[0] for r in cur.fetchall()}
+    by_user = {}
+    rows = SearchLink.objects.filter(
+        bot_started=True, wg_conversation_id__isnull=False,
+    ).values_list("user_id", "wg_conversation_id")
+    total = 0
+    for uid, conv in rows:
+        if str(conv) in booked:
+            by_user[uid] = by_user.get(uid, 0) + 1
+            total += 1
+    return by_user, total
+
+
 @login_required
 def admin_funnel_stats(request: HttpRequest) -> HttpResponse:
     """Полная аналитика новой воронки: деньги, конверсии, менеджеры, рефоводы."""
@@ -204,6 +232,9 @@ def admin_funnel_stats(request: HttpRequest) -> HttpResponse:
     for p in platforms:
         p["conv"] = _pct(p["bots"], p["links"])
 
+    # ── Запись на встречу в боте (150 ₽ платятся за неё) ──────────────────
+    booked_by_user, booked_total = _booking_stats()
+
     # ── По менеджерам ─────────────────────────────────────────────────────
     fl = {
         r["user_id"]: r
@@ -253,6 +284,9 @@ def admin_funnel_stats(request: HttpRequest) -> HttpResponse:
             "earned": earned,
             "as_ref": as_ref,
             "conv": _pct(stat.get("deals", 0), stat.get("bots", 0)),
+            "booked": booked_by_user.get(uid, 0),
+            "not_booked": max(0, stat.get("bots", 0) - booked_by_user.get(uid, 0)),
+            "booked_pct": _pct(booked_by_user.get(uid, 0), stat.get("bots", 0)),
         })
     sort_key = {
         "earned": lambda r: -r["earned"],
@@ -311,6 +345,9 @@ def admin_funnel_stats(request: HttpRequest) -> HttpResponse:
         "milestone_total": totals["milestone"], "fee_total": totals["fee"],
         "t": totals, "events": events, "avg_deal": avg_deal,
         "funnel": funnel, "platforms": platforms,
+        "booked_total": booked_total,
+        "booked_pct_total": _pct(booked_total, f["bots"]),
+        "not_booked_total": max(0, f["bots"] - booked_total),
         "managers": managers, "referrers": referrers, "daily": daily,
         "varvara_fee": varvara.get("fee", 0),
         "launch": FUNNEL_LAUNCH,

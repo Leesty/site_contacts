@@ -34,11 +34,17 @@ SOZVON_STATUSES = ("waiting_payment", "waiting_no_date", "answer_date")
 PAID_STATUS = "paid"
 
 
-def _stage_rank(status: str | None, has_chat: bool) -> int:
-    """Стадия воронки клиента по данным windowgram (2..4), либо 0 если только бот."""
+def _stage_rank(status: str | None, has_chat: bool, has_booking: bool = False) -> int:
+    """Стадия воронки клиента по данным windowgram (2..4), либо 0 если только бот.
+
+    Созвон (стадия 3) засчитывается по ЗАПИСИ НА ВСТРЕЧУ в боте
+    (`calendar_events`, правило владельца 2026-08-16) ЛИБО по статусу CRM
+    (`/жду`, `/ответ`) — что наступит раньше. Запись в боте прилетает сразу,
+    статус ставит админ позже, поэтому менеджер получает 150 ₽ быстрее.
+    """
     if status == PAID_STATUS:
         return 4
-    if status in SOZVON_STATUSES:
+    if has_booking or status in SOZVON_STATUSES:
         return 3
     if has_chat:
         return 2
@@ -80,7 +86,9 @@ def _fetch_wg_state(links: list) -> dict:
             SELECT t.telegram_id, lower(t.username) AS uname, t.vk_id, t.platform,
                    c.id::text AS conv_id, c.status,
                    (c.group_chat_id IS NOT NULL OR c.forum_chat_id IS NOT NULL
-                    OR c.vk_peer_id >= 2000000000) AS has_chat
+                    OR c.vk_peer_id >= 2000000000) AS has_chat,
+                   EXISTS(SELECT 1 FROM calendar_events ce
+                          WHERE ce.conversation_id = c.id) AS has_booking
             FROM conversations c
             JOIN telegram_users t ON t.id = c.telegram_user_id
             WHERE (t.telegram_id = ANY(%s))
@@ -104,9 +112,10 @@ def _fetch_wg_state(links: list) -> dict:
         if prev is None or conv["rank"] > prev["rank"]:
             idx[key] = conv
 
-    for tg_id, uname, vk_id, platform, conv_id, status, has_chat in rows:
+    for tg_id, uname, vk_id, platform, conv_id, status, has_chat, has_booking in rows:
         conv = {"conv_id": conv_id, "status": status or "",
-                "has_chat": bool(has_chat), "rank": _stage_rank(status, bool(has_chat))}
+                "has_chat": bool(has_chat), "has_booking": bool(has_booking),
+                "rank": _stage_rank(status, bool(has_chat), bool(has_booking))}
         if tg_id:
             _put(by_tg, tg_id, conv)
         if uname:
