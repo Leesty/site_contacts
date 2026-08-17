@@ -80,7 +80,7 @@
             <tr>
               <th>Аккаунт</th><th>ФИО (СМЗ)</th>
               <th class="text-end">Ссылок</th><th class="text-end">Быстрых</th>
-              <th class="text-end">Медиана</th><th class="text-end">1 tg на N</th>
+              <th class="text-end">Медиана</th><th class="text-end">1 tg на N</th><th class="text-end">Свежих tg</th>
               <th class="text-end">Выведено</th><th>Рефовод</th><th></th>
             </tr>
           </thead>
@@ -97,6 +97,7 @@
                 <td class="text-end"><span class="{% if s.pct >= 70 %}text-danger fw-semibold{% else %}text-warning{% endif %}">{{ s.pct }}%</span></td>
                 <td class="text-end small">{{ s.median }} сек</td>
                 <td class="text-end">{{ s.tg_max }}</td>
+                <td class="text-end"><span class="{% if s.fresh_pct >= 50 %}text-danger fw-semibold{% endif %}">{{ s.fresh_pct }}%</span></td>
                 <td class="text-end small">{{ s.withdrawn }} ₽</td>
                 <td class="small text-muted">{% if s.user.partner_owner %}@{{ s.user.partner_owner.username }}{% else %}—{% endif %}</td>
                 <td class="text-end">
@@ -110,7 +111,7 @@
                 </td>
               </tr>
             {% empty %}
-              <tr><td colspan="9" class="text-muted p-3">Подозрительных нет.</td></tr>
+              <tr><td colspan="10" class="text-muted p-3">Подозрительных нет.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -120,6 +121,7 @@
       <span class="text-muted" style="font-size:11px;">
         «Медиана» — типичный разрыв между созданием ссылки и стартом бота.
         «1 tg на N» — сколько раз один телеграм повторяется на разных ссылках этого аккаунта.
+        «Свежих tg» — доля клиентов на свежесозданных телеграм-аккаунтах: у накрутчиков 80%, у честных 6%.
         Блокировка не удаляет данные: события воронки фиксируются, начисления не идут.
       </span>
     </div>

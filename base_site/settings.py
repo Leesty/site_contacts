@@ -255,6 +255,15 @@ SEARCH_VARVARA_DEAL_FEE = int(os.getenv("SEARCH_VARVARA_DEAL_FEE", "100"))      
 FRAUD_FAST_START_SECONDS = int(os.getenv("FRAUD_FAST_START_SECONDS", "60"))
 FRAUD_FAST_START_PCT = int(os.getenv("FRAUD_FAST_START_PCT", "50"))
 FRAUD_MIN_LINKS = int(os.getenv("FRAUD_MIN_LINKS", "5"))
+# Второй признак: клиенты — свежесозданные телеграмы. ID в Telegram растут со
+# временем, поэтому большой id = аккаунт заведён недавно. У накрутчиков таких
+# 80%, у честных 6% (замер 18.08.2026).
+FRAUD_FRESH_TG_ID = int(os.getenv("FRAUD_FRESH_TG_ID", "8000000000"))
+FRAUD_FRESH_TG_PCT = int(os.getenv("FRAUD_FRESH_TG_PCT", "50"))
+# Аккаунты-исключения (например тестовый кабинет владельца).
+FRAUD_WHITELIST_USER_IDS = tuple(
+    int(x) for x in os.getenv("FRAUD_WHITELIST_USER_IDS", "").replace(" ", "").split(",") if x
+)
 SEARCH_SOZVON_START_CUTOFF = os.getenv("SEARCH_SOZVON_START_CUTOFF", "2026-08-16")
 VARVARA_USER_ID = int(os.getenv("VARVARA_USER_ID", "123"))                 # varvara_lead (balance_admin, получатель фи)
 

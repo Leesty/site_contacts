@@ -15,6 +15,7 @@ import statistics
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
 from django.db.models import Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import redirect, render
@@ -30,12 +31,17 @@ def _scores():
     """Считает метрики по каждому менеджеру. Возвращает список подозрительных."""
     gaps = collections.defaultdict(list)
     tg_by_user = collections.defaultdict(collections.Counter)
+    fresh = collections.defaultdict(lambda: [0, 0])  # uid -> [свежих, всего с tg]
+    fresh_from = int(getattr(settings, "FRAUD_FRESH_TG_ID", 8_000_000_000))
     for uid, created, started, tg in SearchLink.objects.filter(
             bot_started_at__isnull=False).values_list(
             "user_id", "created_at", "bot_started_at", "telegram_id"):
         gaps[uid].append((started - created).total_seconds())
         if tg:
             tg_by_user[uid][tg] += 1
+            fresh[uid][1] += 1
+            if tg > fresh_from:
+                fresh[uid][0] += 1
 
     rows = []
     for uid, gg in gaps.items():
@@ -46,10 +52,12 @@ def _scores():
         if pct < SUSPECT_PCT:
             continue
         tgs = tg_by_user.get(uid) or collections.Counter()
+        fr, fr_tot = fresh.get(uid, [0, 0])
         rows.append({
             "uid": uid, "links": len(gg), "fast": fast, "pct": round(pct),
             "median": round(statistics.median(gg)),
             "tg_unique": len(tgs), "tg_max": max(tgs.values()) if tgs else 0,
+            "fresh_pct": round(fr * 100.0 / fr_tot) if fr_tot else 0,
         })
     users = {u.id: u for u in User.objects.filter(id__in=[r["uid"] for r in rows])
              .select_related("partner_owner")}

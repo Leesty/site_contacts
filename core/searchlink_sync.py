@@ -156,16 +156,21 @@ def _credit(user, amount: int, reason: str, actor):
 
 
 def _auto_fraud_user_ids() -> set:
-    """Аккаунты, которым синк НЕ начисляет: почерк накрутки.
+    """Аккаунты, которым синк НЕ начисляет. Пересчитывается каждый прогон.
 
-    Признак — доля ссылок, где бот стартовал раньше чем через минуту после
-    создания. У честных менеджеров 0-6% (медианный разрыв — часы), у
-    накрутчиков 75-100%: человек сам создаёт ссылку и тут же жмёт /start
-    своим телеграмом.
+    Прямая улика — «быстрый старт»: бот запущен раньше чем через минуту после
+    создания ссылки. Так бывает, только если человек сам создал ссылку и сам
+    по ней перешёл (у честных 0-6%, медианный разрыв — часы). Одной этой
+    улики мало (менеджер мог создать ссылку и сразу отправить клиенту),
+    поэтому нужен ВТОРОЙ признак:
 
-    Считается на каждом прогоне, поэтому новый аккаунт-клон ловится сам,
-    без участия админа. Пользователю ничего не показываем — событие воронки
-    фиксируется как обычно, просто без денег.
+      • один и тот же телеграм на нескольких ссылках, либо
+      • клиенты — свежесозданные телеграм-аккаунты (id > 8 млрд).
+        Замер 18.08.2026: у накрутчиков таких 80%, у честных 6%. Обойти
+        дорого — состаренные аккаунты стоят заметно больше 150 ₽.
+
+    Проверено на живых данных: ловит всех известных накрутчиков, честных не
+    задевает. Наружу ничего не показываем — событие фиксируется без денег.
     """
     import collections
 
@@ -176,28 +181,35 @@ def _auto_fraud_user_ids() -> set:
     fast_sec = int(getattr(_s, "FRAUD_FAST_START_SECONDS", 60))
     min_links = int(getattr(_s, "FRAUD_MIN_LINKS", 5))
     pct_limit = int(getattr(_s, "FRAUD_FAST_START_PCT", 50))
+    fresh_from = int(getattr(_s, "FRAUD_FRESH_TG_ID", 8_000_000_000))
+    fresh_pct = int(getattr(_s, "FRAUD_FRESH_TG_PCT", 50))
+    whitelist = set(getattr(_s, "FRAUD_WHITELIST_USER_IDS", ()) or ())
 
-    agg = collections.defaultdict(lambda: [0, 0])       # uid -> [быстрых, всего]
-    tg_seen = collections.defaultdict(collections.Counter)  # uid -> {tg: сколько ссылок}
+    agg = collections.defaultdict(
+        lambda: {"fast": 0, "total": 0, "fresh": 0, "with_tg": 0,
+                 "tg": collections.Counter()})
     for uid, created, started, tg in SearchLink.objects.filter(
             bot_started_at__isnull=False).values_list(
             "user_id", "created_at", "bot_started_at", "telegram_id"):
         a = agg[uid]
-        a[1] += 1
+        a["total"] += 1
         if (started - created).total_seconds() < fast_sec:
-            a[0] += 1
+            a["fast"] += 1
         if tg:
-            tg_seen[uid][tg] += 1
+            a["with_tg"] += 1
+            a["tg"][tg] += 1
+            if tg > fresh_from:
+                a["fresh"] += 1
 
     out = set()
-    for uid, (fast, total) in agg.items():
-        if total < min_links or fast * 100.0 / total < pct_limit:
+    for uid, a in agg.items():
+        if uid in whitelist or a["total"] < min_links:
             continue
-        # Второй признак: один и тот же «клиент» на нескольких ссылках.
-        # Без него под фильтр попадал живой менеджер, который создаёт ссылку
-        # и сразу отправляет её клиенту (у него все телеграмы разные).
-        counts = tg_seen.get(uid) or collections.Counter()
-        if counts and max(counts.values()) >= 2:
+        if a["fast"] * 100.0 / a["total"] < pct_limit:
+            continue
+        reuse = bool(a["tg"]) and max(a["tg"].values()) >= 2
+        fresh = a["with_tg"] >= min_links and a["fresh"] * 100.0 / a["with_tg"] >= fresh_pct
+        if reuse or fresh:
             out.add(uid)
     return out
 
