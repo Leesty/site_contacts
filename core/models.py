@@ -1262,6 +1262,53 @@ class SiteSettings(models.Model):
         return obj
 
 
+def normalize_fio(value: str) -> str:
+    """ФИО в сравнимый вид: нижний регистр, одиночные пробелы, ё→е.
+
+    Нужен, чтобы «Кузюбердин  Сергей Николаевич» и «кузюбердин сергей
+    николаевич» считались одним человеком.
+    """
+    return " ".join((value or "").split()).lower().replace("ё", "е")
+
+
+class SmzBlacklist(models.Model):
+    """Чёрный список по ФИО самозанятого — блок ВЫПЛАТ, а не аккаунта.
+
+    Аккаунт накрутчик заведёт новый за минуту, а вот вывести деньги может
+    только на свою самозанятость. Поэтому блокируем именно ФИО: любой
+    аккаунт с таким ФИО не сможет ни подать СМЗ, ни вывести средства.
+    """
+
+    fio = models.CharField(max_length=255, help_text="ФИО как ввёл пользователь.")
+    fio_norm = models.CharField(
+        max_length=255, unique=True, db_index=True,
+        help_text="Нормализованное ФИО для сравнения.",
+    )
+    reason = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="smz_blocks",
+    )
+
+    class Meta:
+        verbose_name = "Заблокированное ФИО (СМЗ)"
+        verbose_name_plural = "Заблокированные ФИО (СМЗ)"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.fio
+
+    def save(self, *args, **kwargs):
+        self.fio_norm = normalize_fio(self.fio)
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def is_blocked(cls, fio: str) -> bool:
+        norm = normalize_fio(fio)
+        return bool(norm) and cls.objects.filter(fio_norm=norm).exists()
+
+
 class BalanceLog(models.Model):
     """Лог всех операций с балансом пользователя."""
 

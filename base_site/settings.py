@@ -249,6 +249,12 @@ SEARCH_VARVARA_DEAL_FEE = int(os.getenv("SEARCH_VARVARA_DEAL_FEE", "100"))      
 # Отсечка когорты (решение владельца 2026-08-17): деньги за созвон/встречу
 # получают ТОЛЬКО клиенты, запустившие бота с этой даты. Кто нажал /start
 # раньше — не оплачивается (событие помечается обработанным без выплаты).
+# Антифрод: аккаунт, у которого >=FRAUD_FAST_START_PCT% ссылок стартовали
+# быстрее FRAUD_FAST_START_SECONDS сек после создания (при >=FRAUD_MIN_LINKS
+# ссылок), не получает начислений. Честные: 0-6%, накрутчики: 75-100%.
+FRAUD_FAST_START_SECONDS = int(os.getenv("FRAUD_FAST_START_SECONDS", "60"))
+FRAUD_FAST_START_PCT = int(os.getenv("FRAUD_FAST_START_PCT", "50"))
+FRAUD_MIN_LINKS = int(os.getenv("FRAUD_MIN_LINKS", "5"))
 SEARCH_SOZVON_START_CUTOFF = os.getenv("SEARCH_SOZVON_START_CUTOFF", "2026-08-16")
 VARVARA_USER_ID = int(os.getenv("VARVARA_USER_ID", "123"))                 # varvara_lead (balance_admin, получатель фи)
 

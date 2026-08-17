@@ -19,7 +19,7 @@ from django.db.models import Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import redirect, render
 
-from .models import SearchLink, User, WithdrawalRequest
+from .models import SearchLink, SmzBlacklist, User, WithdrawalRequest, normalize_fio
 
 FAST_SECONDS = 60      # старт быстрее этого = подозрительно
 MIN_LINKS = 5          # меньше — статистики не хватает
@@ -90,8 +90,25 @@ def admin_fraud(request: HttpRequest) -> HttpResponse:
             target.fraud_note = ("накрутка: самостарты своих ссылок"
                                  if action == "block" else "")
             target.save(update_fields=["fraud_blocked", "fraud_note"])
-            messages.success(request, "@%s: выплаты %s." % (
-                target.username, "заблокированы" if action == "block" else "разблокированы"))
+            # Блокируем ЧЕЛОВЕКА, а не кабинет: новый аккаунт заводится за
+            # минуту, самозанятость — нет. Заодно цепляем все его аккаунты.
+            fio = (target.smz_fio or "").strip()
+            if action == "block" and fio:
+                SmzBlacklist.objects.get_or_create(
+                    fio_norm=normalize_fio(fio),
+                    defaults={"fio": fio, "created_by": request.user,
+                              "reason": "накрутка: самостарты своих ссылок"},
+                )
+                same = User.objects.exclude(pk=target.pk).filter(smz_fio__iexact=fio)
+                same.update(fraud_blocked=True, fraud_note="накрутка (то же ФИО)")
+                messages.success(request, "@%s заблокирован. ФИО «%s» в чёрном списке, "
+                                          "затронуто ещё аккаунтов: %s." % (target.username, fio, same.count()))
+            elif action == "unblock" and fio:
+                SmzBlacklist.objects.filter(fio_norm=normalize_fio(fio)).delete()
+                messages.success(request, "@%s разблокирован, ФИО убрано из чёрного списка." % target.username)
+            else:
+                messages.success(request, "@%s: выплаты %s." % (
+                    target.username, "заблокированы" if action == "block" else "разблокированы"))
         return redirect("admin_fraud")
 
     suspects = _scores()
@@ -112,5 +129,6 @@ def admin_fraud(request: HttpRequest) -> HttpResponse:
         })
     return render(request, "core/admin_fraud.html", {
         "suspects": suspects, "blocked": blocked, "fio_groups": fio_groups,
+        "blacklist": SmzBlacklist.objects.select_related("created_by").all()[:50],
         "fast_seconds": FAST_SECONDS, "suspect_pct": SUSPECT_PCT, "min_links": MIN_LINKS,
     })

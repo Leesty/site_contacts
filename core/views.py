@@ -955,18 +955,21 @@ def smz_registration(request: HttpRequest) -> HttpResponse:
         # Одно ФИО — один аккаунт. Мультиаккаунт на одну самозанятость был
         # способом накрутки (17.08.2026): один человек заводил несколько
         # кабинетов и выводил всё на своё имя.
-        from .models import User as _U
-        _norm = " ".join(fio.split()).lower()
-        _dupe = (_U.objects.exclude(pk=user.pk)
-                 .exclude(smz_fio="")
-                 .filter(smz_fio__iexact=_norm)
-                 .exists())
-        if not _dupe:
-            _dupe = any(
-                " ".join((x or "").split()).lower() == _norm
-                for x in _U.objects.exclude(pk=user.pk).exclude(smz_fio="")
-                .values_list("smz_fio", flat=True)
+        from .models import SmzBlacklist as _BL, User as _U, normalize_fio as _nf
+        _norm = _nf(fio)
+        # Чёрный список: формулировка нейтральная — не подсказываем, что и
+        # почему сработало, иначе накрутчик подберёт обход.
+        if _BL.is_blocked(fio):
+            messages.error(
+                request,
+                "Не удалось принять данные. Обратитесь в поддержку.",
             )
+            return render(request, "core/smz_registration.html", {"user": user})
+        _dupe = any(
+            _nf(x) == _norm
+            for x in _U.objects.exclude(pk=user.pk).exclude(smz_fio="")
+            .values_list("smz_fio", flat=True)
+        )
         if _dupe:
             messages.error(
                 request,
@@ -1078,13 +1081,17 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
 
     # Гейты СМЗ и чека применяем только к POST (созданию заявки).
     # GET — это просмотр истории своих выводов, его не блокируем.
-    if request.method == "POST" and getattr(user, "fraud_blocked", False):
-        messages.error(
-            request,
-            "Вывод средств заблокирован: зафиксирована накрутка (самостоятельные "
-            "запуски собственных ссылок). Обратитесь к администратору.",
-        )
-        return redirect("dashboard")
+    if request.method == "POST":
+        # Блок по человеку, а не по аккаунту: новый кабинет завести легко,
+        # а самозанятость не подделаешь. Текст намеренно общий.
+        from .models import SmzBlacklist as _BL
+
+        if getattr(user, "fraud_blocked", False) or _BL.is_blocked(getattr(user, "smz_fio", "")):
+            messages.error(
+                request,
+                "Вывод средств недоступен. Обратитесь к администратору.",
+            )
+            return redirect("dashboard")
 
     if request.method == "POST" and getattr(user, "role", None) != "main_admin":
         if getattr(user, "smz_status", "none") != "approved":

@@ -8,7 +8,9 @@
       <h1 class="h4 mb-1">🚨 Детектор накрутки</h1>
       <p class="text-muted small mb-0">
         Ловим тех, кто создаёт ссылку и сам же по ней стартует своим телеграмом.
-        Подозрение: ≥{{ suspect_pct }}% ссылок стартовали быстрее {{ fast_seconds }} сек (при ≥{{ min_links }} ссылок).
+        Подозрение: ≥{{ suspect_pct }}% ссылок стартовали быстрее {{ fast_seconds }} сек (при ≥{{ min_links }} ссылок)
+        И один телеграм повторяется на нескольких ссылках. <b>Начисления таким не идут автоматически</b> —
+        синк пересчитывает признак каждый прогон, поэтому клоны ловятся сами.
         У честных менеджеров это 0–6%, медианный разрыв — часы.
       </p>
     </div>
@@ -45,6 +47,27 @@
       </div>
     </div>
   {% endif %}
+
+  <div class="card shadow-sm mb-4" style="border-color:#7f1d1d;">
+    <div class="card-header bg-transparent py-2" style="border-color:#7f1d1d;">
+      <strong class="text-danger">⛔ Чёрный список ФИО ({{ blacklist|length }})</strong>
+      <span class="text-muted small">— блок по человеку, а не по кабинету: с этим ФИО нельзя ни подать СМЗ, ни вывести деньги ни с одного аккаунта</span>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0 align-middle table-dark-site">
+        <thead><tr><th>ФИО</th><th>Причина</th><th>Когда</th><th>Кто внёс</th></tr></thead>
+        <tbody>
+          {% for b in blacklist %}
+            <tr><td>{{ b.fio }}</td><td class="small text-muted">{{ b.reason }}</td>
+                <td class="small">{{ b.created_at|date:"d.m.Y H:i" }}</td>
+                <td class="small text-muted">{% if b.created_by %}@{{ b.created_by.username }}{% else %}—{% endif %}</td></tr>
+          {% empty %}
+            <tr><td colspan="4" class="text-muted p-3">Пусто.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
   <div class="card shadow-sm mb-4">
     <div class="card-header bg-transparent border-secondary py-2">

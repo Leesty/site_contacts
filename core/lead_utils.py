@@ -476,15 +476,52 @@ def resolve_referral_attribution(inviter):
     return inviter, None
 
 
+def ref_qualified(user) -> bool:
+    """Выполнил ли реферал условие milestone-бонуса.
+
+    Правило владельца (18.08.2026): бонус за реферала платим, только если тот
+    ДАЛ РЕЗУЛЬТАТ — 10+ оплаченных созвонов ИЛИ хотя бы 1 оплаченную сделку.
+    Раньше считались просто нажатия /start по его ссылкам, и это крутили:
+    заводили аккаунт, делали 10 ссылок и стартовали их своим же телеграмом.
+
+    Источник правды — BalanceLog (реально выплаченное), а не стадии воронки:
+    стадия может стоять и без денег (baseline, блокировка за накрутку).
+    """
+    import re as _re
+
+    from .models import BalanceLog, SearchLink
+
+    # Заблокированный за накрутку реферал не квалифицирует никого: его
+    # «оплаченные» события отменены, записи в логе остались историей.
+    if getattr(user, "fraud_blocked", False):
+        return False
+
+    link_ids = set(SearchLink.objects.filter(user=user).values_list("id", flat=True))
+    if not link_ids:
+        return False
+
+    sozvon_links, deal_links = set(), set()
+    for reason in BalanceLog.objects.filter(
+            field="balance").filter(
+            reason__regex=r"^(sozvon|deal)#[0-9]+ ").values_list("reason", flat=True):
+        m = _re.match(r"(sozvon|deal)#(\d+) ", reason or "")
+        if not m:
+            continue
+        lid = int(m.group(2))
+        if lid not in link_ids:
+            continue
+        (deal_links if m.group(1) == "deal" else sozvon_links).add(lid)
+
+    if deal_links:
+        return True
+    return len(sozvon_links) >= SUBREF_MILESTONE
+
+
 def ref_started_clients_count(user) -> int:
     """Сколько РАЗНЫХ клиентов реферала нажали /start в боте.
 
-    Считаем уникальных людей (по telegram_id / vk_user_id), а не ссылки:
-    раньше один и тот же человек, стартовавший 10 ссылок, давал полный
-    milestone — на этом крутили бонусы (вскрыто 17.08.2026, 6 аккаунтов
-    сделали ровно по 10 самостартов одним телеграмом).
-    Ссылки без идентификатора клиента в зачёт не идут вовсе — иначе
-    накрутку не отличить.
+    Оставлено для статистики/совместимости. Для milestone НЕ используется —
+    там теперь `ref_qualified()` (результат, а не клики).
     """
     from .models import SearchLink
 
@@ -520,8 +557,8 @@ def check_and_pay_subref_milestone(user, actor=None) -> bool:
     if not is_milestone_referrer(owner):
         return False
 
-    total = ref_started_clients_count(user)
-    if total < SUBREF_MILESTONE:
+    # Бонус только за РЕЗУЛЬТАТ реферала: 10+ оплаченных созвонов или сделка.
+    if not ref_qualified(user):
         return False
 
     owner_locked = User.objects.select_for_update().get(pk=owner.id)
@@ -530,7 +567,8 @@ def check_and_pay_subref_milestone(user, actor=None) -> bool:
     owner_locked.save(update_fields=["balance"])
     log_balance_change(
         owner_locked, "balance", _old, owner_locked.balance,
-        f"ref_milestone#{user.id}: +{SUBREF_BONUS} ({SUBREF_MILESTONE} клиентов в боте)",
+        f"ref_milestone#{user.id}: +{SUBREF_BONUS} "
+        f"({SUBREF_MILESTONE}+ оплаченных созвонов или сделка у реферала)",
         actor,
     )
     user.subref_bonus_paid_at = timezone.now()

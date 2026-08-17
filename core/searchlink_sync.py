@@ -155,6 +155,53 @@ def _credit(user, amount: int, reason: str, actor):
         u.save(update_fields=["is_accredited"])
 
 
+def _auto_fraud_user_ids() -> set:
+    """Аккаунты, которым синк НЕ начисляет: почерк накрутки.
+
+    Признак — доля ссылок, где бот стартовал раньше чем через минуту после
+    создания. У честных менеджеров 0-6% (медианный разрыв — часы), у
+    накрутчиков 75-100%: человек сам создаёт ссылку и тут же жмёт /start
+    своим телеграмом.
+
+    Считается на каждом прогоне, поэтому новый аккаунт-клон ловится сам,
+    без участия админа. Пользователю ничего не показываем — событие воронки
+    фиксируется как обычно, просто без денег.
+    """
+    import collections
+
+    from django.conf import settings as _s
+
+    from .models import SearchLink
+
+    fast_sec = int(getattr(_s, "FRAUD_FAST_START_SECONDS", 60))
+    min_links = int(getattr(_s, "FRAUD_MIN_LINKS", 5))
+    pct_limit = int(getattr(_s, "FRAUD_FAST_START_PCT", 50))
+
+    agg = collections.defaultdict(lambda: [0, 0])       # uid -> [быстрых, всего]
+    tg_seen = collections.defaultdict(collections.Counter)  # uid -> {tg: сколько ссылок}
+    for uid, created, started, tg in SearchLink.objects.filter(
+            bot_started_at__isnull=False).values_list(
+            "user_id", "created_at", "bot_started_at", "telegram_id"):
+        a = agg[uid]
+        a[1] += 1
+        if (started - created).total_seconds() < fast_sec:
+            a[0] += 1
+        if tg:
+            tg_seen[uid][tg] += 1
+
+    out = set()
+    for uid, (fast, total) in agg.items():
+        if total < min_links or fast * 100.0 / total < pct_limit:
+            continue
+        # Второй признак: один и тот же «клиент» на нескольких ссылках.
+        # Без него под фильтр попадал живой менеджер, который создаёт ссылку
+        # и сразу отправляет её клиенту (у него все телеграмы разные).
+        counts = tg_seen.get(uid) or collections.Counter()
+        if counts and max(counts.values()) >= 2:
+            out.add(uid)
+    return out
+
+
 def _paid_deal_link_ids() -> set:
     """ID ссылок, за сделку которых уже была выплата (одним запросом)."""
     import re as _re
@@ -331,6 +378,9 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
     )
     # То же для СДЕЛОК — там цена ошибки 4000 ₽ за штуку: без этого один
     # клиент, на которого наведено N ссылок, оплачивался бы N раз.
+    # Автодетект накрутки: пересчитывается каждый прогон, клоны ловятся сами.
+    _auto_fraud = _auto_fraud_user_ids()
+
     _paid_deal_convs = set(
         str(c) for c in SearchLink.objects.filter(
             id__in=_paid_deal_link_ids(), wg_conversation_id__isnull=False,
@@ -400,8 +450,9 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
 
         upd = []
         if new_stage == 3 and l.sozvon_credited_at is None:
-            # Аккаунт заблокирован за накрутку — событие фиксируем, денег нет.
-            if getattr(manager, "fraud_blocked", False):
+            # Аккаунт заблокирован (вручную или автодетектом) — событие
+            # фиксируем, денег нет. Пользователю это никак не показывается.
+            if getattr(manager, "fraud_blocked", False) or manager.id in _auto_fraud:
                 l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
                 return upd
             # Этот же клиент уже оплачен по другой ссылке — не дублируем.
@@ -428,7 +479,8 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             if l.wg_conversation_id:
                 _paid_convs.add(str(l.wg_conversation_id))
             summary["sozvon_credited"] += 1; summary["sozvon_rub"] += SOZVON_TOTAL
-        if new_stage == 4 and l.deal_credited_at is None and getattr(manager, "fraud_blocked", False):
+        if new_stage == 4 and l.deal_credited_at is None and (
+                getattr(manager, "fraud_blocked", False) or manager.id in _auto_fraud):
             l.deal_credited_at = timezone.now(); upd.append("deal_credited_at")
             return upd
         if new_stage == 4 and l.deal_credited_at is None:
