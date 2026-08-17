@@ -152,7 +152,13 @@
   <div class="card shadow-sm mb-4">
     <div class="card-header bg-transparent border-secondary py-2">
       <strong>Динамика за 30 дней</strong>
-      <span class="text-muted small">— оплаченные события и выплаты по дням</span>
+      <span class="text-muted small">— слева события дня, справа деньги дня</span>
+      <div class="text-muted mt-1" style="font-size:11px; line-height:1.45;">
+        ⚠️ Столбцы считают РАЗНОЕ, поэтому «созвонов» может быть больше, чем «подписалось»:<br>
+        <b>Подписалось / Назначили встречу</b> — что произошло <b>в этот день</b>.
+        <b>Созвоны опл. / Сделки / Выплачено</b> — что <b>начислено в этот день</b>, включая клиентов,
+        подписавшихся раньше (человек мог запустить бота в июле, а записаться сегодня).
+      </div>
     </div>
     <div class="card-body p-0">
       {% if daily %}
@@ -160,8 +166,12 @@
           <table class="table table-sm mb-0 align-middle table-dark-site">
             <thead style="position:sticky;top:0;z-index:1;">
               <tr>
-                <th>Дата</th><th class="text-end">🤖 Подписалось</th><th class="text-end">📅 Назначили встречу</th><th class="text-end">📞 Созвоны опл.</th>
-                <th class="text-end">✅ Сделки</th><th class="text-end">Выплачено</th><th style="width:25%;"></th>
+                <th>Дата</th>
+                <th class="text-end">🤖 Подписалось<br><span class="text-muted fw-normal" style="font-size:10px;">в этот день</span></th>
+                <th class="text-end">📅 Назначили встречу<br><span class="text-muted fw-normal" style="font-size:10px;">в этот день</span></th>
+                <th class="text-end">📞 Созвоны<br><span class="text-muted fw-normal" style="font-size:10px;">оплачено в этот день</span></th>
+                <th class="text-end">✅ Сделки<br><span class="text-muted fw-normal" style="font-size:10px;">оплачено в этот день</span></th>
+                <th class="text-end">Выплачено</th><th style="width:22%;"></th>
               </tr>
             </thead>
             <tbody>
