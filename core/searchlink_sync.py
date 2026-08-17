@@ -305,6 +305,16 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
     # прыгнул с 15 до 34, а баланс не изменился).
     _paid_sozvon = _paid_sozvon_link_ids([l.id for l in links])
 
+    # Один клиент — одна оплата. Если по этому же диалогу CRM созвон уже
+    # оплачен по другой ссылке, повторно не платим: иначе один человек,
+    # кликнувший N ссылок, приносит N×150 ₽ (поймано 17.08: один tg-аккаунт
+    # на 13 ссылках дал 2080 ₽).
+    _paid_convs = set(
+        str(c) for c in SearchLink.objects.filter(
+            id__in=_paid_sozvon, wg_conversation_id__isnull=False,
+        ).values_list("wg_conversation_id", flat=True)
+    )
+
     # ── Проход 1 (Python, без записи): вычисляем кэш-поля + кто требует начисления ──
     field_only = []            # ссылки только с обновлением кэша (без денег)
     credit_links = []          # [(link, new_stage)] — требуют начисления, транзакционно
@@ -368,6 +378,10 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
 
         upd = []
         if new_stage == 3 and l.sozvon_credited_at is None:
+            # Этот же клиент уже оплачен по другой ссылке — не дублируем.
+            if l.wg_conversation_id and str(l.wg_conversation_id) in _paid_convs:
+                l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
+                return upd
             # Старая когорта (старт бота до отсечки) — помечаем обработанным
             # БЕЗ выплаты: доначислений за прошлое не делаем.
             if (SOZVON_CUTOFF is not None and l.bot_started_at is not None
@@ -385,6 +399,8 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             # вернули с чата обратно на созвон).
             dc(varvara, VARVARA_SOZVON, f"sozvon_varvara#{l.pk} +{VARVARA_SOZVON}")
             l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
+            if l.wg_conversation_id:
+                _paid_convs.add(str(l.wg_conversation_id))
             summary["sozvon_credited"] += 1; summary["sozvon_rub"] += SOZVON_TOTAL
         if new_stage == 4 and l.deal_credited_at is None:
             # Аванс за созвон вычитаем из сделки ТОЛЬКО если он реально выплачен
