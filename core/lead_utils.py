@@ -477,9 +477,25 @@ def resolve_referral_attribution(inviter):
 
 
 def ref_started_clients_count(user) -> int:
-    """Сколько клиентов реферала нажали /start в боте (SearchLink.bot_started)."""
+    """Сколько РАЗНЫХ клиентов реферала нажали /start в боте.
+
+    Считаем уникальных людей (по telegram_id / vk_user_id), а не ссылки:
+    раньше один и тот же человек, стартовавший 10 ссылок, давал полный
+    milestone — на этом крутили бонусы (вскрыто 17.08.2026, 6 аккаунтов
+    сделали ровно по 10 самостартов одним телеграмом).
+    Ссылки без идентификатора клиента в зачёт не идут вовсе — иначе
+    накрутку не отличить.
+    """
     from .models import SearchLink
-    return SearchLink.objects.filter(user=user, bot_started=True).count()
+
+    tg, vk = set(), set()
+    for t, v in SearchLink.objects.filter(user=user, bot_started=True).values_list(
+            "telegram_id", "vk_user_id"):
+        if t:
+            tg.add(t)
+        elif v:
+            vk.add(v)
+    return len(tg) + len(vk)
 
 
 def check_and_pay_subref_milestone(user, actor=None) -> bool:

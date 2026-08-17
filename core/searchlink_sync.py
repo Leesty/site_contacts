@@ -155,6 +155,21 @@ def _credit(user, amount: int, reason: str, actor):
         u.save(update_fields=["is_accredited"])
 
 
+def _paid_deal_link_ids() -> set:
+    """ID ссылок, за сделку которых уже была выплата (одним запросом)."""
+    import re as _re
+
+    from .models import BalanceLog
+
+    ids = set()
+    for r in BalanceLog.objects.filter(
+            field="balance", reason__regex=r"^deal#[0-9]+ ").values_list("reason", flat=True):
+        m = _re.match(r"deal#(\d+) ", r or "")
+        if m:
+            ids.add(int(m.group(1)))
+    return ids
+
+
 def _paid_sozvon_link_ids(link_ids: list) -> set:
     """ID ссылок, за созвон которых реально была выплата (одним запросом).
 
@@ -314,6 +329,13 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             id__in=_paid_sozvon, wg_conversation_id__isnull=False,
         ).values_list("wg_conversation_id", flat=True)
     )
+    # То же для СДЕЛОК — там цена ошибки 4000 ₽ за штуку: без этого один
+    # клиент, на которого наведено N ссылок, оплачивался бы N раз.
+    _paid_deal_convs = set(
+        str(c) for c in SearchLink.objects.filter(
+            id__in=_paid_deal_link_ids(), wg_conversation_id__isnull=False,
+        ).values_list("wg_conversation_id", flat=True)
+    )
 
     # ── Проход 1 (Python, без записи): вычисляем кэш-поля + кто требует начисления ──
     field_only = []            # ссылки только с обновлением кэша (без денег)
@@ -410,6 +432,10 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             l.deal_credited_at = timezone.now(); upd.append("deal_credited_at")
             return upd
         if new_stage == 4 and l.deal_credited_at is None:
+            # Этот клиент уже оплачен как сделка по другой ссылке — не дублируем.
+            if l.wg_conversation_id and str(l.wg_conversation_id) in _paid_deal_convs:
+                l.deal_credited_at = timezone.now(); upd.append("deal_credited_at")
+                return upd
             # Аванс за созвон вычитаем из сделки ТОЛЬКО если он реально выплачен
             # (иначе baseline-«выдан» съедал бы 100 ₽ → менеджер получал 2900).
             sozvon_given = _sozvon_actually_paid(l.pk)
@@ -426,6 +452,8 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             # фикс-ставка проекта поверх реф-процентов (правило владельца 2026-07-22).
             dc(varvara, VARVARA_DEAL, f"deal_varvara#{l.pk} +{VARVARA_DEAL}")
             l.deal_credited_at = timezone.now(); upd.append("deal_credited_at")
+            if l.wg_conversation_id:
+                _paid_deal_convs.add(str(l.wg_conversation_id))
             summary["deal_credited"] += 1; summary["deal_rub"] += DEAL_TOTAL
         return upd
 
