@@ -952,6 +952,28 @@ def smz_registration(request: HttpRequest) -> HttpResponse:
         if not fio:
             messages.error(request, "Укажите ФИО.")
             return render(request, "core/smz_registration.html", {"user": user})
+        # Одно ФИО — один аккаунт. Мультиаккаунт на одну самозанятость был
+        # способом накрутки (17.08.2026): один человек заводил несколько
+        # кабинетов и выводил всё на своё имя.
+        from .models import User as _U
+        _norm = " ".join(fio.split()).lower()
+        _dupe = (_U.objects.exclude(pk=user.pk)
+                 .exclude(smz_fio="")
+                 .filter(smz_fio__iexact=_norm)
+                 .exists())
+        if not _dupe:
+            _dupe = any(
+                " ".join((x or "").split()).lower() == _norm
+                for x in _U.objects.exclude(pk=user.pk).exclude(smz_fio="")
+                .values_list("smz_fio", flat=True)
+            )
+        if _dupe:
+            messages.error(
+                request,
+                "Эти ФИО уже привязаны к другому аккаунту. На одного человека "
+                "может быть только один кабинет. Если это ошибка — напишите в поддержку.",
+            )
+            return render(request, "core/smz_registration.html", {"user": user})
         user.smz_fio = fio
         user.smz_not_self = not_self
         # Любое изменение → статус сбрасывается на pending (заявка летит админу)
@@ -1056,6 +1078,14 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
 
     # Гейты СМЗ и чека применяем только к POST (созданию заявки).
     # GET — это просмотр истории своих выводов, его не блокируем.
+    if request.method == "POST" and getattr(user, "fraud_blocked", False):
+        messages.error(
+            request,
+            "Вывод средств заблокирован: зафиксирована накрутка (самостоятельные "
+            "запуски собственных ссылок). Обратитесь к администратору.",
+        )
+        return redirect("dashboard")
+
     if request.method == "POST" and getattr(user, "role", None) != "main_admin":
         if getattr(user, "smz_status", "none") != "approved":
             _smz = getattr(user, "smz_status", "none")

@@ -378,6 +378,10 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
 
         upd = []
         if new_stage == 3 and l.sozvon_credited_at is None:
+            # Аккаунт заблокирован за накрутку — событие фиксируем, денег нет.
+            if getattr(manager, "fraud_blocked", False):
+                l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
+                return upd
             # Этот же клиент уже оплачен по другой ссылке — не дублируем.
             if l.wg_conversation_id and str(l.wg_conversation_id) in _paid_convs:
                 l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
@@ -402,6 +406,9 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             if l.wg_conversation_id:
                 _paid_convs.add(str(l.wg_conversation_id))
             summary["sozvon_credited"] += 1; summary["sozvon_rub"] += SOZVON_TOTAL
+        if new_stage == 4 and l.deal_credited_at is None and getattr(manager, "fraud_blocked", False):
+            l.deal_credited_at = timezone.now(); upd.append("deal_credited_at")
+            return upd
         if new_stage == 4 and l.deal_credited_at is None:
             # Аванс за созвон вычитаем из сделки ТОЛЬКО если он реально выплачен
             # (иначе baseline-«выдан» съедал бы 100 ₽ → менеджер получал 2900).

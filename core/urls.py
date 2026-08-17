@@ -4,6 +4,7 @@ from django.urls import path
 from . import views
 from . import views_call_reports
 from . import views_cold_contacts
+from . import views_fraud
 from . import views_funnel_stats
 from . import views_group_reports
 from . import views_partner
@@ -385,6 +386,7 @@ urlpatterns = [
     path("staff/search-stats/", views_search.admin_search_stats, name="admin_search_stats"),
     # Аналитика НОВОЙ системы (воронка SearchLink → windowgram)
     path("staff/funnel-stats/", views_funnel_stats.admin_funnel_stats, name="admin_funnel_stats"),
+    path("staff/fraud/", views_fraud.admin_fraud, name="admin_fraud"),
     # Ban/unban
     path("staff/robocall-test/", views_support_admin.admin_robocall_test, name="admin_robocall_test"),
     path("staff/phone-reports/", views_support_admin.admin_phone_reports, name="admin_phone_reports"),

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Детектор накрутки — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h4 mb-1">🚨 Детектор накрутки</h1>
+      <p class="text-muted small mb-0">
+        Ловим тех, кто создаёт ссылку и сам же по ней стартует своим телеграмом.
+        Подозрение: ≥{{ suspect_pct }}% ссылок стартовали быстрее {{ fast_seconds }} сек (при ≥{{ min_links }} ссылок).
+        У честных менеджеров это 0–6%, медианный разрыв — часы.
+      </p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">← В кабинет</a>
+  </div>
+
+  {% if blocked %}
+    <div class="card shadow-sm mb-4" style="border-color:#7f1d1d;">
+      <div class="card-header bg-transparent py-2" style="border-color:#7f1d1d;">
+        <strong class="text-danger">Выплаты заблокированы ({{ blocked|length }})</strong>
+        <span class="text-muted small">— воронка события фиксирует, но денег не начисляет</span>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead><tr><th>Аккаунт</th><th>ФИО (СМЗ)</th><th>Причина</th><th class="text-end">Баланс</th><th></th></tr></thead>
+          <tbody>
+            {% for u in blocked %}
+              <tr>
+                <td>@{{ u.username }}</td>
+                <td class="small">{{ u.smz_fio|default:"—" }}</td>
+                <td class="small text-muted">{{ u.fraud_note|default:"—" }}</td>
+                <td class="text-end">{{ u.balance }} ₽</td>
+                <td class="text-end">
+                  <form method="post" class="d-inline">{% csrf_token %}
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <input type="hidden" name="action" value="unblock">
+                    <button class="btn btn-outline-secondary btn-sm py-0">Разблокировать</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Подозреваемые ({{ suspects|length }})</strong>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Аккаунт</th><th>ФИО (СМЗ)</th>
+              <th class="text-end">Ссылок</th><th class="text-end">Быстрых</th>
+              <th class="text-end">Медиана</th><th class="text-end">1 tg на N</th>
+              <th class="text-end">Выведено</th><th>Рефовод</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in suspects %}
+              <tr>
+                <td class="text-nowrap">@{{ s.user.username }}
+                  {% if s.user.fraud_blocked %}<span class="badge bg-danger" style="font-size:9px;">блок</span>{% endif %}
+                </td>
+                <td class="small">{{ s.fio }}
+                  {% if s.fio_accounts > 1 %}<span class="badge bg-warning text-dark" style="font-size:9px;">{{ s.fio_accounts }} акк.</span>{% endif %}
+                </td>
+                <td class="text-end">{{ s.links }}</td>
+                <td class="text-end"><span class="{% if s.pct >= 70 %}text-danger fw-semibold{% else %}text-warning{% endif %}">{{ s.pct }}%</span></td>
+                <td class="text-end small">{{ s.median }} сек</td>
+                <td class="text-end">{{ s.tg_max }}</td>
+                <td class="text-end small">{{ s.withdrawn }} ₽</td>
+                <td class="small text-muted">{% if s.user.partner_owner %}@{{ s.user.partner_owner.username }}{% else %}—{% endif %}</td>
+                <td class="text-end">
+                  {% if not s.user.fraud_blocked %}
+                    <form method="post" class="d-inline">{% csrf_token %}
+                      <input type="hidden" name="user_id" value="{{ s.user.id }}">
+                      <input type="hidden" name="action" value="block">
+                      <button class="btn btn-outline-danger btn-sm py-0">Блок</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="9" class="text-muted p-3">Подозрительных нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-transparent border-secondary py-2">
+      <span class="text-muted" style="font-size:11px;">
+        «Медиана» — типичный разрыв между созданием ссылки и стартом бота.
+        «1 tg на N» — сколько раз один телеграм повторяется на разных ссылках этого аккаунта.
+        Блокировка не удаляет данные: события воронки фиксируются, начисления не идут.
+      </span>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Мультиаккаунты по ФИО</strong>
+      <span class="text-muted small">— одно ФИО в СМЗ на нескольких аккаунтах. Сам по себе НЕ доказательство: у команд бывает общий получатель выплат. Смотреть вместе с «быстрыми стартами».</span>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0 align-middle table-dark-site">
+        <thead><tr><th>ФИО</th><th class="text-end">Аккаунтов</th><th class="text-end">Выведено</th><th>Аккаунты</th></tr></thead>
+        <tbody>
+          {% for g in fio_groups %}
+            <tr>
+              <td class="small">{{ g.fio }}</td>
+              <td class="text-end fw-semibold">{{ g.n }}</td>
+              <td class="text-end">{{ g.withdrawn }} ₽</td>
+              <td class="small text-muted">{% for u in g.users %}@{{ u.username }}{% if u.fraud_blocked %}<span class="text-danger">⛔</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
