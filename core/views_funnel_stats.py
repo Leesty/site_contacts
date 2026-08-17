@@ -161,6 +161,35 @@ def _booking_stats():
     return by_user, total
 
 
+def _bookings_by_day(days: int = 30) -> dict:
+    """Назначенные в боте встречи по дням (только наши сматченные клиенты)."""
+    from django.db import connections
+
+    from .models import SearchLink
+
+    since = timezone.now() - timedelta(days=days)
+    with connections["windowgram"].cursor() as cur:
+        cur.execute(
+            """SELECT conversation_id::text, date_trunc('day', created_at)::date
+               FROM calendar_events
+               WHERE conversation_id IS NOT NULL AND created_at >= %s""",
+            [since],
+        )
+        by_conv = {r[0]: r[1] for r in cur.fetchall()}
+    if not by_conv:
+        return {}
+    ours = set(
+        str(c) for c in SearchLink.objects.filter(
+            bot_started=True, wg_conversation_id__isnull=False,
+        ).values_list("wg_conversation_id", flat=True)
+    )
+    out: dict = {}
+    for conv, day in by_conv.items():
+        if conv in ours:
+            out[day] = out.get(day, 0) + 1
+    return out
+
+
 @login_required
 def admin_funnel_stats(request: HttpRequest) -> HttpResponse:
     """Полная аналитика новой воронки: деньги, конверсии, менеджеры, рефоводы."""
@@ -324,13 +353,22 @@ def admin_funnel_stats(request: HttpRequest) -> HttpResponse:
 
     # ── Динамика по дням ──────────────────────────────────────────────────
     starts = _bot_starts_by_day(30)
+    bookings = _bookings_by_day(30)
     daily = []
     max_paid = 1
     for d, sozvons, deals, paid in _daily_rows(30):
         paid = int(paid or 0)
         max_paid = max(max_paid, paid)
-        daily.append({"date": d, "starts": starts.get(d, 0), "sozvons": sozvons,
+        daily.append({"date": d, "starts": starts.get(d, 0),
+                      "booked": bookings.get(d, 0), "sozvons": sozvons,
                       "deals": deals, "paid": paid})
+    seen_days = {r["date"] for r in daily}
+    for d in set(starts) | set(bookings):
+        if d not in seen_days:
+            daily.append({"date": d, "starts": starts.get(d, 0),
+                          "booked": bookings.get(d, 0), "sozvons": 0,
+                          "deals": 0, "paid": 0})
+    daily.sort(key=lambda r: r["date"])
     for row in daily:
         row["bar"] = round(row["paid"] * 100 / max_paid) if max_paid else 0
     daily.reverse()  # свежие сверху
