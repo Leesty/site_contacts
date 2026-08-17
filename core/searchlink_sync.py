@@ -205,7 +205,7 @@ def baseline_searchlink_funnel(dry_run: bool = True) -> dict:
     links = list(SearchLink.objects.filter(bot_started=True)
                  .only("id", "funnel_stage", "chat_created", "wg_conversation_id", "wg_status",
                        "chat_credited_at", "sozvon_credited_at", "deal_credited_at",
-                       "telegram_id", "telegram_username", "vk_user_id"))
+                       "telegram_id", "telegram_username", "vk_user_id", "bot_started_at"))
     summary = {"checked": len(links), "matched": 0,
                "would_mark_sozvon": 0, "would_mark_deal": 0, "stage2": 0, "stage3": 0, "stage4": 0}
     if not links:
@@ -272,6 +272,13 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
     DEAL_TOTAL = getattr(settings, "SEARCH_DEAL_REWARD", 4000)
     DEAL_REF = getattr(settings, "SEARCH_DEAL_REFERRER", 1000)
     VARVARA_SOZVON = getattr(settings, "SEARCH_VARVARA_SOZVON_FEE", 10)
+    # Когорта: платим за созвон только тем, кто запустил бота с этой даты.
+    from datetime import datetime as _dt, timezone as _tz
+    _cut = getattr(settings, "SEARCH_SOZVON_START_CUTOFF", "") or ""
+    try:
+        SOZVON_CUTOFF = _dt.strptime(_cut, "%Y-%m-%d").replace(tzinfo=_tz.utc)
+    except ValueError:
+        SOZVON_CUTOFF = None
     VARVARA_DEAL = getattr(settings, "SEARCH_VARVARA_DEAL_FEE", 100)
     varvara = User.objects.filter(pk=getattr(settings, "VARVARA_USER_ID", 123)).first()
 
@@ -361,6 +368,12 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
 
         upd = []
         if new_stage == 3 and l.sozvon_credited_at is None:
+            # Старая когорта (старт бота до отсечки) — помечаем обработанным
+            # БЕЗ выплаты: доначислений за прошлое не делаем.
+            if (SOZVON_CUTOFF is not None and l.bot_started_at is not None
+                    and l.bot_started_at < SOZVON_CUTOFF):
+                l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
+                return upd
             if has_ref:
                 dc(manager, SOZVON_TOTAL - r_sozvon, f"sozvon#{l.pk} +{SOZVON_TOTAL - r_sozvon}")
                 if ref_gets_percent:

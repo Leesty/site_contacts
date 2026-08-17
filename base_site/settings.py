@@ -246,6 +246,10 @@ SEARCH_DEAL_REWARD = int(os.getenv("SEARCH_DEAL_REWARD", "4000"))          # в�
 SEARCH_DEAL_REFERRER = int(os.getenv("SEARCH_DEAL_REFERRER", "1000"))      # рефоводу со сделки (менеджер: 4000-1000=3000)
 SEARCH_VARVARA_SOZVON_FEE = int(os.getenv("SEARCH_VARVARA_SOZVON_FEE", "10"))    # Варваре за СОЗВОН (со ВСЕХ клиентов). 2026-07-22: правило вернули с чата обратно на созвон.
 SEARCH_VARVARA_DEAL_FEE = int(os.getenv("SEARCH_VARVARA_DEAL_FEE", "100"))       # Варваре со сделки (со ВСЕХ клиентов)
+# Отсечка когорты (решение владельца 2026-08-17): деньги за созвон/встречу
+# получают ТОЛЬКО клиенты, запустившие бота с этой даты. Кто нажал /start
+# раньше — не оплачивается (событие помечается обработанным без выплаты).
+SEARCH_SOZVON_START_CUTOFF = os.getenv("SEARCH_SOZVON_START_CUTOFF", "2026-08-16")
 VARVARA_USER_ID = int(os.getenv("VARVARA_USER_ID", "123"))                 # varvara_lead (balance_admin, получатель фи)
 
 # Фиче-флаг: старая система начислений (подача Lead/GroupReport-отчётов и их
