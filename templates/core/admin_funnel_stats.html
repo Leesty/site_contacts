@@ -23,7 +23,60 @@
     {% endfor %}
   </div>
 
-  {# ── KPI ── #}
+  {# ── Новая когорта: только она оплачивается ── #}
+  <div class="card shadow-sm mb-4" style="border-color:#2e7d55;">
+    <div class="card-header bg-transparent py-2" style="border-color:#2e7d55;">
+      <strong>🟢 Рабочая статистика — когорта с {{ cohort_since }}</strong>
+      <span class="text-muted small">— только эти клиенты оплачиваются. Всё, что было раньше, не в счёт.</span>
+    </div>
+    <div class="card-body">
+      <div class="row row-cols-2 row-cols-lg-6 g-2 mb-3">
+        <div class="col"><div class="text-muted" style="font-size:12px;">🤖 Запустили бота</div>
+          <div class="fs-4 fw-semibold">{{ cohort.starts }}</div></div>
+        <div class="col"><div class="text-muted" style="font-size:12px;">📅 Назначили встречу</div>
+          <div class="fs-4 fw-semibold text-success">{{ cohort.booked }}</div>
+          <div class="text-muted" style="font-size:11px;">{{ cohort.conv }}% от запусков</div></div>
+        <div class="col"><div class="text-muted" style="font-size:12px;">💬 Дошли до чата</div>
+          <div class="fs-4 fw-semibold">{{ cohort.chat }}</div></div>
+        <div class="col"><div class="text-muted" style="font-size:12px;">📞 Оплачено созвонов</div>
+          <div class="fs-4 fw-semibold">{{ cohort.sozvon }}</div></div>
+        <div class="col"><div class="text-muted" style="font-size:12px;">✅ Сделок</div>
+          <div class="fs-4 fw-semibold">{{ cohort.deal }}</div></div>
+        <div class="col"><div class="text-muted" style="font-size:12px;">Выплачено</div>
+          <div class="fs-4 fw-semibold text-success">{{ cohort.paid }} ₽</div>
+          <div class="text-muted" style="font-size:11px;">менеджерам {{ cohort.mgr }} · рефам {{ cohort.ref }} · фи {{ cohort.fee }}</div></div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr><th>День запуска бота</th><th class="text-end">🤖 Запустили</th>
+                <th class="text-end">📅 Назначили встречу</th><th class="text-end">💬 Чат</th>
+                <th class="text-end">📞 Созвон опл.</th><th class="text-end">✅ Сделка</th></tr>
+          </thead>
+          <tbody>
+            {% for d in cohort_rows %}
+              <tr>
+                <td class="text-nowrap">{{ d.date|date:"d.m (D)" }}</td>
+                <td class="text-end fw-semibold">{{ d.starts }}</td>
+                <td class="text-end">{% if d.booked %}<span class="text-success fw-semibold">{{ d.booked }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end">{{ d.chat }}</td>
+                <td class="text-end">{% if d.sozvon %}{{ d.sozvon }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end">{% if d.deal %}<span class="text-success fw-semibold">{{ d.deal }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="text-muted p-3">С {{ cohort_since }} запусков бота ещё не было.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-muted mt-2" style="font-size:11px;">
+        Все строки — по ОДНОЙ когорте: клиент запустил бота в этот день, дальше его путь.
+        Поэтому цифры не «прыгают» и складываются сверху вниз.
+      </div>
+    </div>
+  </div>
+
+  {# ── KPI (вся история, включая неоплачиваемое прошлое) ── #}
   <div class="row row-cols-2 row-cols-lg-4 g-2 mb-4">
     <div class="col">
       <div class="card h-100 shadow-sm" style="border-color:#2e7d55;">

@@ -190,6 +190,82 @@ def _bookings_by_day(days: int = 30) -> dict:
     return out
 
 
+def _cohort_rows():
+    """Статистика по НОВОЙ когорте: клиенты, запустившие бота с даты отсечки.
+
+    Только они участвуют в оплате (SEARCH_SOZVON_START_CUTOFF). По каждому дню:
+    запуски бота, назначенные встречи, оплаченные созвоны/сделки и деньги.
+    """
+    import re as _re
+    from collections import defaultdict
+    from datetime import datetime as _dt, timezone as _tz
+
+    from django.db import connections
+
+    from .models import BalanceLog, SearchLink
+
+    raw = getattr(settings, "SEARCH_SOZVON_START_CUTOFF", "") or ""
+    try:
+        cutoff = _dt.strptime(raw, "%Y-%m-%d").replace(tzinfo=_tz.utc)
+    except ValueError:
+        return [], {}, raw
+
+    links = list(SearchLink.objects.filter(bot_started_at__gte=cutoff)
+                 .only("id", "bot_started_at", "chat_created", "wg_conversation_id",
+                       "deal_credited_at", "sozvon_credited_at"))
+    convs = {str(l.wg_conversation_id) for l in links if l.wg_conversation_id}
+    booked = set()
+    if convs:
+        with connections["windowgram"].cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT conversation_id::text FROM calendar_events "
+                "WHERE conversation_id::text = ANY(%s)", [list(convs)])
+            booked = {r[0] for r in cur.fetchall()}
+
+    ids = {l.id for l in links}
+    money = defaultdict(int)
+    ev_sozvon, ev_deal = set(), set()
+    for reason, delta in BalanceLog.objects.filter(field="balance").filter(
+            reason__regex=r"^(sozvon|deal)").values_list("reason", "delta"):
+        m = _re.search(r"#(\d+)", reason)
+        if not m or int(m.group(1)) not in ids:
+            continue
+        money[_re.match(r"([a-z_]+)", reason).group(1)] += delta or 0
+        if reason.startswith("sozvon#"):
+            ev_sozvon.add(int(m.group(1)))
+        elif reason.startswith("deal#"):
+            ev_deal.add(int(m.group(1)))
+
+    per_day = defaultdict(lambda: {"starts": 0, "booked": 0, "chat": 0, "sozvon": 0, "deal": 0})
+    for l in links:
+        d = l.bot_started_at.date()
+        r = per_day[d]
+        r["starts"] += 1
+        if str(l.wg_conversation_id) in booked:
+            r["booked"] += 1
+        if l.chat_created:
+            r["chat"] += 1
+        if l.id in ev_sozvon:
+            r["sozvon"] += 1
+        if l.id in ev_deal:
+            r["deal"] += 1
+    rows = [dict(date=d, **v) for d, v in sorted(per_day.items(), reverse=True)]
+
+    tot = {
+        "starts": len(links),
+        "booked": sum(1 for l in links if str(l.wg_conversation_id) in booked),
+        "chat": sum(1 for l in links if l.chat_created),
+        "sozvon": len(ev_sozvon),
+        "deal": len(ev_deal),
+        "mgr": money.get("sozvon", 0) + money.get("deal", 0),
+        "ref": money.get("sozvon_ref", 0) + money.get("deal_ref", 0),
+        "fee": money.get("sozvon_varvara", 0) + money.get("deal_varvara", 0),
+    }
+    tot["paid"] = tot["mgr"] + tot["ref"] + tot["fee"]
+    tot["conv"] = round(tot["booked"] * 100 / tot["starts"], 1) if tot["starts"] else 0
+    return rows, tot, raw
+
+
 @login_required
 def admin_funnel_stats(request: HttpRequest) -> HttpResponse:
     """Полная аналитика новой воронки: деньги, конверсии, менеджеры, рефоводы."""
@@ -376,7 +452,10 @@ def admin_funnel_stats(request: HttpRequest) -> HttpResponse:
     # ── Фи Варвары ────────────────────────────────────────────────────────
     varvara = by_user.get(varvara_id, {})
 
+    cohort_rows, cohort_tot, cohort_since = _cohort_rows()
+
     return render(request, "core/admin_funnel_stats.html", {
+        "cohort_rows": cohort_rows, "cohort": cohort_tot, "cohort_since": cohort_since,
         "period": period, "periods": PERIODS, "sort": sort,
         "paid_total": paid_total,
         "mgr_total": mgr_total, "ref_total": ref_total,
