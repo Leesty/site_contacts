@@ -537,6 +537,13 @@ def dashboard(request: HttpRequest) -> HttpResponse:
 
         return render(request, "core/dashboard_admin.html", ctx)
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
+    # Быстрая очередь: деньги, заработанные на новом трафике. Выплата день в
+    # день, отдельно от старых накоплений (у тех своя, медленная очередь).
+    try:
+        from .views_payouts import new_system_available as _nsa
+        ctx_new_available = _nsa(user)
+    except Exception:
+        ctx_new_available = 0
     balance = getattr(user, "balance", 0) or 0
     dozhim_balance = getattr(user, "dozhim_balance", 0) or 0
     pending_wr = WithdrawalRequest.objects.filter(user=user, status="pending").first()
@@ -594,6 +601,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         {
             "user": user,
             "withdrawal_min_balance": withdrawal_min,
+            "new_scope_available": ctx_new_available,
+            "new_scope_min": getattr(settings, "NEW_SCOPE_WITHDRAWAL_MIN", 100),
             "withdrawal_pending": withdrawal_pending,
             "withdrawal_pending_amount": withdrawal_pending_amount,
             "can_request_withdrawal": can_withdraw_search,
@@ -1081,6 +1090,13 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
 
     # Гейты СМЗ и чека применяем только к POST (созданию заявки).
     # GET — это просмотр истории своих выводов, его не блокируем.
+    # Вывод «по новой связке»: отдельная быстрая очередь. Берём только те
+    # деньги, что заработаны на трафике после отсечки — старые долги идут
+    # своим чередом. Заявка помечается тегом, админ видит её отдельно.
+    from .views_payouts import NEW_TAG as _NEW_TAG, new_system_available as _new_avail
+
+    _scope_new = (request.GET.get("scope") or request.POST.get("scope")) == "new"
+
     if request.method == "POST":
         # Блок по человеку, а не по аккаунту: новый кабинет завести легко,
         # а самозанятость не подделаешь. Текст намеренно общий.
@@ -1115,7 +1131,10 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 messages.warning(request, "Загрузите и дождитесь одобрения чека по предыдущей выплате.")
                 return redirect("dashboard")
 
-    withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
+    withdrawal_min = (
+        getattr(settings, "NEW_SCOPE_WITHDRAWAL_MIN", 100) if _scope_new
+        else getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
+    )
     dept = request.GET.get("dept") or request.POST.get("dept") or "search"
     # Отдел дожима скрыт (2026-07) → выводы всегда из «Поиска», даже при ?dept=dozhim.
     if not getattr(settings, "DOZHIM_ENABLED", False):
@@ -1138,7 +1157,9 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         )
         balance = max(0, earned - withdrawn)
     else:
-        if dept == "dozhim":
+        if _scope_new:
+            balance = _new_avail(user)
+        elif dept == "dozhim":
             balance = getattr(user, "dozhim_balance", 0) or 0
         else:
             balance = getattr(user, "balance", 0) or 0
@@ -1220,7 +1241,9 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     status="pending",
                 )
             else:
-                if dept == "dozhim":
+                if _scope_new:
+                    current_balance = _new_avail(user_refresh)
+                elif dept == "dozhim":
                     current_balance = getattr(user_refresh, "dozhim_balance", 0) or 0
                 else:
                     current_balance = getattr(user_refresh, "balance", 0) or 0
@@ -1253,21 +1276,28 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     messages.error(request, "Сумма превышает баланс.")
                     return redirect("dashboard")
                 dept_label = "Дожим" if dept == "dozhim" else "Поиск"
+                tag = _NEW_TAG if _scope_new else f"[{dept_label}]"
                 WithdrawalRequest.objects.create(
                     user=user_refresh,
                     amount=withdraw_amount,
-                    payout_details=f"[{dept_label}] {payout_details}",
+                    payout_details=f"{tag} {payout_details}",
                     status="pending",
                 )
                 from .models import log_balance_change
+                # ВАЖНО: списываем с ФАКТИЧЕСКОГО баланса, а не с current_balance.
+                # При выводе по новой связке current_balance — это лимит новой
+                # связки (например 450 при балансе 28 100), и присвоение
+                # «current_balance - amount» стёрло бы остальные деньги.
                 if dept == "dozhim":
-                    user_refresh.dozhim_balance = current_balance - withdraw_amount
+                    _old_bal = getattr(user_refresh, "dozhim_balance", 0) or 0
+                    user_refresh.dozhim_balance = _old_bal - withdraw_amount
                     user_refresh.save(update_fields=["dozhim_balance"])
-                    log_balance_change(user_refresh, "dozhim_balance", current_balance, user_refresh.dozhim_balance, f"withdrawal -{withdraw_amount}", None)
+                    log_balance_change(user_refresh, "dozhim_balance", _old_bal, user_refresh.dozhim_balance, f"withdrawal -{withdraw_amount}", None)
                 else:
-                    user_refresh.balance = current_balance - withdraw_amount
+                    _old_bal = getattr(user_refresh, "balance", 0) or 0
+                    user_refresh.balance = _old_bal - withdraw_amount
                     user_refresh.save(update_fields=["balance"])
-                    log_balance_change(user_refresh, "balance", current_balance, user_refresh.balance, f"withdrawal -{withdraw_amount}", None)
+                    log_balance_change(user_refresh, "balance", _old_bal, user_refresh.balance, f"withdrawal -{withdraw_amount}", None)
         _withdrawn_amount = withdraw_amount
         messages.success(
             request,

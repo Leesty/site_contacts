@@ -33,6 +33,43 @@ def _cutoff():
     return raw
 
 
+NEW_TAG = "[Новая связка]"
+
+
+def new_system_available(user) -> int:
+    """Сколько у пользователя денег ИМЕННО по новой связке, ещё не выведено.
+
+    Зачем: баланс общий, но платить за новый трафик нужно день в день, а
+    старые долги идут своей очередью. Считаем заработок по когорте
+    «старт бота с отсечки» минус уже поданное/выплаченное по этой связке.
+    Ограничиваем реальным балансом — нельзя вывести больше, чем есть.
+    """
+    from .models import WithdrawalRequest
+
+    if getattr(user, "fraud_blocked", False):
+        return 0
+    cutoff = _cutoff()
+    links = set(SearchLink.objects.filter(
+        bot_started_at__gte=cutoff).values_list("id", flat=True)) if cutoff else set()
+    if not links:
+        return 0
+
+    earned = 0
+    for delta, reason in BalanceLog.objects.filter(
+            user=user, field="balance").filter(
+            reason__regex=r"^(sozvon|deal|sozvon_ref|deal_ref|sozvon_varvara|deal_varvara)#",
+    ).values_list("delta", "reason"):
+        m = re.search(r"#(\d+)", reason or "")
+        if m and int(m.group(1)) in links:
+            earned += delta or 0
+
+    taken = (WithdrawalRequest.objects.filter(
+        user=user, status__in=("pending", "approved"),
+        payout_details__startswith=NEW_TAG,
+    ).aggregate(s=__import__("django.db.models", fromlist=["Sum"]).Sum("amount")).get("s") or 0)
+    return max(0, min(int(getattr(user, "balance", 0) or 0), earned - taken))
+
+
 @login_required
 def admin_new_payouts(request: HttpRequest) -> HttpResponse:
     """Кому и сколько платить по новой системе, за вычетом накрутки."""

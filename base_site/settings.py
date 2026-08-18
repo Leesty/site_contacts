@@ -209,6 +209,10 @@ LOGOUT_REDIRECT_URL = "index"
 
 # Минимальный баланс для кнопки «Запрос на вывод» (руб.)
 WITHDRAWAL_MIN_BALANCE = int(os.getenv("WITHDRAWAL_MIN_BALANCE", "500"))
+# Отдельный минимум для вывода «по новой связке»: там суммы небольшие
+# (150 ₽ за встречу), а платить нужно день в день — общий минимум 500 ₽
+# такие выплаты просто блокировал бы.
+NEW_SCOPE_WITHDRAWAL_MIN = int(os.getenv("NEW_SCOPE_WITHDRAWAL_MIN", "100"))
 
 # Отдел дожима
 DOZHIM_APPROVE_REWARD = int(os.getenv("DOZHIM_APPROVE_REWARD", "40"))
