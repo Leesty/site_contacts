@@ -75,7 +75,7 @@
                   {% else %}<span class="badge bg-secondary" style="font-size:10px;">—</span>{% endif %}
                 </td>
                 <td>{{ req.amount }} ₽</td>
-                <td style="max-width: 220px; white-space: pre-wrap; font-size: 12px;">{{ req.payout_details|default:"—" }}</td>
+                <td style="max-width: 220px; white-space: pre-wrap; font-size: 12px;">{% if "[Новая связка]" in req.payout_details %}<span class="badge bg-success" style="font-size:9px;">⚡ НОВАЯ · день в день</span><br>{% endif %}{{ req.payout_details|default:"—" }}</td>
                 <td class="text-muted small">{{ req.created_at|date:"d.m.Y H:i" }}</td>
                 <td>
                   <form method="post" class="d-inline" onsubmit="return confirm('Одобрить {{ req.amount }}₽ @{{ req.user.username }}?');">
@@ -136,7 +136,7 @@
                   {% else %}<span class="badge bg-secondary" style="font-size:10px;">—</span>{% endif %}
                 </td>
                 <td>{{ req.amount }} ₽</td>
-                <td style="max-width: 220px; white-space: pre-wrap; font-size: 12px;">{{ req.payout_details|default:"—" }}</td>
+                <td style="max-width: 220px; white-space: pre-wrap; font-size: 12px;">{% if "[Новая связка]" in req.payout_details %}<span class="badge bg-success" style="font-size:9px;">⚡ НОВАЯ · день в день</span><br>{% endif %}{{ req.payout_details|default:"—" }}</td>
                 <td class="text-muted small">{{ req.created_at|date:"d.m.Y H:i" }}</td>
                 <td>
                   <form method="post" class="d-inline" onsubmit="return confirm('Одобрить {{ req.amount }}₽ @{{ req.user.username }}?');">
@@ -189,7 +189,7 @@
                 <td>@{{ w.worker.username }}</td>
                 <td>{% if w.standalone_admin %}@{{ w.standalone_admin.username }}{% else %}—{% endif %}</td>
                 <td>{{ w.amount }} ₽</td>
-                <td class="small text-muted" style="max-width: 280px; word-break: break-word;">{{ w.payout_details|truncatechars:120 }}</td>
+                <td class="small text-muted" style="max-width: 280px; word-break: break-word;">{% if "[Новая связка]" in w.payout_details %}<span class="badge bg-success" style="font-size:9px;">⚡ НОВАЯ</span><br>{% endif %}{{ w.payout_details|truncatechars:120 }}</td>
                 <td class="small text-muted">{{ w.created_at|date:"d.m.Y H:i" }}</td>
                 <td class="text-end">
                   <form method="post" class="d-inline" onsubmit="return confirm('Одобрить вывод воркера @{{ w.worker.username }} на {{ w.amount }} ₽?');">
