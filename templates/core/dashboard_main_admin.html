@@ -41,10 +41,14 @@
         <div class="card-body">
           <h2 class="h6 mb-1">📊 Аналитика воронки</h2>
           <p class="text-muted small mb-2">Деньги, конверсии, менеджеры, рефоводы — новая система.</p>
-          <div class="d-flex gap-1">
+          <div class="d-grid gap-1">
             <a class="btn btn-success btn-sm" href="{% url 'admin_funnel_stats' %}">Открыть</a>
-            <a class="btn btn-outline-danger btn-sm" href="{% url 'admin_fraud' %}">🚨 Накрутка</a>
-            <a class="btn btn-outline-success btn-sm" href="{% url 'admin_new_payouts' %}">💸 Выплаты</a>
+            <div class="d-flex gap-1">
+              <a class="btn btn-outline-success btn-sm flex-fill px-1" style="font-size:12px;"
+                 href="{% url 'admin_new_payouts' %}">💸 Выплаты</a>
+              <a class="btn btn-outline-danger btn-sm flex-fill px-1" style="font-size:12px;"
+                 href="{% url 'admin_fraud' %}">🚨 Накрутка</a>
+            </div>
           </div>
         </div>
       </div>
