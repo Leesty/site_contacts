@@ -86,14 +86,33 @@
   {% endif %}
 
 
-  {% if frozen_balance %}
-    <div class="card shadow-sm mb-3" style="border:1px solid rgba(148,163,184,0.3);">
-      <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-        <span style="font-size:16px;">🔒</span>
-        <div class="flex-grow-1">
-          <div class="small"><strong>Заморожено: {{ frozen_balance }} ₽</strong> — заработок по старой системе</div>
-          <div class="text-muted" style="font-size:11px;">Выплачивается отдельной очередью. Новые начисления идут на основной баланс.</div>
-        </div>
+  {% if old_balance or frozen_balance %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body py-3">
+        <div class="text-muted mb-2" style="font-size:11px; text-transform:uppercase; letter-spacing:1px;">Другие балансы</div>
+
+        {% if old_balance %}
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <span style="font-size:16px;">📦</span>
+            <div class="flex-grow-1">
+              <div class="small"><strong>{{ old_balance }} ₽</strong> — заработано до 17.08</div>
+              <div class="text-muted" style="font-size:11px;">Отдельная очередь выплат, вывод от {{ withdrawal_min_balance }} ₽.</div>
+            </div>
+            {% if old_balance >= withdrawal_min_balance and user.smz_status == 'approved' and not pending_wr %}
+              <a class="btn btn-outline-light btn-sm" href="{% url 'request_withdrawal_create' %}?scope=old">Вывести</a>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {% if frozen_balance %}
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <span style="font-size:16px;">🔒</span>
+            <div class="flex-grow-1">
+              <div class="small"><strong>{{ frozen_balance }} ₽</strong> — легаси (старая система)</div>
+              <div class="text-muted" style="font-size:11px;">Заморожено, выплата по решению администрации.</div>
+            </div>
+          </div>
+        {% endif %}
       </div>
     </div>
   {% endif %}
