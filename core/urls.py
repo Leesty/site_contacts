@@ -8,6 +8,7 @@ from . import views_fraud
 from . import views_funnel_stats
 from . import views_group_reports
 from . import views_partner
+from . import views_payouts
 from . import views_search
 from . import views_support_admin
 from . import views_worker
@@ -387,6 +388,7 @@ urlpatterns = [
     # Аналитика НОВОЙ системы (воронка SearchLink → windowgram)
     path("staff/funnel-stats/", views_funnel_stats.admin_funnel_stats, name="admin_funnel_stats"),
     path("staff/fraud/", views_fraud.admin_fraud, name="admin_fraud"),
+    path("staff/new-payouts/", views_payouts.admin_new_payouts, name="admin_new_payouts"),
     # Ban/unban
     path("staff/robocall-test/", views_support_admin.admin_robocall_test, name="admin_robocall_test"),
     path("staff/phone-reports/", views_support_admin.admin_phone_reports, name="admin_phone_reports"),

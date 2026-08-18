@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Выплаты по новой системе — Партнёрка{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h4 mb-1">💸 Выплаты по новой системе</h1>
+      <p class="text-muted small mb-0">
+        Только заработок по воронке на клиентах со стартом бота с {{ cutoff|date:"d.m.Y" }}.
+        Старые балансы и легаси сюда не входят. Накрутка вычищена: аккаунты-накрутчики
+        исключены, реферские деньги с их ссылок не засчитаны.
+      </p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_funnel_stats' %}">← К аналитике</a>
+  </div>
+
+  <div class="row row-cols-2 row-cols-lg-4 g-2 mb-4">
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="border-color:#2e7d55;">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">К выплате</div>
+          <div class="fs-3 fw-semibold text-success">{{ total }} ₽</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Получателей</div>
+          <div class="fs-3 fw-semibold">{{ rows|length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Клиентов в когорте</div>
+          <div class="fs-3 fw-semibold">{{ links_total }}</div>
+          <div class="text-muted" style="font-size:11px;">из них накрученных: {{ fraud_links }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card h-100 shadow-sm" style="border-color:#7f1d1d;">
+        <div class="card-body py-3">
+          <div class="text-muted" style="font-size:12px;">Отсечено как накрутка</div>
+          <div class="fs-3 fw-semibold text-danger">{{ fraud_total }} ₽</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-transparent border-secondary py-2">
+      <strong>Кому платить</strong>
+      <span class="text-muted small">— суммы по новой системе, чистые</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead>
+            <tr>
+              <th>Менеджер</th><th>ФИО (СМЗ)</th>
+              <th class="text-end">📞 Созвонов</th><th class="text-end">✅ Сделок</th>
+              <th class="text-end">За созвоны</th><th class="text-end">За сделки</th>
+              <th class="text-end">Как рефовод</th><th class="text-end">К ВЫПЛАТЕ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+              <tr>
+                <td class="text-nowrap">@{{ r.user.username }}
+                  {% if r.user.role != 'user' %}<span class="badge bg-secondary" style="font-size:9px;">{{ r.user.role }}</span>{% endif %}
+                </td>
+                <td class="small">{{ r.user.smz_fio|default:"— не заполнено" }}</td>
+                <td class="text-end">{{ r.n_sozvon }}</td>
+                <td class="text-end">{% if r.n_deal %}<span class="text-success fw-semibold">{{ r.n_deal }}</span>{% else %}—{% endif %}</td>
+                <td class="text-end small">{{ r.sozvon }} ₽</td>
+                <td class="text-end small">{% if r.deal %}{{ r.deal }} ₽{% else %}—{% endif %}</td>
+                <td class="text-end small">{% if r.ref %}{{ r.ref }} ₽{% else %}—{% endif %}
+                  {% if r.tainted %}<br><span class="text-danger" style="font-size:10px;">−{{ r.tainted }} ₽ с накрутки</span>{% endif %}
+                </td>
+                <td class="text-end fw-semibold text-success">{{ r.total }} ₽</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="8" class="text-muted p-3">По новой системе пока никто ничего не заработал.</td></tr>
+            {% endfor %}
+          </tbody>
+          {% if rows %}
+            <tfoot>
+              <tr style="border-top:2px solid #2e7d55;">
+                <td colspan="7" class="text-end fw-semibold">ИТОГО К ВЫПЛАТЕ</td>
+                <td class="text-end fw-semibold text-success fs-6">{{ total }} ₽</td>
+              </tr>
+            </tfoot>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% if fraud_rows %}
+    <div class="card shadow-sm mb-4" style="border-color:#7f1d1d;">
+      <div class="card-header bg-transparent py-2" style="border-color:#7f1d1d;">
+        <strong class="text-danger">Отсечено как накрутка ({{ fraud_total }} ₽)</strong>
+        <span class="text-muted small">— эти деньги в выплату НЕ идут</span>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle table-dark-site">
+          <thead><tr><th>Аккаунт</th><th>ФИО (СМЗ)</th><th class="text-end">Сумма</th></tr></thead>
+          <tbody>
+            {% for f in fraud_rows %}
+              <tr>
+                <td>@{{ f.user.username }}
+                  {% if f.user.fraud_blocked %}<span class="badge bg-danger" style="font-size:9px;">блок</span>
+                  {% else %}<span class="badge bg-warning text-dark" style="font-size:9px;">реф с накрутки</span>{% endif %}
+                </td>
+                <td class="small">{{ f.user.smz_fio|default:"—" }}</td>
+                <td class="text-end text-danger">{{ f.amount }} ₽</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
