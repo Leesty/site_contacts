@@ -85,17 +85,6 @@
     {% endif %}
   {% endif %}
 
-  {% if new_scope_available >= new_scope_min and user.smz_status == 'approved' and not pending_wr %}
-    <div class="card shadow-sm mb-3" style="border: 1px solid rgba(34,197,94,0.45); background: linear-gradient(135deg, rgba(34,197,94,0.12) 0%, rgba(34,197,94,0.02) 100%);">
-      <div class="card-body py-3 d-flex flex-wrap align-items-center gap-3">
-        <div class="flex-grow-1">
-          <div class="fw-semibold" style="font-size:14px;">⚡ Заработано на новом трафике: {{ new_scope_available }} ₽</div>
-          <div class="text-muted small">Выплата день в день, отдельной очередью — не нужно ждать общий вывод.</div>
-        </div>
-        <a class="btn btn-success btn-sm" href="{% url 'request_withdrawal_create' %}?scope=new">Вывести {{ new_scope_available }} ₽ сейчас</a>
-      </div>
-    </div>
-  {% endif %}
 
   {% include "core/partials/receipt_alert.html" %}
 
