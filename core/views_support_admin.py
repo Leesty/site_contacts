@@ -1773,6 +1773,13 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                         wreq.user.dozhim_balance = _old + wreq.amount
                         wreq.user.save(update_fields=["dozhim_balance"])
                         log_balance_change(wreq.user, "dozhim_balance", _old, wreq.user.dozhim_balance, f"withdrawal_reject#{wreq.pk} +{wreq.amount}", request.user)
+                    elif not (wreq.payout_details or "").startswith("[НОВОЕ]"):
+                        # Старые деньги возвращаем в ЗАМОРОЖЕННЫЙ баланс, иначе
+                        # они попадут в новый и уйдут в приоритетную выплату.
+                        _old = wreq.user.legacy_balance or 0
+                        wreq.user.legacy_balance = _old + wreq.amount
+                        wreq.user.save(update_fields=["legacy_balance"])
+                        log_balance_change(wreq.user, "legacy_balance", _old, wreq.user.legacy_balance, f"withdrawal_reject#{wreq.pk} +{wreq.amount} (в заморозку)", request.user)
                     else:
                         _old = wreq.user.balance or 0
                         wreq.user.balance = _old + wreq.amount
@@ -1805,6 +1812,11 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
                     wreq.user.dozhim_balance = _old + wreq.amount
                     wreq.user.save(update_fields=["dozhim_balance"])
                     log_balance_change(wreq.user, "dozhim_balance", _old, wreq.user.dozhim_balance, f"withdrawal_cancel_approved#{wreq.pk} +{wreq.amount}", request.user)
+                elif not (wreq.payout_details or "").startswith("[НОВОЕ]"):
+                    _old = wreq.user.legacy_balance or 0
+                    wreq.user.legacy_balance = _old + wreq.amount
+                    wreq.user.save(update_fields=["legacy_balance"])
+                    log_balance_change(wreq.user, "legacy_balance", _old, wreq.user.legacy_balance, f"withdrawal_cancel_approved#{wreq.pk} +{wreq.amount} (в заморозку)", request.user)
                 else:
                     _old = wreq.user.balance or 0
                     wreq.user.balance = _old + wreq.amount

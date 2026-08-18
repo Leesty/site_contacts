@@ -537,14 +537,10 @@ def dashboard(request: HttpRequest) -> HttpResponse:
 
         return render(request, "core/dashboard_admin.html", ctx)
     withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
-    # Быстрая очередь: деньги, заработанные на новом трафике. Выплата день в
-    # день, отдельно от старых накоплений (у тех своя, медленная очередь).
-    try:
-        from .views_payouts import new_system_available as _nsa
-        ctx_new_available = _nsa(user)
-    except Exception:
-        ctx_new_available = 0
     balance = getattr(user, "balance", 0) or 0
+    # Старый (замороженный) баланс: заработок до перехода на новую систему.
+    # Выводится отдельно и своей очередью, поэтому показываем строкой ниже.
+    frozen_balance = getattr(user, "legacy_balance", 0) or 0
     dozhim_balance = getattr(user, "dozhim_balance", 0) or 0
     pending_wr = WithdrawalRequest.objects.filter(user=user, status="pending").first()
     withdrawal_pending = pending_wr is not None
@@ -601,8 +597,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         {
             "user": user,
             "withdrawal_min_balance": withdrawal_min,
-            "new_scope_available": ctx_new_available,
-            "new_scope_min": getattr(settings, "NEW_SCOPE_WITHDRAWAL_MIN", 100),
+            "frozen_balance": frozen_balance,
             "withdrawal_pending": withdrawal_pending,
             "withdrawal_pending_amount": withdrawal_pending_amount,
             "can_request_withdrawal": can_withdraw_search,
@@ -1027,6 +1022,12 @@ def withdrawal_cancel_own(request: HttpRequest, wr_id: int) -> HttpResponse:
                 u.dozhim_balance = _old + wr_locked.amount
                 u.save(update_fields=["dozhim_balance"])
                 _log(u, "dozhim_balance", _old, u.dozhim_balance, f"withdrawal_cancel_own#{wr_locked.pk} +{wr_locked.amount}", user)
+            elif not (wr_locked.payout_details or "").startswith("[НОВОЕ]"):
+                # Старые деньги — обратно в заморозку, не в приоритетный баланс.
+                _old = u.legacy_balance or 0
+                u.legacy_balance = _old + wr_locked.amount
+                u.save(update_fields=["legacy_balance"])
+                _log(u, "legacy_balance", _old, u.legacy_balance, f"withdrawal_cancel_own#{wr_locked.pk} +{wr_locked.amount} (в заморозку)", user)
             else:
                 _old = u.balance or 0
                 u.balance = _old + wr_locked.amount
@@ -1093,10 +1094,6 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
     # Вывод «по новой связке»: отдельная быстрая очередь. Берём только те
     # деньги, что заработаны на трафике после отсечки — старые долги идут
     # своим чередом. Заявка помечается тегом, админ видит её отдельно.
-    from .views_payouts import NEW_TAG as _NEW_TAG, new_system_available as _new_avail
-
-    _scope_new = (request.GET.get("scope") or request.POST.get("scope")) == "new"
-
     if request.method == "POST":
         # Блок по человеку, а не по аккаунту: новый кабинет завести легко,
         # а самозанятость не подделаешь. Текст намеренно общий.
@@ -1131,10 +1128,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                 messages.warning(request, "Загрузите и дождитесь одобрения чека по предыдущей выплате.")
                 return redirect("dashboard")
 
-    withdrawal_min = (
-        getattr(settings, "NEW_SCOPE_WITHDRAWAL_MIN", 100) if _scope_new
-        else getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
-    )
+    withdrawal_min = getattr(settings, "WITHDRAWAL_MIN_BALANCE", 500)
     dept = request.GET.get("dept") or request.POST.get("dept") or "search"
     # Отдел дожима скрыт (2026-07) → выводы всегда из «Поиска», даже при ?dept=dozhim.
     if not getattr(settings, "DOZHIM_ENABLED", False):
@@ -1157,9 +1151,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
         )
         balance = max(0, earned - withdrawn)
     else:
-        if _scope_new:
-            balance = _new_avail(user)
-        elif dept == "dozhim":
+        if dept == "dozhim":
             balance = getattr(user, "dozhim_balance", 0) or 0
         else:
             balance = getattr(user, "balance", 0) or 0
@@ -1241,9 +1233,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     status="pending",
                 )
             else:
-                if _scope_new:
-                    current_balance = _new_avail(user_refresh)
-                elif dept == "dozhim":
+                if dept == "dozhim":
                     current_balance = getattr(user_refresh, "dozhim_balance", 0) or 0
                 else:
                     current_balance = getattr(user_refresh, "balance", 0) or 0
@@ -1276,7 +1266,7 @@ def request_withdrawal_create(request: HttpRequest) -> HttpResponse:
                     messages.error(request, "Сумма превышает баланс.")
                     return redirect("dashboard")
                 dept_label = "Дожим" if dept == "dozhim" else "Поиск"
-                tag = _NEW_TAG if _scope_new else f"[{dept_label}]"
+                tag = "[НОВОЕ]" if dept != "dozhim" else f"[{dept_label}]"
                 WithdrawalRequest.objects.create(
                     user=user_refresh,
                     amount=withdraw_amount,
