@@ -362,7 +362,7 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
     links = list(qs.select_related("user", "user__partner_owner")
                  .only("id", "funnel_stage", "chat_created", "wg_conversation_id", "wg_status",
                        "chat_credited_at", "sozvon_credited_at", "deal_credited_at",
-                       "telegram_id", "telegram_username", "vk_user_id",
+                       "telegram_id", "telegram_username", "vk_user_id", "bot_started_at",
                        "user__id", "user__partner_owner"))
     summary = {"checked": len(links), "stage_updated": 0,
                "sozvon_credited": 0, "deal_credited": 0,
@@ -407,11 +407,22 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         if not conv:
             continue
         new_stage = max(1, conv["rank"])  # bot_started → минимум 1
-        # Отметка созвона БЕЗ выплаты (baseline) не должна показываться как
-        # «Созвон» — деньги за неё не придут. Откатываем к чату/боту.
-        if (new_stage == 3 and link.sozvon_credited_at is not None
-                and link.id not in _paid_sozvon):
-            new_stage = 2 if conv["has_chat"] else 1
+        # Стадия «Созвон» = за неё заплатили. Не поднимаем туда тех, кому
+        # выплаты не будет, иначе счётчик «+150 ₽» растёт без денег и
+        # менеджеры справедливо жалуются (поймано 21.08).
+        if new_stage == 3:
+            _no_pay = (
+                # уже помечено, но денег не было (baseline / отсечка / блок)
+                (link.sozvon_credited_at is not None and link.id not in _paid_sozvon)
+                # клиент стартовал бота до отсечки — платить не будем
+                or (SOZVON_CUTOFF is not None and link.bot_started_at is not None
+                    and link.bot_started_at < SOZVON_CUTOFF)
+                # аккаунт заблокирован за накрутку
+                or link.user.fraud_blocked
+                or link.user_id in _auto_fraud
+            )
+            if _no_pay:
+                new_stage = 2 if conv["has_chat"] else 1
         touched = False
         if new_stage > link.funnel_stage:
             link.funnel_stage = new_stage; touched = True
