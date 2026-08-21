@@ -141,16 +141,22 @@ def _fetch_wg_state(links: list) -> dict:
     return out
 
 
-def _credit(user, amount: int, reason: str, actor):
-    """Начислить amount на User.balance с логом (внутри уже открытой транзакции)."""
+def _credit(user, amount: int, reason: str, actor, field: str = "balance"):
+    """Начислить amount в указанный кошелёк с логом (внутри открытой транзакции).
+
+    `field="balance"`     — новый баланс (клиент стартовал бота после отсечки),
+                            выплата в первом приоритете;
+    `field="old_balance"` — кошелёк «до 17.08»: работа засчитана и оплачена,
+                            но идёт своей, медленной очередью.
+    """
     from .models import User, log_balance_change
     u = User.objects.select_for_update().get(pk=user.pk)
-    old = u.balance or 0
-    u.balance = old + amount
-    u.save(update_fields=["balance"])
-    log_balance_change(u, "balance", old, u.balance, reason, actor)
-    # авто-аккредитация: минус → плюс
-    if not u.is_accredited and old < 0 and u.balance >= 0:
+    old = getattr(u, field, 0) or 0
+    setattr(u, field, old + amount)
+    u.save(update_fields=[field])
+    log_balance_change(u, field, old, getattr(u, field), reason, actor)
+    # авто-аккредитация: минус → плюс (только по основному балансу)
+    if field == "balance" and not u.is_accredited and old < 0 and u.balance >= 0:
         u.is_accredited = True
         u.save(update_fields=["is_accredited"])
 
@@ -229,7 +235,7 @@ def _paid_deal_link_ids() -> set:
     return ids
 
 
-def _paid_sozvon_link_ids(link_ids: list) -> set:
+def _paid_sozvon_link_ids(link_ids: list, field: str = "balance") -> set:
     """ID ссылок, за созвон которых реально была выплата (одним запросом).
 
     Батч-версия `_sozvon_actually_paid` для синка: тот делает по запросу на
@@ -242,7 +248,7 @@ def _paid_sozvon_link_ids(link_ids: list) -> set:
     if not link_ids:
         return set()
     reasons = BalanceLog.objects.filter(
-        field="balance", reason__regex=r"^sozvon#[0-9]+ ",
+        field=field, reason__regex=r"^sozvon#[0-9]+ ",
     ).values_list("reason", flat=True)
     ids = set()
     for r in reasons:
@@ -378,6 +384,8 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
     # помечен baseline'ом без денег — иначе счётчик врёт (жалоба 16.08: счётчик
     # прыгнул с 15 до 34, а баланс не изменился).
     _paid_sozvon = _paid_sozvon_link_ids([l.id for l in links])
+    # то же, но по кошельку «до 17.08» — там начисления идут полем old_balance
+    _paid_old_sozvon = _paid_sozvon_link_ids([l.id for l in links], field="old_balance")
 
     # Один клиент — одна оплата. Если по этому же диалогу CRM созвон уже
     # оплачен по другой ссылке, повторно не платим: иначе один человек,
@@ -411,13 +419,12 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         # выплаты не будет, иначе счётчик «+150 ₽» растёт без денег и
         # менеджеры справедливо жалуются (поймано 21.08).
         if new_stage == 3:
+            # Старый трафик теперь ТОЖЕ оплачивается (в кошелёк «до 17.08»),
+            # поэтому отсечка стадию больше не понижает. Не поднимаем только
+            # там, где денег реально не будет.
             _no_pay = (
-                # уже помечено, но денег не было (baseline / отсечка / блок)
-                (link.sozvon_credited_at is not None and link.id not in _paid_sozvon)
-                # клиент стартовал бота до отсечки — платить не будем
-                or (SOZVON_CUTOFF is not None and link.bot_started_at is not None
-                    and link.bot_started_at < SOZVON_CUTOFF)
-                # аккаунт заблокирован за накрутку
+                (link.sozvon_credited_at is not None and link.id not in _paid_sozvon
+                 and link.id not in _paid_old_sozvon)
                 or link.user.fraud_blocked
                 or link.user_id in _auto_fraud
             )
@@ -467,9 +474,17 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         from .lead_utils import is_milestone_referrer
         ref_gets_percent = has_ref and not is_milestone_referrer(referrer)
 
-        def dc(user, amount, reason):
+        # Кошелёк определяется датой старта бота у КЛИЕНТА: старый трафик
+        # оплачивается тоже, но падает в «до 17.08» (медленная очередь),
+        # новый — в основной баланс (выплата в приоритете).
+        _wallet = "balance"
+        if (SOZVON_CUTOFF is not None and l.bot_started_at is not None
+                and l.bot_started_at < SOZVON_CUTOFF):
+            _wallet = "old_balance"
+
+        def dc(user, amount, reason, field=None):
             if user and amount and not dry_run:
-                _credit(user, amount, reason, varvara)
+                _credit(user, amount, reason, varvara, field or _wallet)
 
         upd = []
         if new_stage == 3 and l.sozvon_credited_at is None:
@@ -480,12 +495,6 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
                 return upd
             # Этот же клиент уже оплачен по другой ссылке — не дублируем.
             if l.wg_conversation_id and str(l.wg_conversation_id) in _paid_convs:
-                l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
-                return upd
-            # Старая когорта (старт бота до отсечки) — помечаем обработанным
-            # БЕЗ выплаты: доначислений за прошлое не делаем.
-            if (SOZVON_CUTOFF is not None and l.bot_started_at is not None
-                    and l.bot_started_at < SOZVON_CUTOFF):
                 l.sozvon_credited_at = timezone.now(); upd.append("sozvon_credited_at")
                 return upd
             if has_ref:
