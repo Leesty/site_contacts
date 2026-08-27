@@ -284,6 +284,7 @@ def baseline_searchlink_funnel(dry_run: bool = True) -> dict:
 
     links = list(SearchLink.objects.filter(bot_started=True)
                  .only("id", "funnel_stage", "chat_created", "wg_conversation_id", "wg_status",
+                       "booking_seen_at",
                        "chat_credited_at", "sozvon_credited_at", "deal_credited_at",
                        "telegram_id", "telegram_username", "vk_user_id", "bot_started_at"))
     summary = {"checked": len(links), "matched": 0,
@@ -311,6 +312,11 @@ def baseline_searchlink_funnel(dry_run: bool = True) -> dict:
             link.funnel_stage = new_stage; touched = True
         if conv["has_chat"] and not link.chat_created:
             link.chat_created = True; touched = True
+        # Факт записи на встречу фиксируем НАВСЕГДА: строка в calendar_events
+        # физически удаляется при отмене/переносе и по команде /отмена, из-за
+        # чего статистика «назначили встречу» задним числом худела.
+        if conv.get("has_booking") and link.booking_seen_at is None:
+            link.booking_seen_at = now; touched = True
         if conv["status"] and conv["status"] != link.wg_status:
             link.wg_status = conv["status"][:32]; touched = True
         if conv["conv_id"] and str(link.wg_conversation_id or "") != conv["conv_id"]:
@@ -330,7 +336,8 @@ def baseline_searchlink_funnel(dry_run: bool = True) -> dict:
             SearchLink.objects.bulk_update(
                 to_update[i:i + 500],
                 ["funnel_stage", "chat_created", "wg_status", "wg_conversation_id",
-                 "chat_credited_at", "sozvon_credited_at", "deal_credited_at"],
+                 "chat_credited_at", "sozvon_credited_at", "deal_credited_at",
+                 "booking_seen_at"],
             )
     summary["updated"] = len(to_update)
     return summary
@@ -367,6 +374,7 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         qs = qs.filter(id__in=link_ids)
     links = list(qs.select_related("user", "user__partner_owner")
                  .only("id", "funnel_stage", "chat_created", "wg_conversation_id", "wg_status",
+                       "booking_seen_at",
                        "chat_credited_at", "sozvon_credited_at", "deal_credited_at",
                        "telegram_id", "telegram_username", "vk_user_id", "bot_started_at",
                        "user__id", "user__partner_owner"))
@@ -377,7 +385,8 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
         return summary
 
     wg_state = _fetch_wg_state(links)
-    CACHE_FIELDS = ["funnel_stage", "chat_created", "wg_status", "wg_conversation_id"]
+    CACHE_FIELDS = ["funnel_stage", "chat_created", "wg_status", "wg_conversation_id",
+                    "booking_seen_at"]
 
     # Ссылки, за созвон которых РЕАЛЬНО заплатили (одним запросом, не по одной).
     # Нужно, чтобы не показывать менеджеру стадию «Созвон» там, где аванс лишь
@@ -435,6 +444,11 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
             link.funnel_stage = new_stage; touched = True
         if conv["has_chat"] and not link.chat_created:
             link.chat_created = True; touched = True
+        # Факт записи на встречу фиксируем НАВСЕГДА: строка в calendar_events
+        # физически удаляется при отмене/переносе и по команде /отмена, из-за
+        # чего статистика «назначили встречу» задним числом худела.
+        if conv.get("has_booking") and link.booking_seen_at is None:
+            link.booking_seen_at = timezone.now(); touched = True
         if conv["status"] != link.wg_status:
             link.wg_status = conv["status"][:32]; touched = True
         if conv["conv_id"] and str(link.wg_conversation_id or "") != conv["conv_id"]:
@@ -556,6 +570,7 @@ def sync_searchlink_funnel(link_ids: list | None = None, dry_run: bool = False) 
                 l.chat_created = l.chat_created or link.chat_created
                 l.wg_status = link.wg_status
                 l.wg_conversation_id = link.wg_conversation_id
+                l.booking_seen_at = l.booking_seen_at or link.booking_seen_at
                 upd = _apply_credit(l, new_stage)
                 l.save(update_fields=list(set(upd + CACHE_FIELDS)) + ["updated_at"])
         except Exception as e:  # noqa: BLE001

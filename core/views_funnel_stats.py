@@ -150,12 +150,12 @@ def _booking_stats():
         )
         booked = {r[0] for r in cur.fetchall()}
     by_user = {}
-    rows = SearchLink.objects.filter(
-        bot_started=True, wg_conversation_id__isnull=False,
-    ).values_list("user_id", "wg_conversation_id")
+    rows = SearchLink.objects.filter(bot_started=True).values_list(
+        "user_id", "wg_conversation_id", "booking_seen_at")
     total = 0
-    for uid, conv in rows:
-        if str(conv) in booked:
+    for uid, conv, seen in rows:
+        # «Была запись» ⟸ зафиксированный факт ИЛИ живая строка в календаре.
+        if seen or (conv is not None and str(conv) in booked):
             by_user[uid] = by_user.get(uid, 0) + 1
             total += 1
     return by_user, total
@@ -210,9 +210,14 @@ def _cohort_rows():
     except ValueError:
         return [], {}, raw
 
-    links = list(SearchLink.objects.filter(bot_started_at__gte=cutoff)
-                 .only("id", "bot_started_at", "chat_created", "wg_conversation_id",
-                       "deal_credited_at", "sozvon_credited_at"))
+    # Накрутчики (ручной бан + автодетект) из статистики исключены: деньги у
+    # них сняты, а события продолжали раздувать счётчик «Созвон опл.».
+    from .models import User as _U
+    _blocked = set(_U.objects.filter(fraud_blocked=True).values_list("id", flat=True))
+    links = [l for l in SearchLink.objects.filter(bot_started_at__gte=cutoff)
+             .only("id", "bot_started_at", "chat_created", "wg_conversation_id",
+                   "deal_credited_at", "sozvon_credited_at", "booking_seen_at", "user_id")
+             if l.user_id not in _blocked]
     convs = {str(l.wg_conversation_id) for l in links if l.wg_conversation_id}
     booked = set()
     if convs:
@@ -241,7 +246,7 @@ def _cohort_rows():
         d = l.bot_started_at.date()
         r = per_day[d]
         r["starts"] += 1
-        if str(l.wg_conversation_id) in booked:
+        if l.booking_seen_at or str(l.wg_conversation_id) in booked:
             r["booked"] += 1
         if l.chat_created:
             r["chat"] += 1
@@ -253,7 +258,8 @@ def _cohort_rows():
 
     tot = {
         "starts": len(links),
-        "booked": sum(1 for l in links if str(l.wg_conversation_id) in booked),
+        "booked": sum(1 for l in links
+                      if l.booking_seen_at or str(l.wg_conversation_id) in booked),
         "chat": sum(1 for l in links if l.chat_created),
         "sozvon": len(ev_sozvon),
         "deal": len(ev_deal),

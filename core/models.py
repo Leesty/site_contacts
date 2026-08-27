@@ -1468,6 +1468,15 @@ class SearchLink(TimeStampedModel):
         null=True, blank=True,
         help_text="Когда начислен «созвон» (150 ₽). NULL = ещё не начислен.",
     )
+    booking_seen_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text=(
+            "Когда впервые увидели запись клиента на встречу в боте "
+            "(calendar_events). Нужен для статистики: запись физически "
+            "удаляется при отмене/переносе, поэтому «сейчас есть» ≠ «была». "
+            "NULL = записи не было ни разу."
+        ),
+    )
     deal_credited_at = models.DateTimeField(
         null=True, blank=True,
         help_text="Когда начислена «успешная сделка» (до 4000 ₽). NULL = ещё не начислен.",
