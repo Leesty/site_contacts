@@ -264,9 +264,17 @@ FRAUD_MIN_LINKS = int(os.getenv("FRAUD_MIN_LINKS", "5"))
 # 80%, у честных 6% (замер 18.08.2026).
 FRAUD_FRESH_TG_ID = int(os.getenv("FRAUD_FRESH_TG_ID", "8000000000"))
 FRAUD_FRESH_TG_PCT = int(os.getenv("FRAUD_FRESH_TG_PCT", "50"))
+
+# Правила без привязки ко времени (07.09.2026, инцидент Кузюбердина):
+# FRAUD_CONCENTRATION — если уникальных «клиентов» в N раз меньше, чем ссылок
+# (при >=4 ссылках), это самостарты одного и того же телеграма.
+# FRAUD_RING_SHARED_MIN — сколько клиентов должно пересечься с уже
+# заблокированными за накрутку, чтобы считать аккаунт частью той же фермы.
+FRAUD_CONCENTRATION = int(os.getenv("FRAUD_CONCENTRATION", "3"))
+FRAUD_RING_SHARED_MIN = int(os.getenv("FRAUD_RING_SHARED_MIN", "2"))
 # Аккаунты-исключения (например тестовый кабинет владельца).
 FRAUD_WHITELIST_USER_IDS = tuple(
-    int(x) for x in os.getenv("FRAUD_WHITELIST_USER_IDS", "").replace(" ", "").split(",") if x
+    int(x) for x in os.getenv("FRAUD_WHITELIST_USER_IDS", "285").replace(" ", "").split(",") if x
 )
 SEARCH_SOZVON_START_CUTOFF = os.getenv("SEARCH_SOZVON_START_CUTOFF", "2026-08-16")
 VARVARA_USER_ID = int(os.getenv("VARVARA_USER_ID", "123"))                 # varvara_lead (balance_admin, получатель фи)

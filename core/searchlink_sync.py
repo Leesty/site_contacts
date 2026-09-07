@@ -182,7 +182,7 @@ def _auto_fraud_user_ids() -> set:
 
     from django.conf import settings as _s
 
-    from .models import SearchLink
+    from .models import SearchLink, User
 
     fast_sec = int(getattr(_s, "FRAUD_FAST_START_SECONDS", 60))
     min_links = int(getattr(_s, "FRAUD_MIN_LINKS", 5))
@@ -216,6 +216,40 @@ def _auto_fraud_user_ids() -> set:
         reuse = bool(a["tg"]) and max(a["tg"].values()) >= 2
         fresh = a["with_tg"] >= min_links and a["fresh"] * 100.0 / a["with_tg"] >= fresh_pct
         if reuse or fresh:
+            out.add(uid)
+
+    # ── Правила без привязки ко времени (07.09.2026) ──────────────────────
+    # Инцидент: @Gdeezq выжидал 2-8 минут (порог «быстрого старта» 60 сек не
+    # срабатывал), @sddefsdf сделал 4 ссылки (порог min_links=5 не срабатывал).
+    # Оба обходили таймингом то, что видно по составу клиентов.
+    clients = collections.defaultdict(collections.Counter)   # uid -> {клиент: сколько ссылок}
+    owners = collections.defaultdict(set)                    # клиент -> {uid}
+    for uid, tg, vk in SearchLink.objects.filter(
+            bot_started_at__isnull=False).values_list(
+            "user_id", "telegram_id", "vk_user_id"):
+        key = ("tg", tg) if tg else (("vk", vk) if vk else None)
+        if key is None:
+            continue
+        clients[uid][key] += 1
+        owners[key].add(uid)
+
+    blocked = set(User.objects.filter(fraud_blocked=True).values_list("id", flat=True))
+    # Клиенты, засветившиеся хотя бы у одного забаненного за накрутку.
+    dirty = {k for k, us in owners.items() if us & blocked}
+
+    concentr = int(getattr(_s, "FRAUD_CONCENTRATION", 3))
+    ring_min = int(getattr(_s, "FRAUD_RING_SHARED_MIN", 2))
+    for uid, cnt in clients.items():
+        if uid in whitelist or uid in out:
+            continue
+        total, uniq = sum(cnt.values()), len(cnt)
+        # 1) Почти все ссылки — на одного и того же «клиента». У честных
+        #    повторы бывают (переслал ссылку заново), но не в такой доле.
+        if total >= 4 and uniq * concentr <= total:
+            out.add(uid); continue
+        # 2) Клиенты пересекаются с уже забаненными за накрутку. Один общий
+        #    клиент — совпадение, два и больше — общая ферма.
+        if len({k for k in cnt if k in dirty}) >= ring_min:
             out.add(uid)
     return out
 
