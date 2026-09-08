@@ -39,7 +39,10 @@
 
   <p class="text-muted small mb-3">
     <strong>Всего выведено (одобрено): {{ total_approved_withdrawals|default:0 }} руб.</strong>
-    (пользователи: {{ total_user_withdrawals|default:0 }} руб., исполнители СС: {{ total_worker_withdrawals|default:0 }} руб.)
+    (пользователи: {{ total_user_withdrawals|default:0 }} руб., исполнители СС: {{ total_worker_withdrawals|default:0 }} руб.{% for name, amount in external_withdrawals %}, {{ name }}: {{ amount }} руб.{% endfor %})
+    {% if external_withdrawals_total %}<br>
+    <span style="font-size:11px;">Наша биржа — {{ own_approved_withdrawals }} руб., другие площадки — {{ external_withdrawals_total }} руб.</span>
+    {% endif %}
   </p>
 
   {# ═══ Обычные пользователи ═══ #}

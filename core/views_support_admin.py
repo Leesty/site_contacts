@@ -1916,6 +1916,12 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
     total_worker_withdrawals = (
         WorkerWithdrawalRequest.objects.filter(status="approved").aggregate(s=Sum("amount"))["s"] or 0
     )
+    # Выводы с других наших площадок (биржи отзывов и резюме) — только в
+    # счётчик, заявки в нашу БД не заводим и балансы не трогаем.
+    external_map = getattr(settings, "EXTERNAL_WITHDRAWALS", {}) or {}
+    external_rows = [(k, v) for k, v in external_map.items() if v]
+    external_total = sum(external_map.values())
+
     return render(
         request,
         "core/admin_withdrawal_requests.html",
@@ -1928,7 +1934,12 @@ def admin_withdrawal_requests(request: HttpRequest) -> HttpResponse:
             "history_requests": history,
             "total_user_withdrawals": total_user_withdrawals,
             "total_worker_withdrawals": total_worker_withdrawals,
-            "total_approved_withdrawals": total_user_withdrawals + total_worker_withdrawals,
+            "total_approved_withdrawals": (
+                total_user_withdrawals + total_worker_withdrawals + external_total
+            ),
+            "external_withdrawals": external_rows,
+            "external_withdrawals_total": external_total,
+            "own_approved_withdrawals": total_user_withdrawals + total_worker_withdrawals,
         },
     )
 

@@ -313,3 +313,17 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+
+# ── Выводы с других наших площадок ────────────────────────────────────────
+# Плюсуются к счётчику «Всего выведено (одобрено)» на /staff/withdrawal-requests/.
+# Это ТОЛЬКО отображение: строки заявок в нашу БД не заводятся, балансы
+# пользователей не трогаются. Сверено по БД на 08.09.2026 (кластер 37.252.17.152):
+#   review_exchange.WithdrawalRequest      — 0 заявок
+#   resume.core_withdrawalrequest          — 1 одобренная на 600 ₽
+# Биржа лидов (lead_base.WithdrawalRequest, COMPLETED 538 301,50 ₽) сюда НЕ
+# включена — владелец назвал только отзывы и резюме.
+EXTERNAL_WITHDRAWALS = {
+    "Биржа отзывов": int(os.getenv("EXT_WD_REVIEWS", "0")),
+    "Биржа резюме": int(os.getenv("EXT_WD_RESUME", "600")),
+}
