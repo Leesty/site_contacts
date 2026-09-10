@@ -34,6 +34,9 @@
   .sl-copy { font-size:11px; border-radius:8px; padding:3px 9px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:#cbd5e1; cursor:pointer; transition:.12s; }
   .sl-copy:hover { border-color:#818cf8; color:#fff; background:rgba(99,102,241,.18); }
   .sl-copy.tg:hover { border-color:#38bdf8; background:rgba(56,189,248,.18); }
+  .sl-copy.main { border-color:#4ade80; color:#bbf7d0; background:rgba(34,197,94,.14); font-weight:600; }
+  .sl-copy.main:hover { border-color:#22c55e; color:#fff; background:rgba(34,197,94,.26); }
+  .sl-visited { margin-top:8px; font-size:11px; color:#fbbf24; }
   /* трек */
   .sl-track { display:flex; align-items:flex-start; margin-top:12px; }
   .sl-node { display:flex; flex-direction:column; align-items:center; width:60px; flex:0 0 auto; }
@@ -126,8 +129,8 @@
             <span class="text-muted small ms-1 d-none d-md-inline">· {{ link.created_at|date:"d.m H:i" }}</span>
           </div>
           <div class="d-flex gap-1">
-            <button type="button" class="sl-copy js-copy-direct" data-copy="{{ site_url }}/s/{{ link.code }}/" data-toast="Ссылка-лендинг скопирована" title="{{ site_url }}/s/{{ link.code }}/">📋 Лендинг</button>
-            <button type="button" class="sl-copy tg js-copy-direct" data-copy="{{ link.tg_deep_link }}" data-toast="Прямая TG-ссылка скопирована" title="{{ link.tg_deep_link }}">📨 TG</button>
+            <button type="button" class="sl-copy main js-copy-direct" data-copy="{{ site_url }}/s/{{ link.code }}/" data-toast="Ссылка-лендинг скопирована" title="{{ site_url }}/s/{{ link.code }}/">📋 Лендинг</button>
+            <button type="button" class="sl-copy tg js-copy-direct" data-copy="{{ link.tg_deep_link }}" data-toast="Прямая TG-ссылка скопирована — переход не отследится" title="{{ link.tg_deep_link }}">📨 TG (запасная)</button>
           </div>
         </div>
 
@@ -152,6 +155,9 @@
               <div class="sl-dot">✅</div><div class="nlbl">Сделка</div><div class="nrw">до {{ deal_reward }}</div>
             </div>
           </div>
+          {% if link.visitor_ip and not link.bot_started %}
+            <div class="sl-visited">👀 Перешёл по ссылке, но бота ещё не запустил.</div>
+          {% endif %}
           {% if not link.bot_started and user.role != 'user' %}
             <div class="mt-2">
               <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 js-force-confirm-btn" data-code="{{ link.code }}" style="font-size:11px;" title="Отметить старт вручную (если webhook не сработал)">✓ Подтвердить старт</button>
