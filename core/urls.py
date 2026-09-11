@@ -369,6 +369,8 @@ urlpatterns = [
     # SearchLink system
     path("s/<str:code>/", views_search.search_link_landing, name="search_link_landing"),
     path("s/<str:code>/go/", views_search.search_link_go, name="search_link_go"),
+    # JS-пинг «страницу открыл живой человек» — ставится ДО catch-all ниже.
+    path("s/<str:code>/hit/", views_search.search_link_hit, name="search_link_hit"),
     # Catch-all: если к коду приписали мусорный хвост (/x, /go/x, опечатка) —
     # 301 на каноничный лендинг. Реф-код сохраняется, всё работает как надо.
     path("s/<str:code>/<path:junk>", views_search.search_link_fallback_redirect, name="search_link_fallback"),

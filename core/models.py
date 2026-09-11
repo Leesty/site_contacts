@@ -1523,7 +1523,20 @@ class SearchLink(TimeStampedModel):
     visitor_ip = models.GenericIPAddressField(
         null=True,
         blank=True,
-        help_text="IP посетителя при клике на лендинг.",
+        help_text=(
+            "IP посетителя при открытии лендинга. ВНИМАНИЕ: сюда попадают и "
+            "роботы — Яндекс, Google, превьюшники Telegram/VK дёргают страницу "
+            "сразу после того, как менеджер вставил ссылку в чат. Как признак "
+            "«человек перешёл» НЕ годится, для этого есть clicked_at."
+        ),
+    )
+    clicked_at = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text=(
+            "Когда лендинг открыл ЖИВОЙ человек. Ставится только из браузера "
+            "(JS-пинг на /s/<code>/hit/), роботы скрипты не выполняют. "
+            "NULL = живых переходов не было."
+        ),
     )
     self_click = models.BooleanField(
         default=False,

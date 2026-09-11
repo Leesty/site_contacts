@@ -206,6 +206,48 @@ def search_link_create(request: HttpRequest) -> HttpResponse:
     return redirect("search_links_my")
 
 
+# Роботы, которые дёргают лендинг сами: превью ссылок в мессенджерах и
+# поисковые краулеры. Список по User-Agent — надёжнее списка IP-подсетей,
+# которые у Яндекса и VK постоянно меняются.
+_BOT_UA_MARKERS = (
+    "bot", "crawler", "spider", "preview", "fetcher", "monitor",
+    "telegrambot", "whatsapp", "viber", "vkshare", "skypeuripreview",
+    "facebookexternalhit", "twitterbot", "slackbot", "discordbot",
+    "yandex", "googlebot", "mail.ru", "bingbot", "duckduckbot",
+    "headlesschrome", "python-requests", "curl/", "wget", "go-http-client",
+)
+
+
+def _is_bot_user_agent(request: HttpRequest) -> bool:
+    """Похоже ли, что страницу открыл робот, а не человек."""
+    ua = (request.META.get("HTTP_USER_AGENT") or "").lower()
+    if not ua:
+        return True  # без User-Agent к нам ходят только скрипты
+    return any(m in ua for m in _BOT_UA_MARKERS)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def search_link_hit(request: HttpRequest, code: str) -> HttpResponse:
+    """JS-пинг с лендинга: страницу открыл ЖИВОЙ человек.
+
+    Роботы JavaScript не выполняют, поэтому этот вызов — единственный
+    надёжный признак реального перехода. `visitor_ip` для этого не годится:
+    его проставляют превьюшники мессенджеров и поисковые краулеры сразу
+    после того, как менеджер вставил ссылку в чат.
+    """
+    link = SearchLink.objects.filter(code=code).only("id", "clicked_at").first()
+    if not link:
+        return JsonResponse({"ok": False}, status=404)
+    if _is_bot_user_agent(request):
+        return JsonResponse({"ok": True, "counted": False})
+    if link.clicked_at is None:
+        SearchLink.objects.filter(pk=link.pk, clicked_at__isnull=True).update(
+            clicked_at=timezone.now(),
+        )
+    return JsonResponse({"ok": True, "counted": True})
+
+
 # ─── Публичный лендинг ────────────────────────────────────────────────────────
 
 def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
@@ -214,11 +256,13 @@ def search_link_landing(request: HttpRequest, code: str) -> HttpResponse:
     if not link:
         return render(request, "search/unavailable.html", status=404)
 
-    # Сохраняем IP посетителя (только первый визит — не перезаписываем)
-    # Проверка на накрутку происходит при одобрении, не при просмотре лендинга
-    visitor_ip = _get_client_ip(request)
-    if not link.visitor_ip:
-        link.visitor_ip = visitor_ip
+    # Сохраняем IP посетителя (только первый визит — не перезаписываем).
+    # Роботов не пишем вовсе: как только менеджер вставляет ссылку в чат,
+    # страницу сразу дёргают превьюшники Telegram/VK и краулеры Яндекса —
+    # это НЕ переход клиента (жалоба менеджера 11.09.2026).
+    # Проверка на накрутку происходит при одобрении, не при просмотре лендинга.
+    if not link.visitor_ip and not _is_bot_user_agent(request):
+        link.visitor_ip = _get_client_ip(request)
         link.save(update_fields=["visitor_ip"])
 
     return render(request, "search/landing.html", {
