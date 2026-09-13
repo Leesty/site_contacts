@@ -724,9 +724,6 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     for r in referrals:
         r.earn = breakdown.get(r.id, {"sozvon_cnt": 0, "sozvon_amt": 0,
                                        "deal_cnt": 0, "deal_amt": 0, "total": 0})
-        r.display_only = (r.display_referrer_id == user.id
-                          and r.partner_owner_id != user.id
-                          and r.invited_by_id != user.id)
 
     # Неаккредитованный рефовод: вместо % — разовый бонус за каждого реферала,
     # приведшего SUBREF_MILESTONE клиентов в бота. Показываем прогресс по каждому.
@@ -875,8 +872,6 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
     for u in page_obj:
         u.earn = breakdown.get(u.id, {"sozvon_cnt": 0, "sozvon_amt": 0,
                                        "deal_cnt": 0, "deal_amt": 0, "total": 0})
-        u.display_only = (u.display_referrer_id == request.user.id
-                          and u.partner_owner_id != request.user.id)
 
     return render(request, "core/user_referral_list.html", {
         "page_obj": page_obj,

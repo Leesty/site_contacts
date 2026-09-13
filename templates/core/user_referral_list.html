@@ -49,7 +49,7 @@
             <tbody>
               {% for u in page_obj %}
                 <tr>
-                  <td>@{{ u.username }}{% if u.display_only %} <span class="badge bg-secondary" style="font-size:10px;" title="Закреплена за вами. Реф-начисления по ней идут прежнему рефоводу.">без начислений</span>{% endif %}</td>
+                  <td>@{{ u.username }}</td>
                   <td class="small text-muted">{{ u.first_name }} {{ u.last_name }}</td>
                   <td class="text-muted small">{{ u.date_joined|date:"d.m.Y H:i" }}</td>
                   <td>

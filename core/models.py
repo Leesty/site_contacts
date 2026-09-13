@@ -133,9 +133,8 @@ class User(AbstractUser):
         limit_choices_to={"role__in": ["partner", "user"]},
         help_text=(
             "Показывать этого пользователя в списке рефералов у указанного "
-            "человека, НЕ меняя получателя денег. Все реф-начисления по-прежнему "
-            "идут partner_owner. Пример (13.09.2026): viktorseverin0209 закреплена "
-            "за @Nastia051189, а 50/1000 ₽ продолжают идти @Nastya_Partner."
+            "человека, НЕ меняя получателя денег: реф-начисления всегда идут "
+            "partner_owner."
         ),
     )
     partner_rate = models.PositiveIntegerField(
