@@ -706,6 +706,10 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     # выше по цепочке, но бонус 500 ₽ за каждого получает он.
     from .lead_utils import is_milestone_referrer as _is_ms
     _my_refs = (Q(invited_by=user) if _is_ms(user) else Q(partner_owner=user))
+    # Плюс закреплённые «только для отображения»: деньги по ним идут прежнему
+    # рефоводу (partner_owner), заработок здесь будет «—» — он считается из
+    # собственного BalanceLog рефовода.
+    _my_refs = _my_refs | Q(display_referrer=user)
     total_referrals_count = User.objects.filter(_my_refs).count()
     active_count = len(active_ref_ids)
     inactive_count = max(0, total_referrals_count - active_count)
@@ -720,6 +724,9 @@ def user_referrals(request: HttpRequest) -> HttpResponse:
     for r in referrals:
         r.earn = breakdown.get(r.id, {"sozvon_cnt": 0, "sozvon_amt": 0,
                                        "deal_cnt": 0, "deal_amt": 0, "total": 0})
+        r.display_only = (r.display_referrer_id == user.id
+                          and r.partner_owner_id != user.id
+                          and r.invited_by_id != user.id)
 
     # Неаккредитованный рефовод: вместо % — разовый бонус за каждого реферала,
     # приведшего SUBREF_MILESTONE клиентов в бота. Показываем прогресс по каждому.
@@ -854,11 +861,12 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
 
     breakdown = _referral_earnings_breakdown(request.user)
     active_ref_ids: set[int] = {uid for uid, v in breakdown.items() if v["total"] > 0}
-    total_referrals_count = User.objects.filter(partner_owner=request.user).count()
+    _my_refs = Q(partner_owner=request.user) | Q(display_referrer=request.user)
+    total_referrals_count = User.objects.filter(_my_refs).count()
     active_count = len(active_ref_ids)
     inactive_count = max(0, total_referrals_count - active_count)
 
-    users_qs = User.objects.filter(partner_owner=request.user)
+    users_qs = User.objects.filter(_my_refs)
     if not show_all:
         users_qs = users_qs.filter(id__in=active_ref_ids)
     users_qs = users_qs.order_by("-date_joined")
@@ -867,6 +875,8 @@ def user_referral_list(request: HttpRequest) -> HttpResponse:
     for u in page_obj:
         u.earn = breakdown.get(u.id, {"sozvon_cnt": 0, "sozvon_amt": 0,
                                        "deal_cnt": 0, "deal_amt": 0, "total": 0})
+        u.display_only = (u.display_referrer_id == request.user.id
+                          and u.partner_owner_id != request.user.id)
 
     return render(request, "core/user_referral_list.html", {
         "page_obj": page_obj,
